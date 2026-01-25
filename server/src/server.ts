@@ -61,18 +61,22 @@ app.use(globalErrorHandler);
 
 const PORT = process.env.PORT || 5000;
 
-const server = app.listen(PORT, () => {
-  console.log(`Server running in ${process.env.NODE_ENV} mode on port ${PORT}`);
-});
+// Export app for Vercel Serverless
+export default app;
 
-// Handle Unhandled Rejections
-process.on('unhandledRejection', (err: any) => {
-  console.log('UNHANDLED REJECTION! 💥');
-  console.log(err.name, err.message);
-  // Don't crash server in dev mode for better stability during hot-reloads
-  if (process.env.NODE_ENV === 'production') {
-      server.close(() => {
-        process.exit(1);
-      });
-  }
-});
+// Only listen if not running in Vercel (Vercel handles binding automatically)
+if (process.env.NODE_ENV !== 'production' && !process.env.VERCEL) {
+  const server = app.listen(PORT, () => {
+    console.log(`Server running in ${process.env.NODE_ENV} mode on port ${PORT}`);
+  });
+
+  // Handle Unhandled Rejections
+  process.on('unhandledRejection', (err: any) => {
+    console.log('UNHANDLED REJECTION! 💥');
+    console.log(err.name, err.message);
+    server.close(() => {
+      process.exit(1);
+    });
+  });
+}
+
