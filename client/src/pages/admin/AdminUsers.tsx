@@ -23,6 +23,7 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { UserActionDialog } from '@/components/admin/UserActionDialog';
 import { toast } from 'sonner';
+import { API_URL } from '@/config';
 
 // ... existing code ...
 
@@ -61,7 +62,7 @@ export default function AdminUsers() {
   const fetchUsers = async () => {
     // ... same content ...
       try {
-          const res = await fetch('/api/admin/users');
+          const res = await fetch(`${API_URL}/admin/users`);
           const data = await res.json();
           if (res.ok) {
             setUsers(data.data.users.map((u: any) => ({
@@ -91,7 +92,7 @@ export default function AdminUsers() {
   const handleUpdateStatus = async (userId: string, newStatus: string, reason?: string) => {
       try {
           const body = { status: newStatus, reason };
-          const res = await fetch(`/api/admin/users/${userId}/status`, {
+          const res = await fetch(`${API_URL}/admin/users/${userId}/status`, {
               method: 'PATCH',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify(body)

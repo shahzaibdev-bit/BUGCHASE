@@ -15,6 +15,7 @@ import {
     PopoverTrigger,
 } from "@/components/ui/popover";
 import { Calendar } from "@/components/ui/calendar";
+import { API_URL } from '@/config';
 
 // --- Data ---
 // --- Data ---
@@ -69,7 +70,7 @@ export default function ResearcherReports() {
   useEffect(() => {
     const fetchReports = async () => {
       try {
-        const res = await fetch('/api/reports');
+        const res = await fetch(`${API_URL}/reports`);
         const data = await res.json();
         if (res.ok) {
             // Map backend data to frontend structure if needed, or stick to backend structure if compatible

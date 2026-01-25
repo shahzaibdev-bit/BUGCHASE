@@ -37,6 +37,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import ImageCropper from '@/components/ImageCropper';
+import { API_URL } from '@/config';
 
 // Full Country List with Flags
 const countries = [
@@ -151,7 +152,7 @@ const countries = [
           setActiveSocials(active.length > 0 ? active : ['linkedin']);
           
           // Fetch Triager Stats
-          fetch('/api/triager/profile')
+          fetch(`${API_URL}/triager/profile`)
             .then(res => res.json())
             .then(data => {
                 if (data.status === 'success') {
@@ -200,7 +201,7 @@ const countries = [
 
       setIsUploading(true);
       try {
-          const res = await fetch('/api/users/upload-avatar', {
+          const res = await fetch(`${API_URL}/users/upload-avatar`, {
               method: 'POST',
               body: formData,
           });
@@ -243,7 +244,7 @@ const countries = [
             }
         };
 
-        const res = await fetch('/api/auth/update-me', {
+        const res = await fetch(`${API_URL}/auth/update-me`, {
             method: 'PATCH',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(payload)
@@ -283,7 +284,7 @@ const countries = [
 
     setIsUpdatingPassword(true);
     try {
-        const res = await fetch('/api/auth/update-password', {
+        const res = await fetch(`${API_URL}/auth/update-password`, {
             method: 'PATCH',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ currentPassword, newPassword }),

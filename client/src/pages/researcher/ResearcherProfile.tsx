@@ -85,6 +85,7 @@ type TabType = 'account' | 'security' | 'notifications' | 'stats';
 import { useAuth } from '@/contexts/AuthContext';
 
 // ... (keep existing imports)
+import { API_URL } from '@/config';
 
 export default function ResearcherProfile() {
   // ... inside ResearcherProfile component
@@ -202,7 +203,7 @@ export default function ResearcherProfile() {
 
       setIsUploading(true);
       try {
-          const res = await fetch('/api/users/upload-avatar', {
+          const res = await fetch(`${API_URL}/users/upload-avatar`, {
               method: 'POST',
               body: formData,
           });
@@ -224,7 +225,7 @@ export default function ResearcherProfile() {
   // Handlers
   const handleSave = async (section: 'General' | 'Socials') => {
     try {
-        const res = await fetch('/api/auth/update-me', {
+        const res = await fetch(`${API_URL}/auth/update-me`, {
             method: 'PATCH',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
@@ -264,7 +265,7 @@ export default function ResearcherProfile() {
       setProfile(prev => ({ ...prev, [field]: value }));
 
       try {
-          const res = await fetch('/api/auth/update-me', {
+          const res = await fetch(`${API_URL}/auth/update-me`, {
               method: 'PATCH',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({ [field]: value })
@@ -290,7 +291,7 @@ export default function ResearcherProfile() {
 
     setIsUpdatingPassword(true);
     try {
-        const res = await fetch('/api/auth/update-password', {
+        const res = await fetch(`${API_URL}/auth/update-password`, {
             method: 'PATCH',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ currentPassword, newPassword }),

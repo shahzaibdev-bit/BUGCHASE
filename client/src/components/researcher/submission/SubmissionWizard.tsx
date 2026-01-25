@@ -9,6 +9,7 @@ import { Button } from '@/components/ui/button';
 import { ChevronRight, ChevronLeft, Save, Send } from 'lucide-react';
 import { toast } from '@/hooks/use-toast';
 import { useNavigate, useSearchParams } from 'react-router-dom';
+import { API_URL } from '@/config';
 
 export const SubmissionWizard = () => {
     const navigate = useNavigate();
@@ -43,7 +44,7 @@ export const SubmissionWizard = () => {
         const fetchProgram = async () => {
             setLoadingProgram(true);
             try {
-                const res = await fetch(`/api/programs/${programId}`);
+                const res = await fetch(`${API_URL}/programs/${programId}`);
                 if (res.ok) {
                     const json = await res.json();
                     if (json.data && json.data.scope) {
@@ -80,7 +81,7 @@ export const SubmissionWizard = () => {
             const vec = data.cvssVector as any;
             const cvssString = `CVSS:3.1/AV:${vec.AV}/AC:${vec.AC}/PR:${vec.PR}/UI:${vec.UI}/S:${vec.S}/C:${vec.C}/I:${vec.I}/A:${vec.A}`;
 
-            const res = await fetch('/api/reports', {
+            const res = await fetch(`${API_URL}/reports`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({

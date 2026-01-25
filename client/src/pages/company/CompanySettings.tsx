@@ -13,6 +13,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { toast } from '@/hooks/use-toast';
 import { cn } from '@/lib/utils';
 import { InviteMemberModal } from '@/components/company/InviteMemberModal';
+import { API_URL } from '@/config';
 import ImageCropper from '@/components/ImageCropper';
 
 import { TeamMember } from '@/types';
@@ -64,7 +65,7 @@ export default function CompanySettings() {
   const fetchTeamMembers = async () => {
       setIsLoadingTeam(true);
       try {
-          const res = await fetch('/api/company/team');
+          const res = await fetch(`${API_URL}/company/team`);
           const data = await res.json();
           if (res.ok) {
               setTeamMembers(data.data.members);
@@ -103,7 +104,7 @@ export default function CompanySettings() {
 
   const handleSave = async () => {
       try {
-          const res = await fetch('/api/users/updateMe', {
+          const res = await fetch(`${API_URL}/users/updateMe`, {
               method: 'PATCH',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify(formData)
@@ -136,7 +137,7 @@ export default function CompanySettings() {
       }
 
       try {
-          const res = await fetch('/api/auth/update-password', {
+          const res = await fetch(`${API_URL}/auth/update-password`, {
               method: 'PATCH',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({
@@ -182,7 +183,7 @@ export default function CompanySettings() {
 
       setIsUploading(true);
       try {
-          const res = await fetch('/api/users/upload-avatar', {
+          const res = await fetch(`${API_URL}/users/upload-avatar`, {
               method: 'POST',
               body: formData,
           });

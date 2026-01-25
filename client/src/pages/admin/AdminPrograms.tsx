@@ -26,6 +26,7 @@ import {
 
 
 import SuspendProgramDialog from '@/components/admin/SuspendProgramDialog';
+import { API_URL } from '@/config';
 
 const statusColors: Record<string, string> = {
   Active: 'bg-green-500/10 text-green-500 border-green-500/20',
@@ -48,7 +49,7 @@ export default function AdminPrograms() {
   const fetchPrograms = async () => {
     setIsLoading(true);
     try {
-        const res = await fetch('/api/admin/programs');
+        const res = await fetch(`${API_URL}/admin/programs`);
         const data = await res.json();
         if (res.ok) {
             setPrograms(data.data.programs || []);
@@ -69,7 +70,7 @@ export default function AdminPrograms() {
           const body: any = { status: newStatus };
           if (reason) body.reason = reason;
 
-          const res = await fetch(`/api/admin/programs/${id}/status`, {
+          const res = await fetch(`${API_URL}/admin/programs/${id}/status`, {
               method: 'PATCH',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify(body)

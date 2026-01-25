@@ -5,6 +5,7 @@ import { toast } from 'sonner';
 import { useEditor, EditorContent } from '@tiptap/react';
 import StarterKit from '@tiptap/starter-kit';
 import Placeholder from '@tiptap/extension-placeholder';
+import { API_URL } from '@/config';
 
 export default function AdminAnnouncements() {
   const [isSending, setIsSending] = useState(false);
@@ -46,7 +47,7 @@ export default function AdminAnnouncements() {
 
     try {
         const message = editor.getHTML();
-        const res = await fetch('/api/admin/announcements/broadcast', {
+        const res = await fetch(`${API_URL}/admin/announcements/broadcast`, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json'

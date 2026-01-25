@@ -7,6 +7,7 @@ import { Label } from '@/components/ui/label';
 import { Slider } from '@/components/ui/slider';
 import { Badge } from '@/components/ui/badge';
 import { useToast } from '@/hooks/use-toast';
+import { API_URL } from '@/config';
 
 const expertiseAreas = [
   { id: 'web', label: 'Web Application Security', icon: Globe, description: 'XSS, CSRF, SQL Injection' },
@@ -38,7 +39,7 @@ export default function TriagerExpertise() {
   const [severities, setSeverities] = useState<Record<string, boolean>>({});
 
   const fetchPreferences = () => {
-    fetch('/api/triager/profile')
+    fetch(`${API_URL}/triager/profile`)
         .then(res => res.json())
         .then(data => {
             if (data.status === 'success' && data.data.preferences) {
@@ -85,7 +86,7 @@ export default function TriagerExpertise() {
       const selectedSeverities = Object.entries(severities).filter(([_, v]) => v).map(([k]) => k);
 
       try {
-          const res = await fetch('/api/triager/preferences', {
+          const res = await fetch(`${API_URL}/triager/preferences`, {
               method: 'PATCH',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({

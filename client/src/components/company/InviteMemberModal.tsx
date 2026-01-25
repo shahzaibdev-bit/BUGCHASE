@@ -7,6 +7,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Checkbox } from '@/components/ui/checkbox';
 import { toast } from '@/hooks/use-toast';
 import { Loader2, RefreshCw, Copy } from 'lucide-react';
+import { API_URL } from '@/config';
 
 interface InviteMemberModalProps {
     isOpen: boolean;
@@ -60,7 +61,7 @@ export function InviteMemberModal({ isOpen, onClose, onInviteSuccess, companyNam
             const prefix = companyName.toLowerCase().replace(/[^a-z0-9]/g, '');
             const fullUsername = `${prefix}@${generatedUsername}`;
 
-            const res = await fetch('/api/company/invite', {
+            const res = await fetch(`${API_URL}/company/invite`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({

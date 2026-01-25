@@ -23,6 +23,7 @@ import { GlassCard } from '@/components/ui/glass-card';
 import { toast } from 'sonner';
 
 import SuspendProgramDialog from '@/components/admin/SuspendProgramDialog';
+import { API_URL } from '@/config';
 
 export default function AdminProgramDetails() {
   const { id } = useParams();
@@ -34,7 +35,7 @@ export default function AdminProgramDetails() {
   const fetchProgram = async () => {
     setIsLoading(true);
     try {
-       const adminRes = await fetch('/api/admin/programs');
+       const adminRes = await fetch(`${API_URL}/admin/programs`);
        const adminData = await adminRes.json();
        const found = adminData.data.programs.find((p: any) => p._id === id);
        setProgram(found);
@@ -55,7 +56,7 @@ export default function AdminProgramDetails() {
           const body: any = { status: newStatus };
           if (reason) body.reason = reason;
 
-          const res = await fetch(`/api/admin/programs/${id}/status`, {
+          const res = await fetch(`${API_URL}/admin/programs/${id}/status`, {
               method: 'PATCH',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify(body)

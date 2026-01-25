@@ -41,6 +41,7 @@ import {
 } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
+import { API_URL } from '@/config';
 
 // Mock reports and assets removed
 
@@ -205,8 +206,8 @@ const CompanyProgramDetails = () => {
     const fetchData = async () => {
         try {
             const [programRes, assetsRes] = await Promise.all([
-                fetch(`/api/company/programs/${id}`),
-                fetch('/api/company/assets')
+                fetch(`${API_URL}/company/programs/${id}`),
+                fetch(`${API_URL}/company/assets`)
             ]);
 
             if (!programRes.ok) throw new Error('Failed to fetch program');
@@ -254,7 +255,7 @@ const CompanyProgramDetails = () => {
   const handleDelete = async () => {
     setIsDeleteDialogOpen(false); // Close dialog immediately
     try {
-        const res = await fetch(`/api/company/programs/${id}`, {
+        const res = await fetch(`${API_URL}/company/programs/${id}`, {
             method: 'DELETE'
         });
         if (res.ok) {

@@ -14,6 +14,7 @@ import {
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
+import { API_URL } from '@/config';
 
 const ProgramDetails = () => {
     const { id } = useParams();
@@ -26,7 +27,7 @@ const ProgramDetails = () => {
              if (!id) return;
              try {
                  // 1. Fetch Program Details
-                 const res = await fetch(`/api/programs/${id}`);
+                 const res = await fetch(`${API_URL}/programs/${id}`);
                  const data = await res.json();
                  
                  if (res.ok) {

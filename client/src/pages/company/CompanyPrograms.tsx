@@ -14,6 +14,7 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { useAuth } from '@/contexts/AuthContext';
 import { toast } from '@/hooks/use-toast';
+import { API_URL } from '@/config';
 
 export default function CompanyPrograms() {
   const { user } = useAuth();
@@ -30,8 +31,8 @@ export default function CompanyPrograms() {
      try {
          setIsLoading(true);
          const [assetsRes, programsRes] = await Promise.all([
-             fetch('/api/company/assets'),
-             fetch('/api/company/programs')
+             fetch(`${API_URL}/company/assets`),
+             fetch(`${API_URL}/company/programs`)
          ]);
 
          const assetsData = await assetsRes.json();

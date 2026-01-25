@@ -33,6 +33,7 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { cn } from '@/lib/utils';
 import { motion, AnimatePresence } from 'framer-motion';
+import { API_URL } from '@/config';
 
 // Types
 type ScanStatus = 'QUEUED' | 'PROCESSING' | 'COMPLETED' | 'FAILED';
@@ -70,7 +71,7 @@ export default function CompanyAssets() {
   useEffect(() => {
     const fetchAssets = async () => {
         try {
-            const res = await fetch('/api/company/assets');
+            const res = await fetch(`${API_URL}/company/assets`);
             const data = await res.json();
             if (data.status === 'success') {
                 setVerifiedDomains(data.data);

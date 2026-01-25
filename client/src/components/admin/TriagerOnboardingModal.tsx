@@ -21,6 +21,7 @@ import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
 import { toast } from 'sonner';
+import { API_URL } from '@/config';
 
 interface TriagerOnboardingModalProps {
   isOpen: boolean;
@@ -86,7 +87,7 @@ export const TriagerOnboardingModal = ({ isOpen, onClose, onSuccess }: TriagerOn
     setIsSubmitting(true);
 
     try {
-        const res = await fetch('/api/admin/triagers', {
+        const res = await fetch(`${API_URL}/admin/triagers`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(formData)

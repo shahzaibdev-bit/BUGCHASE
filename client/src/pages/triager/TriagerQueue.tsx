@@ -29,6 +29,7 @@ import { toast } from '@/hooks/use-toast';
 import { useNavigate } from 'react-router-dom';
 import { InvertedTiltCard } from '@/components/InvertedTiltCard';
 import { InverseSpotlightCard } from '@/components/InverseSpotlightCard';
+import { API_URL } from '@/config';
 
 // Enhanced Mock Data Types
 type ReportStatus = 'Submitted' | 'Under Review' | 'Needs Info' | 'Triaged' | 'Spam' | 'Duplicate' | 'OOS';
@@ -64,8 +65,8 @@ export default function TriagerQueue() {
     setLoading(true);
     try {
         const [queueRes, poolRes] = await Promise.all([
-            fetch('/api/triager/queue'),
-            fetch('/api/triager/pool')
+            fetch(`${API_URL}/triager/queue`),
+            fetch(`${API_URL}/triager/pool`)
         ]);
         
         const queueData = await queueRes.json();
@@ -92,7 +93,7 @@ export default function TriagerQueue() {
 
   const handleClaim = async (id: string) => {
     try {
-        const res = await fetch(`/api/triager/claim/${id}`, { method: 'POST' });
+        const res = await fetch(`${API_URL}/triager/claim/${id}`, { method: 'POST' });
         const data = await res.json();
         
         if (res.ok) {

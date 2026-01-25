@@ -6,6 +6,7 @@ import { Input } from '@/components/ui/input';
 import { AlertCircle, CheckCircle2, Camera, Upload, ShieldCheck, Loader2, ArrowRight, ArrowLeft } from 'lucide-react';
 import { toast } from 'sonner';
 import { useNavigate } from 'react-router-dom';
+import { API_URL } from '@/config';
 
 const STEPS = [
   { title: 'Upload CNIC', description: 'Upload a clear front photo of your Pakistani CNIC.' },
@@ -117,7 +118,7 @@ export default function ResearcherVerification() {
 
       if (data.success) {
         // 2. Call Node Backend to Update Status
-        const backendRes = await fetch('/api/users/verify-kyc-status', {
+        const backendRes = await fetch(`${API_URL}/users/verify-kyc-status`, {
             method: 'PATCH',
             headers: {
                 'Content-Type': 'application/json',

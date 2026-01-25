@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/button';
 import CyberpunkEditor from '@/components/ui/CyberpunkEditor';
 import { format } from 'date-fns';
 import { toast } from '@/hooks/use-toast';
+import { API_URL } from '@/config';
 
 const Timeline = ({ currentStep }: { currentStep: number }) => {
   const steps = ['Submitted', 'Triaging', 'Triaged', 'Paid', 'Resolved']; // Updated to match backend roughly
@@ -80,7 +81,7 @@ export default function ReportDetails() {
 
   const fetchReport = async () => {
     try {
-        const res = await fetch(`/api/reports/${id}`);
+        const res = await fetch(`${API_URL}/reports/${id}`);
         const data = await res.json();
         if (res.ok) {
             setReport(data.data);
@@ -116,7 +117,7 @@ export default function ReportDetails() {
       setCommentContent('');
 
       try {
-          const res = await fetch(`/api/reports/${id}/comments`, {
+          const res = await fetch(`${API_URL}/reports/${id}/comments`, {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({ content })

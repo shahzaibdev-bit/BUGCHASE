@@ -20,6 +20,7 @@ import { Badge } from '@/components/ui/badge';
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { TriagerOnboardingModal } from '@/components/admin/TriagerOnboardingModal';
 import { InverseSpotlightCard } from '@/components/InverseSpotlightCard';
+import { API_URL } from '@/config';
 
 // Expertise Icon Map
 const EXPERTISE_ICONS: Record<string, React.ReactNode> = {
@@ -83,7 +84,7 @@ export default function AdminTriagers() {
   const fetchTriagers = async () => {
     setIsLoading(true);
     try {
-        const res = await fetch('/api/admin/triagers');
+        const res = await fetch(`${API_URL}/admin/triagers`);
         const data = await res.json();
         if (res.ok) {
             setTriagers(data.data.triagers || []);

@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { GlassCard } from '@/components/ui/glass-card';
 import { Link } from 'react-router-dom';
+import { API_URL } from '@/config';
 
 // Simplified Program Interface matching backend response
 interface Program {
@@ -38,7 +39,7 @@ export default function ResearcherPrograms() {
   useEffect(() => {
     const fetchPrograms = async () => {
         try {
-            const res = await fetch('/api/programs');
+            const res = await fetch(`${API_URL}/programs`);
             const data = await res.json();
             if (res.ok) {
                 setPrograms(data.data);

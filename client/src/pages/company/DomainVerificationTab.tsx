@@ -16,6 +16,7 @@ import {
 } from "@/components/ui/dropdown-menu"
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
+import { API_URL } from '@/config';
 
 // Types
 type VerificationStatus = 'idle' | 'pending' | 'verifying' | 'verified' | 'error';
@@ -39,7 +40,7 @@ export function DomainVerificationTab() {
 
   // Fetch existing assets
   React.useEffect(() => {
-    fetch('/api/company/assets')
+    fetch(`${API_URL}/company/assets`)
         .then(res => res.json())
         .then(data => {
             if (data.status === 'success') {
@@ -60,7 +61,7 @@ export function DomainVerificationTab() {
     }
 
     try {
-        const res = await fetch('/api/company/generate-token', {
+        const res = await fetch(`${API_URL}/company/generate-token`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ rootDomain })
@@ -83,7 +84,7 @@ export function DomainVerificationTab() {
     setVerificationStatus('verifying');
     
     try {
-        const res = await fetch('/api/company/verify-domain', {
+        const res = await fetch(`${API_URL}/company/verify-domain`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ rootDomain })
@@ -114,7 +115,7 @@ export function DomainVerificationTab() {
   const toggleAssetStatus = async (id: string, currentStatus: string) => {
     const newStatus = currentStatus === 'verified' ? 'disabled' : 'verified';
     try {
-        const res = await fetch(`/api/company/assets/${id}/status`, {
+        const res = await fetch(`${API_URL}/company/assets/${id}/status`, {
             method: 'PATCH',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ status: newStatus })
@@ -137,7 +138,7 @@ export function DomainVerificationTab() {
     if(!confirm("Are you sure you want to delete this asset? This action cannot be undone.")) return;
 
     try {
-        const res = await fetch(`/api/company/assets/${id}`, {
+        const res = await fetch(`${API_URL}/company/assets/${id}`, {
             method: 'DELETE',
         });
         

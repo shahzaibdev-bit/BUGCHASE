@@ -28,6 +28,7 @@ import {
   Bug,
   RefreshCw
 } from 'lucide-react';
+import { API_URL } from '@/config';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { GlassCard } from '@/components/ui/glass-card';
@@ -414,7 +415,7 @@ export default function TriagerReportDetails() {
     // Fetch Report Data
     const fetchReport = async () => {
         try {
-            const res = await fetch(`/api/triager/reports/${id}`);
+            const res = await fetch(`${API_URL}/triager/reports/${id}`);
             const data = await res.json();
             if (res.ok) {
                 const r = data.data.report;
@@ -487,7 +488,7 @@ export default function TriagerReportDetails() {
 
     const performStatusUpdate = async (status: ReportStatus, reason: string) => {
         try {
-            const res = await fetch(`/api/triager/reports/${id}/status`, {
+            const res = await fetch(`${API_URL}/triager/reports/${id}/status`, {
                 method: 'PATCH',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ status, note: reason })
@@ -549,7 +550,7 @@ export default function TriagerReportDetails() {
         if (!editorContent.trim()) return;
 
         try {
-            const res = await fetch(`/api/triager/reports/${id}/chat`, {
+            const res = await fetch(`${API_URL}/triager/reports/${id}/chat`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ content: editorContent })
@@ -566,7 +567,7 @@ export default function TriagerReportDetails() {
     
     const handleSeverityUpdate = async (vector: string, score: number) => {
         try {
-            const res = await fetch(`/api/triager/reports/${id}/severity`, {
+            const res = await fetch(`${API_URL}/triager/reports/${id}/severity`, {
                 method: 'PATCH',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ 
@@ -601,7 +602,7 @@ export default function TriagerReportDetails() {
 
     const submitFinalDecision = async () => {
          try {
-            const res = await fetch(`/api/triager/reports/${id}/decision`, {
+            const res = await fetch(`${API_URL}/triager/reports/${id}/decision`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ 
@@ -838,7 +839,7 @@ export default function TriagerReportDetails() {
                                     onClick={async () => {
                                         const newVal = !state.validation.reproduced;
                                         try {
-                                            await fetch(`/api/triager/reports/${id}/validation`, {
+                                            await fetch(`${API_URL}/triager/reports/${id}/validation`, {
                                                 method: 'PATCH',
                                                 headers: { 'Content-Type': 'application/json' },
                                                 body: JSON.stringify({ isReproduced: newVal })

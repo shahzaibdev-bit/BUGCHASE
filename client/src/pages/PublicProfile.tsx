@@ -17,6 +17,7 @@ import {
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
+import { API_URL } from '@/config';
 
 interface PublicProfileData {
   isPrivate: boolean;
@@ -47,7 +48,7 @@ export default function PublicProfile() {
   useEffect(() => {
     const fetchProfile = async () => {
       try {
-        const res = await fetch(`/api/users/p/${username}`);
+        const res = await fetch(`${API_URL}/users/p/${username}`);
         const data = await res.json();
 
         if (res.ok) {

@@ -14,6 +14,7 @@ import { InverseSpotlightCard } from '@/components/InverseSpotlightCard';
 import CyberpunkEditor from '@/components/ui/CyberpunkEditor';
 import { cn } from '@/lib/utils';
 import { ScrollArea } from '@/components/ui/scroll-area';
+import { API_URL } from '@/config';
 
 interface CreateProgramModalProps {
   isOpen: boolean;
@@ -89,7 +90,7 @@ export const CreateProgramModal = ({ isOpen, onClose, companyName, verifiedAsset
               rewards: formData.rewards
           };
 
-          const res = await fetch('/api/company/programs', {
+          const res = await fetch(`${API_URL}/company/programs`, {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify(payload)

@@ -16,6 +16,7 @@ import {
 
 
 import { useAuth } from '@/contexts/AuthContext';
+import { API_URL } from '@/config';
 
 export default function TriagerAssigned() {
   const navigate = useNavigate();
@@ -29,7 +30,7 @@ export default function TriagerAssigned() {
       console.log("DEBUG: Current User in Frontend:", user);
       const fetchReports = async () => {
           try {
-              const res = await fetch('/api/triager/assigned');
+              const res = await fetch(`${API_URL}/triager/assigned`);
               const data = await res.json();
               console.log("DEBUG: API Response:", data);
               if (data.status === 'success') {
@@ -190,7 +191,7 @@ export default function TriagerAssigned() {
                                 e.stopPropagation();
                                 if(!confirm('Are you sure you want to reopen this report?')) return;
                                 try {
-                                    const res = await fetch(`/api/triager/reports/${report._id}/reopen`, {
+                                    const res = await fetch(`${API_URL}/triager/reports/${report._id}/reopen`, {
                                         method: 'POST'
                                     });
                                     if(res.ok) {
