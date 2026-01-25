@@ -42,6 +42,11 @@ app.use(cookieParser());
 const apiLimiter = rateLimiter(100, 15 * 60);
 app.use('/api', apiLimiter);
 
+// Health Check Root Route
+app.get('/', (req, res) => {
+  res.status(200).json({ status: 'success', message: 'BugChase API is running', env: process.env.NODE_ENV });
+});
+
 // Routes
 app.use('/api/auth', authRoutes);
 app.use('/api/users', userRoutes);
