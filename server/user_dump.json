@@ -1,0 +1,53 @@
+[
+  {
+    "_id": {
+      "$oid": "65f000000000000000000001"
+    },
+    "name": "Admin User",
+    "username": "admin_user",
+    "email": "221370089@gift.edu.pk",
+    "password": "$2b$12$bXkkFDQDBHSRrNwCbkuqA.Q2rLmNCp/UhqcLyWHlRWDNPKfy7t1JC",
+    "role": "admin",
+    "isVerified": true,
+    "isEmailVerified": true,
+    "status": "Active",
+    "walletBalance": 0,
+    "escrowBalance": 0,
+    "trustScore": 100,
+    "reputationScore": 0,
+    "avatar": "default.jpg",
+    "createdAt": {
+      "$date": "2026-01-17T12:54:59.645Z"
+    },
+    "updatedAt": {
+      "$date": "2026-01-17T12:54:59.646Z"
+    }
+  },
+  {
+    "_id": {
+      "$oid": "65f000000000000000000002"
+    },
+    "name": "Triager User",
+    "username": "triager_user",
+    "email": "221370079@gift.edu.pk",
+    "password": "$2b$12$bXkkFDQDBHSRrNwCbkuqA.Q2rLmNCp/UhqcLyWHlRWDNPKfy7t1JC",
+    "role": "triager",
+    "isVerified": true,
+    "isEmailVerified": true,
+    "status": "Active",
+    "expertise": [
+      "Web"
+    ],
+    "walletBalance": 0,
+    "escrowBalance": 0,
+    "trustScore": 80,
+    "reputationScore": 0,
+    "avatar": "default.jpg",
+    "createdAt": {
+      "$date": "2026-01-17T12:54:59.646Z"
+    },
+    "updatedAt": {
+      "$date": "2026-01-17T12:54:59.646Z"
+    }
+  }
+]

@@ -1,0 +1,423 @@
+import React, { useState, useEffect, useRef } from 'react';
+import { useParams, Link } from 'react-router-dom';
+import { CheckCircle, Clock, Users, Link as LinkIcon, ExternalLink, ChevronRight, MessageSquare, History, Shield, AlertTriangle, UploadCloud, Activity } from 'lucide-react';
+import { cn } from '@/lib/utils';
+import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+import CyberpunkEditor from '@/components/ui/CyberpunkEditor';
+import { format } from 'date-fns';
+import { toast } from '@/hooks/use-toast';
+
+const Timeline = ({ currentStep }: { currentStep: number }) => {
+  const steps = ['Submitted', 'Triaging', 'Triaged', 'Paid', 'Resolved']; // Updated to match backend roughly
+
+  return (
+    <div className="flex items-center w-full mb-12 relative px-2">
+      {steps.map((step, index) => {
+        const isCompleted = index < currentStep;
+        const isActive = index === currentStep;
+        
+        return (
+          <React.Fragment key={step}>
+            <div className="flex flex-col items-center relative z-10 group cursor-default">
+              
+              {/* Dot */}
+              <div 
+                className={cn(
+                  "w-4 h-4 rounded-full transition-all duration-300 border-2",
+                  isCompleted 
+                    ? "bg-zinc-900 dark:bg-white border-zinc-900 dark:border-white shadow-[0_0_10px_rgba(0,0,0,0.2)] dark:shadow-[0_0_10px_rgba(255,255,255,0.2)] scale-100" 
+                    : isActive 
+                        ? "bg-white dark:bg-black border-zinc-900 dark:border-white shadow-[0_0_15px_rgba(0,0,0,0.1)] dark:shadow-[0_0_15px_rgba(255,255,255,0.1)] scale-125" 
+                        : "bg-zinc-100 dark:bg-zinc-800 border-zinc-300 dark:border-zinc-700"
+                )} 
+              >
+                  {isCompleted && (
+                      <div className="w-full h-full flex items-center justify-center">
+                          <div className="w-1.5 h-1.5 bg-white dark:bg-black rounded-full opacity-50" />
+                      </div>
+                  )}
+              </div>
+
+              {/* Label */}
+              <span 
+                className={cn(
+                  "absolute top-8 text-xs font-mono uppercase tracking-wider whitespace-nowrap transition-colors",
+                  isCompleted ? "text-zinc-600 dark:text-zinc-400 font-medium" :
+                  isActive ? "text-zinc-900 dark:text-white font-bold scale-110 origin-top" :
+                  "text-zinc-400 dark:text-zinc-600"
+                )}
+              >
+                {step}
+              </span>
+            </div>
+            
+            {/* Connecting Line */}
+            {index < steps.length - 1 && (
+              <div className="flex-1 mx-2 h-[2px] rounded-full overflow-hidden bg-zinc-200 dark:bg-zinc-800 relative">
+                  <div 
+                    className={cn(
+                        "absolute inset-0 bg-zinc-900 dark:bg-white transition-transform duration-700 ease-out origin-left",
+                        index < currentStep ? "scale-x-100" : "scale-x-0"
+                    )} 
+                  />
+              </div>
+            )}
+          </React.Fragment>
+        );
+      })}
+    </div>
+  );
+};
+
+export default function ReportDetails() {
+  const { id } = useParams<{ id: string }>();
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [activeTab, setActiveTab] = useState<'comments' | 'history'>('comments');
+  const [commentContent, setCommentContent] = useState('');
+  const [report, setReport] = useState<any>(null);
+  const [loading, setLoading] = useState(true);
+
+  const fetchReport = async () => {
+    try {
+        const res = await fetch(`/api/reports/${id}`);
+        const data = await res.json();
+        if (res.ok) {
+            setReport(data.data);
+        }
+    } catch (err) {
+        console.error(err);
+    } finally {
+        setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchReport();
+  }, [id]);
+
+  const handlePostComment = async () => {
+      const content = commentContent.trim();
+      if (!content) return;
+
+      // Optimistic Update
+      const tempId = Date.now().toString();
+      const newComment = {
+          content,
+          createdAt: new Date().toISOString(),
+          sender: { name: 'Me', _id: 'me' } // Placeholder for immediate feedback
+      };
+
+      // Update UI immediately
+      setReport((prev: any) => ({
+          ...prev,
+          comments: [...(prev.comments || []), newComment]
+      }));
+      setCommentContent('');
+
+      try {
+          const res = await fetch(`/api/reports/${id}/comments`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ content })
+          });
+          
+          if (!res.ok) {
+              const errorData = await res.json().catch(() => ({})); // Handle non-JSON response
+              throw new Error(errorData.message || 'Failed to post comment check console');
+          }
+          
+          // Re-fetch to ensure data consistency (IDs, real user details)
+          fetchReport();
+          toast({ title: 'Comment posted successfully' });
+      } catch (err: any) {
+          console.error('Post comment error:', err);
+          // Revert on failure
+          setReport((prev: any) => ({
+              ...prev,
+              comments: prev.comments.filter((c: any) => c.createdAt !== newComment.createdAt)
+          }));
+          setCommentContent(content); // Restore content
+          toast({ 
+              title: 'Failed to post comment', 
+              description: err.message,
+              variant: 'destructive' 
+          });
+      }
+  };
+
+  if (loading || !report) {
+      return <div className="p-10 text-center">Loading report...</div>;
+  }
+
+  // Calculate status step
+  const statusMap: Record<string, number> = { 'Submitted': 0, 'Triaging': 1, 'Triaged': 2, 'Pending_Fix': 2, 'Resolved': 4, 'Paid': 3 };
+  const currentStep = statusMap[report.status] || 0;
+
+  // Participants logic
+  const participants = [
+      { name: report.researcherId?.name || 'Researcher', role: 'Author', avatar: 'bg-blue-500' },
+      // Add unique commenters
+      ...Array.from(new Set(report.comments?.map((c: any) => c.sender?._id))).map(id => {
+          const c = report.comments.find((x: any) => x.sender?._id === id);
+          if (c?.sender?._id === report.researcherId?._id) return null; // Skip author
+          return { name: c?.sender?.name || 'User', role: c?.sender?.role || 'Participant', avatar: 'bg-green-500' };
+      }).filter(Boolean)
+  ];
+
+  return (
+    <div className="min-h-screen bg-transparent text-zinc-900 dark:text-zinc-100 p-8 pt-6 font-sans selection:bg-emerald-500/20 transition-colors duration-300">
+      
+      {/* 1. Header & Timeline */}
+      <div className="mb-12">
+        <div className="flex flex-col gap-2 mb-8">
+            <span className="text-zinc-500 dark:text-zinc-400 font-mono text-xs uppercase tracking-widest flex items-center gap-2">
+                <Shield className="w-3 h-3" /> Bug Bounty Report
+            </span>
+            <div className="flex items-center gap-4">
+                 <h1 className="text-3xl font-bold text-zinc-900 dark:text-white tracking-tight">{report.title}</h1>
+                 <Badge variant="outline" className="font-mono">{report.status}</Badge>
+            </div>
+        </div>
+        <Timeline currentStep={currentStep} />
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 mt-16">
+        
+        {/* --- LEFT COLUMN (Content) --- */}
+        <div className="lg:col-span-2 space-y-8">
+          
+          {/* Main Content (Frameless) */}
+          <div className="space-y-8">
+            
+            {/* Section 1: Target */}
+            <div className="flex items-center gap-4 pb-8 border-b border-zinc-200 dark:border-zinc-800">
+                <div className="w-12 h-12 rounded-full bg-zinc-100 dark:bg-zinc-800 flex items-center justify-center text-sm font-bold text-zinc-700 dark:text-white uppercase border border-zinc-200 dark:border-zinc-700 shadow-sm">
+                    {(report.assets?.[0] || 'Unknown').charAt(0)}
+                </div>
+                <div>
+                     <h3 className="text-zinc-500 dark:text-zinc-400 font-mono text-xs mb-1 uppercase tracking-wider">Target</h3>
+                    <span className="text-xl font-bold text-zinc-900 dark:text-white">{report.assets?.[0] || 'Unknown Target'}</span>
+                </div>
+            </div>
+
+            {/* Section 2: Details */}
+            <div>
+                <h2 className="text-xl font-bold text-zinc-900 dark:text-white mb-4">Vulnerability details</h2>
+                <div className="prose prose-zinc dark:prose-invert max-w-none">
+                    <div 
+                        className="text-zinc-600 dark:text-zinc-400 leading-relaxed mb-6"
+                        dangerouslySetInnerHTML={{ __html: report.description }} 
+                    />
+                </div>
+
+                {/* Impact Block */}
+                {report.impact && (
+                    <div className="bg-red-50 dark:bg-red-950/10 border border-red-100 dark:border-red-900/20 rounded-lg p-6">
+                        <h4 className="flex items-center gap-2 text-red-600 dark:text-red-500 font-mono text-sm uppercase mb-3 font-bold">
+                            <AlertTriangle className="w-4 h-4" /> Impact
+                        </h4>
+                        <div 
+                            className="text-zinc-700 dark:text-red-200/70 text-sm leading-relaxed"
+                            dangerouslySetInnerHTML={{ __html: report.impact }}
+                        />
+                    </div>
+                )}
+            </div>
+
+            {/* Section 3: Validation Steps (POC) */}
+            <div>
+                <h2 className="text-xl font-bold text-zinc-900 dark:text-white mb-6">Validation steps</h2>
+                <div className="prose prose-zinc dark:prose-invert max-w-none bg-white dark:bg-zinc-900/50 p-6 rounded-lg border border-zinc-200 dark:border-zinc-800">
+                     <div dangerouslySetInnerHTML={{ __html: report.pocSteps }} />
+                </div>
+            </div>
+          </div>
+
+          {/* Section 4: Activity / Comments System */}
+          <div className="pt-8 border-t border-zinc-200 dark:border-zinc-800">
+            <h2 className="text-2xl font-bold font-mono mb-8 text-zinc-900 dark:text-white">Activity</h2>
+
+            <div className="relative pl-12 space-y-12">
+                {/* Global line removed, using segments per item */}
+                
+                 {/* Initial Submission Event */}
+                 <div className="relative group">
+                         {/* Line Segment */}
+                         <div className="absolute -left-[24px] top-10 -bottom-12 w-px bg-zinc-200 dark:bg-zinc-800 -z-10" />
+
+                     {/* Timeline Dot */}
+                     <div className="absolute -left-[44px] top-0 w-10 h-10 rounded-full bg-blue-100 text-blue-600 dark:bg-blue-950 dark:text-blue-400 flex items-center justify-center border-4 border-white dark:border-zinc-950 z-10">
+                         <span className="font-bold text-xs">{(report.researcherId?.name || 'U').charAt(0)}</span>
+                     </div>
+
+                     <div className="flex flex-col gap-2">
+                         <div className="flex items-baseline gap-2">
+                             <span className="font-bold text-blue-600 dark:text-blue-400">
+                                 {report.researcherId?.name || report.researcherId?.nickname || 'Unknown Researcher'}
+                             </span>
+                             <span className="text-xs text-zinc-500">{format(new Date(report.createdAt), 'MMM d, HH:mm')}</span>
+                         </div>
+                         <div className="text-zinc-800 dark:text-zinc-200 text-lg">
+                             Hi, I found a vulnerability in <span className="font-bold">{(report.assets?.[0] || 'the program')}</span>. Please verify.
+                         </div>
+                     </div>
+                 </div>
+
+                 {/* System Status Event */}
+                 {report.status !== 'Submitted' && (
+                     <div className="relative group">
+                         {/* Line Segment */}
+                        <div className="absolute -left-[24px] top-10 -bottom-12 w-px bg-zinc-200 dark:bg-zinc-800 -z-10" />
+
+                        <div className="absolute -left-[44px] top-1 w-10 h-10 rounded-full bg-zinc-100 text-zinc-500 dark:bg-zinc-900 dark:text-zinc-400 flex items-center justify-center border-4 border-white dark:border-zinc-950 z-10">
+                             <Activity className="w-5 h-5" />
+                        </div>
+                        <div className="text-zinc-500 dark:text-zinc-400 pt-3">
+                            System changed status to <Badge variant="outline" className="ml-2 uppercase text-[10px] tracking-wider">{report.status}</Badge>
+                        </div>
+                     </div>
+                 )}
+
+                 {/* Comments */}
+                 {report.comments?.map((comment: any, idx: number) => (
+                     <div key={idx} className="relative group">
+                         {/* Line Segment */}
+                         <div className="absolute -left-[24px] top-10 -bottom-12 w-px bg-zinc-200 dark:bg-zinc-800 -z-10" />
+
+                         <div className="absolute -left-[44px] top-0 w-10 h-10 rounded-full bg-purple-100 text-purple-600 dark:bg-purple-950 dark:text-purple-400 flex items-center justify-center border-4 border-white dark:border-zinc-950 z-10">
+                             <span className="font-bold text-xs">{comment.sender?.name?.charAt(0) || '?'}</span>
+                         </div>
+
+                         <div className="flex flex-col gap-2">
+                             <div className="flex items-baseline gap-2">
+                                 <span className="font-bold text-blue-600 dark:text-blue-400">
+                                     {comment.sender?.name}
+                                 </span>
+                                 <span className="text-xs text-zinc-500">{format(new Date(comment.createdAt), 'MMM d, HH:mm')}</span>
+                             </div>
+                             <div 
+                                className="text-zinc-800 dark:text-zinc-200 text-lg prose dark:prose-invert max-w-none"
+                                dangerouslySetInnerHTML={{ __html: comment.content }}
+                             />
+                         </div>
+                     </div>
+                 ))}
+
+                 {/* Editor (Fixed Activity Item) */}
+                 <div className="relative">
+                    {/* NO Line Segment for Editor (Last Item) */}
+                    <div className="absolute -left-[44px] top-0 w-10 h-10 rounded-full bg-black text-white dark:bg-white dark:text-black flex items-center justify-center border-4 border-white dark:border-zinc-950 z-10">
+                         <span className="font-bold text-xs">ME</span>
+                     </div>
+                    
+                    <div className="border border-zinc-300 dark:border-zinc-700 rounded-lg overflow-hidden bg-white dark:bg-zinc-900 shadow-sm focus-within:ring-2 focus-within:ring-zinc-900 dark:focus-within:ring-white transition-all">
+                        <div className="min-h-[100px] bg-white dark:bg-black">
+                             <CyberpunkEditor 
+                                content={commentContent} 
+                                onChange={setCommentContent} 
+                                placeholder="" 
+                            />
+                        </div>
+                        <div className="flex items-center justify-between p-2 bg-zinc-50 dark:bg-zinc-900 border-t border-zinc-200 dark:border-zinc-800">
+                             {/* Hidden File Input */}
+                             <input 
+                                type="file" 
+                                ref={fileInputRef} 
+                                className="hidden" 
+                                multiple 
+                                accept=".png,.jpg,.jpeg,.pdf"
+                                onChange={(e) => {
+                                    // Handle file upload logic here if needed, or just log for now
+                                    console.log('Files selected:', e.target.files);
+                                }}
+                             />
+                             <Button 
+                                variant="ghost" 
+                                size="sm" 
+                                className="text-zinc-500 hover:text-zinc-900 dark:hover:text-white h-8 text-xs font-normal"
+                                onClick={() => fileInputRef.current?.click()}
+                             >
+                                <UploadCloud className="w-4 h-4 mr-2" />
+                                Click to upload files PNG, JPG, PDF (Max 50MB)
+                             </Button>
+
+                             <Button 
+                                onClick={handlePostComment}
+                                size="sm"
+                                className="h-8 bg-black hover:bg-zinc-800 text-white dark:bg-white dark:hover:bg-zinc-200 dark:text-black font-bold px-4 rounded-full"
+                            >
+                                Comment
+                            </Button>
+                        </div>
+                    </div>
+                 </div>
+
+            </div>
+          </div>
+
+        </div>
+
+        {/* --- RIGHT COLUMN (Sidebar) --- */}
+        <div className="space-y-6">
+            
+            {/* Card 1: Details Table */}
+            <div className="bg-white dark:bg-zinc-900/30 border border-zinc-200 dark:border-zinc-800 rounded-lg backdrop-blur-sm overflow-hidden shadow-sm">
+                <div className="px-4 py-3 border-b border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-900/50">
+                    <h3 className="text-xs font-mono uppercase tracking-widest text-zinc-500 font-bold">Details</h3>
+                </div>
+                <div className="p-4 space-y-4">
+                     <div className="flex justify-between items-center">
+                        <span className="text-sm text-zinc-500">Report ID</span>
+                        <span className="text-sm font-mono text-zinc-900 dark:text-white">{report._id.substring(report._id.length - 6)}</span>
+                     </div>
+                     <div className="flex justify-between items-center">
+                        <span className="text-sm text-zinc-500">Created</span>
+                        <span className="text-sm font-mono text-zinc-900 dark:text-white">{format(new Date(report.createdAt), 'dd.MM.yyyy HH:mm')}</span>
+                     </div>
+                     <div className="flex justify-between items-center">
+                        <span className="text-sm text-zinc-500">Severity</span>
+                        <span className="text-sm font-bold text-pink-600 dark:text-pink-500">{report.severity}</span>
+                     </div>
+                     <div className="pt-2 border-t border-zinc-200 dark:border-zinc-800/50">
+                        <span className="text-xs text-zinc-500 block mb-1">Vulnerability Category</span>
+                        <span className="text-sm text-zinc-900 dark:text-white font-medium block truncate" title={report.vulnerabilityCategory}>
+                            {report.vulnerabilityCategory || 'N/A'}
+                        </span>
+                     </div>
+                </div>
+            </div>
+
+            {/* Card 2: Participants */}
+            <div className="bg-white dark:bg-zinc-900/30 border border-zinc-200 dark:border-zinc-800 rounded-lg backdrop-blur-sm p-4 shadow-sm">
+                 <h3 className="text-xs font-mono uppercase tracking-widest text-zinc-500 font-bold mb-4">
+                    Participants ({participants.length})
+                 </h3>
+                 <div className="space-y-3">
+                    {participants.map((p: any, i) => (
+                        <div key={i} className="flex items-center gap-3">
+                            <div className={cn("w-6 h-6 rounded-full flex items-center justify-center text-[10px] text-white font-bold", p.avatar)}>
+                                {p.name.charAt(0).toUpperCase()}
+                            </div>
+                            <div className="flex flex-col">
+                                <span className="text-sm text-zinc-900 dark:text-zinc-300 font-medium leading-none">{p.name}</span>
+                                <span className="text-[10px] text-zinc-500 dark:text-zinc-600 font-mono mt-0.5">{p.role}</span>
+                            </div>
+                        </div>
+                    ))}
+                 </div>
+            </div>
+
+            {/* Card 3: Need Help */}
+            <div className="bg-emerald-50 dark:bg-emerald-950/10 border border-emerald-200 dark:border-emerald-900/30 rounded-lg p-4 text-center">
+                <p className="text-xs text-emerald-700 dark:text-emerald-200/70 mb-2">Need help with this report?</p>
+                <a href="#" className="text-sm font-bold text-emerald-600 dark:text-emerald-500 hover:text-emerald-500 hover:underline">
+                    Contact Support
+                </a>
+            </div>
+
+        </div>
+      </div>
+    </div>
+  );
+}
