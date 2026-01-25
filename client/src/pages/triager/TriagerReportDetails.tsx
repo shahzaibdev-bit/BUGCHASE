@@ -64,7 +64,7 @@ import {
 import { toast } from '@/hooks/use-toast';
 
 // --- Types ---
-type ReportStatus = 'Submitted' | 'Triaging' | 'Under Review' | 'Needs Info' | 'Triaged' | 'Spam' | 'Duplicate' | 'Out-of-Scope' | 'Resolved' | 'Closed';
+type ReportStatus = 'Submitted' | 'Triaging' | 'Under Review' | 'Needs Info' | 'Triaged' | 'Spam' | 'Duplicate' | 'Out-of-Scope' | 'Resolved' | 'Closed' | 'Paid' | 'NA';
 
 interface TimelineEvent {
   id: string;
