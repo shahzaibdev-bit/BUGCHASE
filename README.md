@@ -1,73 +1,76 @@
-# Welcome to your Lovable project
+# BugChase - Advanced Bug Bounty Platform
 
-## Project info
+BugChase is a next-generation bug bounty and vulnerability disclosure platform connecting organizations with elite security researchers.
 
-**URL**: https://lovable.dev/projects/REPLACE_WITH_PROJECT_ID
+## 🚀 Project Structure
 
-## How can I edit this code?
+This repository contains the complete source code for the BugChase ecosystem:
 
-There are several ways of editing your application.
+-   **`/client`**: Frontend application built with React, Vite, TailwindCSS, and Shadcn UI.
+-   **`/server`**: Backend API built with Node.js, Express, and MongoDB.
+-   **`/kyc_engine`**: AI-powered Identity Verification microservice built with Python, FastAPI, and DeepFace.
 
-**Use Lovable**
+## 🛠️ Technology Stack
 
-Simply visit the [Lovable Project](https://lovable.dev/projects/REPLACE_WITH_PROJECT_ID) and start prompting.
+### Frontend (`/client`)
+-   **Framework**: React (Vite)
+-   **Language**: TypeScript
+-   **Styling**: Tailwind CSS, PostCSS
+-   **UI Library**: Shadcn UI, Radix UI
+-   **Animations**: Framer Motion, GSAP
+-   **State Management**: React Query, Context API
 
-Changes made via Lovable will be committed automatically to this repo.
+### Backend (`/server`)
+-   **Runtime**: Node.js
+-   **Framework**: Express.js
+-   **Database**: MongoDB (Mongoose)
+-   **Caching**: Redis
+-   **Authentication**: JWT, BCrypt
+-   **Validation**: Zod
 
-**Use your preferred IDE**
+### KYC Engine (`/kyc_engine`)
+-   **Framework**: FastAPI (Python)
+-   **AI/ML**: DeepFace, OpenCV, EasyOCR
+-   **Purpose**: Automated identity verification for researchers.
 
-If you want to work locally using your own IDE, you can clone this repo and push changes. Pushed changes will also be reflected in Lovable.
+## 🏁 Getting Started
 
-The only requirement is having Node.js & npm installed - [install with nvm](https://github.com/nvm-sh/nvm#installing-and-updating)
+### Prerequisites
+-   Node.js (v18+)
+-   Python (v3.9+)
+-   MongoDB
+-   Redis
 
-Follow these steps:
+### Installation & Running
 
-```sh
-# Step 1: Clone the repository using the project's Git URL.
-git clone <YOUR_GIT_URL>
+1.  **Frontend**:
+    ```bash
+    cd client
+    npm install
+    npm run dev
+    ```
 
-# Step 2: Navigate to the project directory.
-cd <YOUR_PROJECT_NAME>
+2.  **Backend**:
+    ```bash
+    cd server
+    npm install
+    npm run dev
+    ```
 
-# Step 3: Install the necessary dependencies.
-npm i
+3.  **KYC Engine**:
+    ```bash
+    cd kyc_engine
+    pip install -r requirements.txt
+    python main.py
+    ```
 
-# Step 4: Start the development server with auto-reloading and an instant preview.
-npm run dev
-```
+## 🔒 Security
 
-**Edit a file directly in GitHub**
+This platform is designed with security-first principles.
+-   All API endpoints are protected.
+-   Input validation via Zod.
+-   Rate limiting and helmet protection enabled.
 
-- Navigate to the desired file(s).
-- Click the "Edit" button (pencil icon) at the top right of the file view.
-- Make your changes and commit the changes.
+## 📄 License
 
-**Use GitHub Codespaces**
-
-- Navigate to the main page of your repository.
-- Click on the "Code" button (green button) near the top right.
-- Select the "Codespaces" tab.
-- Click on "New codespace" to launch a new Codespace environment.
-- Edit files directly within the Codespace and commit and push your changes once you're done.
-
-## What technologies are used for this project?
-
-This project is built with:
-
-- Vite
-- TypeScript
-- React
-- shadcn-ui
-- Tailwind CSS
-
-## How can I deploy this project?
-
-Simply open [Lovable](https://lovable.dev/projects/REPLACE_WITH_PROJECT_ID) and click on Share -> Publish.
-
-## Can I connect a custom domain to my Lovable project?
-
-Yes, you can!
-
-To connect a domain, navigate to Project > Settings > Domains and click Connect Domain.
-
-Read more here: [Setting up a custom domain](https://docs.lovable.dev/features/custom-domain#custom-domain)
+Private Repository. All Rights Reserved.
