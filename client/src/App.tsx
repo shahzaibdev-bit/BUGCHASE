@@ -62,6 +62,9 @@ import TriagerExpertise from "./pages/triager/TriagerExpertise";
 import TriagerReportDetails from "./pages/triager/TriagerReportDetails";
 import TriagerProfile from "./pages/triager/TriagerProfile";
 
+// Components
+import { ProtectedRoute } from "./components/ProtectedRoute";
+
 // Admin Pages
 import AdminDashboard from "./pages/admin/AdminDashboard";
 import AdminUsers from "./pages/admin/AdminUsers";
@@ -120,53 +123,60 @@ const App = () => (
               </Route>
 
               {/* Researcher Routes */}
-              <Route path="/researcher" element={<ResearcherLayout />}>
-                <Route index element={<ResearcherPrograms />} />
-                <Route path="programs/:id" element={<ProgramDetails />} />
-                <Route path="submit" element={<ResearcherSubmitReport />} />
-                <Route path="reports" element={<ResearcherReports />} />
-                <Route path="reports/:id" element={<ReportDetails />} />
-                <Route path="wallet" element={<ResearcherWallet />} />
-                <Route path="leaderboard" element={<ResearcherLeaderboard />} />
-                <Route path="leaderboard" element={<ResearcherLeaderboard />} />
-                <Route path="profile" element={<ResearcherProfile />} />
-                <Route path="verify" element={<ResearcherVerification />} />
+              <Route element={<ProtectedRoute allowedRoles={['researcher']} />}>
+                <Route path="/researcher" element={<ResearcherLayout />}>
+                    <Route index element={<ResearcherPrograms />} />
+                    <Route path="programs/:id" element={<ProgramDetails />} />
+                    <Route path="submit" element={<ResearcherSubmitReport />} />
+                    <Route path="reports" element={<ResearcherReports />} />
+                    <Route path="reports/:id" element={<ReportDetails />} />
+                    <Route path="wallet" element={<ResearcherWallet />} />
+                    <Route path="leaderboard" element={<ResearcherLeaderboard />} />
+                    <Route path="profile" element={<ResearcherProfile />} />
+                    <Route path="verify" element={<ResearcherVerification />} />
+                </Route>
               </Route>
 
               {/* Company Routes */}
-              <Route path="/company" element={<CompanyLayout />}>
-                <Route index element={<CompanyDashboard />} />
-                <Route path="programs" element={<CompanyPrograms />} />
-                <Route path="programs/:id" element={<CompanyProgramDetails />} />
-                <Route path="assets" element={<CompanyAssets />} />
-                <Route path="reports" element={<CompanyReports />} />
-                <Route path="reports/:id" element={<CompanyReportDetails />} />
-                <Route path="analytics" element={<CompanyAnalytics />} />
-                <Route path="escrow" element={<CompanyEscrow />} />
-                <Route path="settings" element={<CompanySettings />} />
+              <Route element={<ProtectedRoute allowedRoles={['company']} />}>
+                <Route path="/company" element={<CompanyLayout />}>
+                    <Route index element={<CompanyDashboard />} />
+                    <Route path="programs" element={<CompanyPrograms />} />
+                    <Route path="programs/:id" element={<CompanyProgramDetails />} />
+                    <Route path="assets" element={<CompanyAssets />} />
+                    <Route path="reports" element={<CompanyReports />} />
+                    <Route path="reports/:id" element={<CompanyReportDetails />} />
+                    <Route path="analytics" element={<CompanyAnalytics />} />
+                    <Route path="escrow" element={<CompanyEscrow />} />
+                    <Route path="settings" element={<CompanySettings />} />
+                </Route>
               </Route>
 
               {/* Triager Routes */}
-              <Route path="/triager" element={<TriagerLayout />}>
-                <Route index element={<TriagerQueue />} />
-                <Route path="assigned" element={<TriagerAssigned />} />
-                <Route path="settings" element={<TriagerExpertise />} />
-                <Route path="reports/:id" element={<TriagerReportDetails />} />
-                <Route path="profile" element={<TriagerProfile />} />
+              <Route element={<ProtectedRoute allowedRoles={['triager']} />}>
+                  <Route path="/triager" element={<TriagerLayout />}>
+                    <Route index element={<TriagerQueue />} />
+                    <Route path="assigned" element={<TriagerAssigned />} />
+                    <Route path="settings" element={<TriagerExpertise />} />
+                    <Route path="reports/:id" element={<TriagerReportDetails />} />
+                    <Route path="profile" element={<TriagerProfile />} />
+                  </Route>
               </Route>
 
               {/* Admin Routes */}
-              <Route path="/admin" element={<AdminLayout />}>
-                <Route index element={<AdminDashboard />} />
-                <Route path="programs" element={<AdminPrograms />} />
-                <Route path="programs/:id" element={<AdminProgramDetails />} />
-                <Route path="users" element={<AdminUsers />} />
-                <Route path="triagers" element={<AdminTriagers />} />
-                <Route path="finance" element={<AdminFinance />} />
-                <Route path="disputes" element={<AdminDisputes />} />
-                <Route path="disputes/:id" element={<AdminDisputeDetails />} />
-                <Route path="logs" element={<AdminLogs />} />
-                <Route path="announcements" element={<AdminAnnouncements />} />
+              <Route element={<ProtectedRoute allowedRoles={['admin']} />}>
+                  <Route path="/admin" element={<AdminLayout />}>
+                    <Route index element={<AdminDashboard />} />
+                    <Route path="programs" element={<AdminPrograms />} />
+                    <Route path="programs/:id" element={<AdminProgramDetails />} />
+                    <Route path="users" element={<AdminUsers />} />
+                    <Route path="triagers" element={<AdminTriagers />} />
+                    <Route path="finance" element={<AdminFinance />} />
+                    <Route path="disputes" element={<AdminDisputes />} />
+                    <Route path="disputes/:id" element={<AdminDisputeDetails />} />
+                    <Route path="logs" element={<AdminLogs />} />
+                    <Route path="announcements" element={<AdminAnnouncements />} />
+                  </Route>
               </Route>
 
               <Route path="*" element={<NotFound />} />
