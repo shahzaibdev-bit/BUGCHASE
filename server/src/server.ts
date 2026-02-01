@@ -25,6 +25,9 @@ connectDB();
 
 const app = express();
 
+// Trust Proxy for Vercel
+app.set('trust proxy', 1);
+
 // Set security HTTP headers
 app.use(helmet());
 

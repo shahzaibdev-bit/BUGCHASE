@@ -205,6 +205,7 @@ export default function ResearcherProfile() {
       try {
           const res = await fetch(`${API_URL}/users/upload-avatar`, {
               method: 'POST',
+              credentials: 'include',
               body: formData,
           });
           const data = await res.json();
@@ -227,6 +228,7 @@ export default function ResearcherProfile() {
     try {
         const res = await fetch(`${API_URL}/auth/update-me`, {
             method: 'PATCH',
+            credentials: 'include',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
                 name: profile.name,
@@ -267,6 +269,7 @@ export default function ResearcherProfile() {
       try {
           const res = await fetch(`${API_URL}/auth/update-me`, {
               method: 'PATCH',
+              credentials: 'include',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({ [field]: value })
           });
@@ -293,6 +296,7 @@ export default function ResearcherProfile() {
     try {
         const res = await fetch(`${API_URL}/auth/update-password`, {
             method: 'PATCH',
+            credentials: 'include',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ currentPassword, newPassword }),
         });
