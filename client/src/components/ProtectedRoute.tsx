@@ -19,8 +19,8 @@ export const ProtectedRoute = ({ allowedRoles }: ProtectedRouteProps) => {
   }
 
   if (!isAuthenticated) {
-    // Redirect to login if not authenticated
-    return <Navigate to="/login" state={{ from: location }} replace />;
+    // Redirect to custom login required page if not authenticated
+    return <Navigate to="/login-required" state={{ from: location }} replace />;
   }
 
   if (allowedRoles && user) {

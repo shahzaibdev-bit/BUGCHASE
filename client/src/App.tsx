@@ -11,6 +11,7 @@ import LandingPage from "./pages/LandingPage";
 import LoginPage from "./pages/LoginPage";
 import SignupPage from "./pages/SignupPage";
 import VerifyOtp from "./pages/VerifyOtp";
+import LoginRequired from "./pages/LoginRequired";
 import NotFound from "./pages/NotFound";
 import SecurityRewards from "./pages/solutions/SecurityRewards";
 import VDPProgram from "./pages/solutions/VDPProgram";
@@ -116,6 +117,7 @@ const App = () => (
               
               {/* Standalone Route (No Navbar) */}
               <Route path="/verify-otp" element={<VerifyOtp />} />
+              <Route path="/login-required" element={<LoginRequired />} />
 
               {/* Public Profile (Simplified Navbar) */}
               <Route element={<PublicLayout simpleNavbar={true} />}>
