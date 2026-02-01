@@ -152,7 +152,10 @@ const countries = [
           setActiveSocials(active.length > 0 ? active : ['linkedin']);
           
           // Fetch Triager Stats
-          fetch(`${API_URL}/triager/profile`)
+          const token = localStorage.getItem('token');
+          fetch(`${API_URL}/triager/profile`, { 
+            headers: { 'Authorization': `Bearer ${token}` } 
+          })
             .then(res => res.json())
             .then(data => {
                 if (data.status === 'success') {
@@ -244,9 +247,13 @@ const countries = [
             }
         };
 
+        const token = localStorage.getItem('token');
         const res = await fetch(`${API_URL}/auth/update-me`, {
             method: 'PATCH',
-            headers: { 'Content-Type': 'application/json' },
+            headers: { 
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${token}`
+            },
             body: JSON.stringify(payload)
         });
         
@@ -284,9 +291,13 @@ const countries = [
 
     setIsUpdatingPassword(true);
     try {
+        const token = localStorage.getItem('token');
         const res = await fetch(`${API_URL}/auth/update-password`, {
             method: 'PATCH',
-            headers: { 'Content-Type': 'application/json' },
+            headers: { 
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${token}`
+            },
             body: JSON.stringify({ currentPassword, newPassword }),
         });
 

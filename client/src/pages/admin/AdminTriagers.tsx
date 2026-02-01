@@ -84,7 +84,10 @@ export default function AdminTriagers() {
   const fetchTriagers = async () => {
     setIsLoading(true);
     try {
-        const res = await fetch(`${API_URL}/admin/triagers`);
+        const token = localStorage.getItem('token');
+        const res = await fetch(`${API_URL}/admin/triagers`, {
+            headers: { 'Authorization': `Bearer ${token}` }
+        });
         const data = await res.json();
         if (res.ok) {
             setTriagers(data.data.triagers || []);

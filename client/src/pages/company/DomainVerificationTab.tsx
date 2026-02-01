@@ -40,7 +40,10 @@ export function DomainVerificationTab() {
 
   // Fetch existing assets
   React.useEffect(() => {
-    fetch(`${API_URL}/company/assets`)
+    const token = localStorage.getItem('token');
+    fetch(`${API_URL}/company/assets`, {
+        headers: { 'Authorization': `Bearer ${token}` }
+    })
         .then(res => res.json())
         .then(data => {
             if (data.status === 'success') {
@@ -63,7 +66,10 @@ export function DomainVerificationTab() {
     try {
         const res = await fetch(`${API_URL}/company/generate-token`, {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: { 
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${localStorage.getItem('token')}`
+            },
             body: JSON.stringify({ rootDomain })
         });
         const data = await res.json();
@@ -86,7 +92,10 @@ export function DomainVerificationTab() {
     try {
         const res = await fetch(`${API_URL}/company/verify-domain`, {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: { 
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${localStorage.getItem('token')}`
+            },
             body: JSON.stringify({ rootDomain })
         });
         const data = await res.json();
@@ -117,7 +126,10 @@ export function DomainVerificationTab() {
     try {
         const res = await fetch(`${API_URL}/company/assets/${id}/status`, {
             method: 'PATCH',
-            headers: { 'Content-Type': 'application/json' },
+            headers: { 
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${localStorage.getItem('token')}`
+            },
             body: JSON.stringify({ status: newStatus })
         });
         
@@ -140,6 +152,7 @@ export function DomainVerificationTab() {
     try {
         const res = await fetch(`${API_URL}/company/assets/${id}`, {
             method: 'DELETE',
+            headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
         });
         
         if (res.ok) {

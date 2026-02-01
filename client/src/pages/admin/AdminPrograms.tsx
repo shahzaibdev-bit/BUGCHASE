@@ -49,7 +49,10 @@ export default function AdminPrograms() {
   const fetchPrograms = async () => {
     setIsLoading(true);
     try {
-        const res = await fetch(`${API_URL}/admin/programs`);
+        const token = localStorage.getItem('token');
+        const res = await fetch(`${API_URL}/admin/programs`, {
+            headers: { 'Authorization': `Bearer ${token}` }
+        });
         const data = await res.json();
         if (res.ok) {
             setPrograms(data.data.programs || []);
@@ -70,9 +73,13 @@ export default function AdminPrograms() {
           const body: any = { status: newStatus };
           if (reason) body.reason = reason;
 
+          const token = localStorage.getItem('token');
           const res = await fetch(`${API_URL}/admin/programs/${id}/status`, {
               method: 'PATCH',
-              headers: { 'Content-Type': 'application/json' },
+              headers: { 
+                  'Content-Type': 'application/json',
+                  'Authorization': `Bearer ${token}`
+              },
               body: JSON.stringify(body)
           });
           if (res.ok) {

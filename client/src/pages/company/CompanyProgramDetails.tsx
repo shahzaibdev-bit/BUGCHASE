@@ -205,9 +205,11 @@ const CompanyProgramDetails = () => {
   useEffect(() => {
     const fetchData = async () => {
         try {
+            const token = localStorage.getItem('token');
+            const headers = { 'Authorization': `Bearer ${token}` };
             const [programRes, assetsRes] = await Promise.all([
-                fetch(`${API_URL}/company/programs/${id}`),
-                fetch(`${API_URL}/company/assets`)
+                fetch(`${API_URL}/company/programs/${id}`, { headers }),
+                fetch(`${API_URL}/company/assets`, { headers })
             ]);
 
             if (!programRes.ok) throw new Error('Failed to fetch program');
@@ -255,8 +257,10 @@ const CompanyProgramDetails = () => {
   const handleDelete = async () => {
     setIsDeleteDialogOpen(false); // Close dialog immediately
     try {
+        const token = localStorage.getItem('token');
         const res = await fetch(`${API_URL}/company/programs/${id}`, {
-            method: 'DELETE'
+            method: 'DELETE',
+            headers: { 'Authorization': `Bearer ${token}` }
         });
         if (res.ok) {
             navigate('/company/programs');

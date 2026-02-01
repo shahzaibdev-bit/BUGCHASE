@@ -62,7 +62,10 @@ export default function AdminUsers() {
   const fetchUsers = async () => {
     // ... same content ...
       try {
-          const res = await fetch(`${API_URL}/admin/users`);
+          const token = localStorage.getItem('token');
+          const res = await fetch(`${API_URL}/admin/users`, {
+              headers: { 'Authorization': `Bearer ${token}` }
+          });
           const data = await res.json();
           if (res.ok) {
             setUsers(data.data.users.map((u: any) => ({
@@ -92,9 +95,13 @@ export default function AdminUsers() {
   const handleUpdateStatus = async (userId: string, newStatus: string, reason?: string) => {
       try {
           const body = { status: newStatus, reason };
+          const token = localStorage.getItem('token');
           const res = await fetch(`${API_URL}/admin/users/${userId}/status`, {
               method: 'PATCH',
-              headers: { 'Content-Type': 'application/json' },
+              headers: { 
+                  'Content-Type': 'application/json',
+                  'Authorization': `Bearer ${token}`
+              },
               body: JSON.stringify(body)
           });
           

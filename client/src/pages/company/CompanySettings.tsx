@@ -65,7 +65,10 @@ export default function CompanySettings() {
   const fetchTeamMembers = async () => {
       setIsLoadingTeam(true);
       try {
-          const res = await fetch(`${API_URL}/company/team`);
+          const token = localStorage.getItem('token');
+          const res = await fetch(`${API_URL}/company/team`, {
+            headers: { 'Authorization': `Bearer ${token}` }
+          });
           const data = await res.json();
           if (res.ok) {
               setTeamMembers(data.data.members);
@@ -104,9 +107,13 @@ export default function CompanySettings() {
 
   const handleSave = async () => {
       try {
+          const token = localStorage.getItem('token');
           const res = await fetch(`${API_URL}/users/updateMe`, {
               method: 'PATCH',
-              headers: { 'Content-Type': 'application/json' },
+              headers: { 
+                  'Content-Type': 'application/json',
+                  'Authorization': `Bearer ${token}`
+              },
               body: JSON.stringify(formData)
           });
           const data = await res.json();
@@ -137,9 +144,13 @@ export default function CompanySettings() {
       }
 
       try {
+          const token = localStorage.getItem('token');
           const res = await fetch(`${API_URL}/auth/update-password`, {
               method: 'PATCH',
-              headers: { 'Content-Type': 'application/json' },
+              headers: { 
+                  'Content-Type': 'application/json',
+                  'Authorization': `Bearer ${token}`
+              },
               body: JSON.stringify({
                   currentPassword: passwordData.currentPassword,
                   newPassword: passwordData.newPassword
@@ -183,8 +194,10 @@ export default function CompanySettings() {
 
       setIsUploading(true);
       try {
+          const token = localStorage.getItem('token');
           const res = await fetch(`${API_URL}/users/upload-avatar`, {
               method: 'POST',
+              headers: { 'Authorization': `Bearer ${token}` },
               body: formData,
           });
           const data = await res.json();

@@ -415,7 +415,10 @@ export default function TriagerReportDetails() {
     // Fetch Report Data
     const fetchReport = async () => {
         try {
-            const res = await fetch(`${API_URL}/triager/reports/${id}`);
+            const token = localStorage.getItem('token');
+            const res = await fetch(`${API_URL}/triager/reports/${id}`, {
+                headers: { 'Authorization': `Bearer ${token}` }
+            });
             const data = await res.json();
             if (res.ok) {
                 const r = data.data.report;
@@ -488,9 +491,13 @@ export default function TriagerReportDetails() {
 
     const performStatusUpdate = async (status: ReportStatus, reason: string) => {
         try {
+            const token = localStorage.getItem('token');
             const res = await fetch(`${API_URL}/triager/reports/${id}/status`, {
                 method: 'PATCH',
-                headers: { 'Content-Type': 'application/json' },
+                headers: { 
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${token}`
+                },
                 body: JSON.stringify({ status, note: reason })
             });
 
@@ -550,9 +557,13 @@ export default function TriagerReportDetails() {
         if (!editorContent.trim()) return;
 
         try {
+            const token = localStorage.getItem('token');
             const res = await fetch(`${API_URL}/triager/reports/${id}/chat`, {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
+                headers: { 
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${token}`
+                },
                 body: JSON.stringify({ content: editorContent })
             });
 
@@ -567,9 +578,13 @@ export default function TriagerReportDetails() {
     
     const handleSeverityUpdate = async (vector: string, score: number) => {
         try {
+            const token = localStorage.getItem('token');
             const res = await fetch(`${API_URL}/triager/reports/${id}/severity`, {
                 method: 'PATCH',
-                headers: { 'Content-Type': 'application/json' },
+                headers: { 
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${token}`
+                },
                 body: JSON.stringify({ 
                     cvssVector: vector,
                     cvssScore: score,
@@ -602,9 +617,13 @@ export default function TriagerReportDetails() {
 
     const submitFinalDecision = async () => {
          try {
+            const token = localStorage.getItem('token');
             const res = await fetch(`${API_URL}/triager/reports/${id}/decision`, {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
+                headers: { 
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${token}`
+                },
                 body: JSON.stringify({ 
                     status: 'Triaged', // Promoting to Triaged
                     note: summaryForm.technical + "\n\nRemediation:\n" + summaryForm.remediation // Combining notes

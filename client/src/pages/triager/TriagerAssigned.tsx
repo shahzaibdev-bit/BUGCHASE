@@ -30,7 +30,10 @@ export default function TriagerAssigned() {
       console.log("DEBUG: Current User in Frontend:", user);
       const fetchReports = async () => {
           try {
-              const res = await fetch(`${API_URL}/triager/assigned`);
+              const token = localStorage.getItem('token');
+              const res = await fetch(`${API_URL}/triager/assigned`, {
+                  headers: { 'Authorization': `Bearer ${token}` }
+              });
               const data = await res.json();
               console.log("DEBUG: API Response:", data);
               if (data.status === 'success') {
@@ -191,8 +194,10 @@ export default function TriagerAssigned() {
                                 e.stopPropagation();
                                 if(!confirm('Are you sure you want to reopen this report?')) return;
                                 try {
+                                    const token = localStorage.getItem('token');
                                     const res = await fetch(`${API_URL}/triager/reports/${report._id}/reopen`, {
-                                        method: 'POST'
+                                        method: 'POST',
+                                        headers: { 'Authorization': `Bearer ${token}` }
                                     });
                                     if(res.ok) {
                                         // Simple refresh

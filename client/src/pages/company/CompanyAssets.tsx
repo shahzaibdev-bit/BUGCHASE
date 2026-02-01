@@ -71,7 +71,10 @@ export default function CompanyAssets() {
   useEffect(() => {
     const fetchAssets = async () => {
         try {
-            const res = await fetch(`${API_URL}/company/assets`);
+            const token = localStorage.getItem('token');
+            const res = await fetch(`${API_URL}/company/assets`, {
+                headers: { 'Authorization': `Bearer ${token}` }
+            });
             const data = await res.json();
             if (data.status === 'success') {
                 setVerifiedDomains(data.data);

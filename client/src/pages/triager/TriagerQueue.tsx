@@ -64,9 +64,11 @@ export default function TriagerQueue() {
   const fetchData = async () => {
     setLoading(true);
     try {
+        const token = localStorage.getItem('token');
+        const headers = { 'Authorization': `Bearer ${token}` };
         const [queueRes, poolRes] = await Promise.all([
-            fetch(`${API_URL}/triager/queue`),
-            fetch(`${API_URL}/triager/pool`)
+            fetch(`${API_URL}/triager/queue`, { headers }),
+            fetch(`${API_URL}/triager/pool`, { headers })
         ]);
         
         const queueData = await queueRes.json();
@@ -93,7 +95,11 @@ export default function TriagerQueue() {
 
   const handleClaim = async (id: string) => {
     try {
-        const res = await fetch(`${API_URL}/triager/claim/${id}`, { method: 'POST' });
+        const token = localStorage.getItem('token');
+        const res = await fetch(`${API_URL}/triager/claim/${id}`, { 
+            method: 'POST',
+            headers: { 'Authorization': `Bearer ${token}` }
+        });
         const data = await res.json();
         
         if (res.ok) {

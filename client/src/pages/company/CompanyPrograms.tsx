@@ -30,9 +30,11 @@ export default function CompanyPrograms() {
   const fetchData = async () => {
      try {
          setIsLoading(true);
+         const token = localStorage.getItem('token');
+         const headers = { 'Authorization': `Bearer ${token}` };
          const [assetsRes, programsRes] = await Promise.all([
-             fetch(`${API_URL}/company/assets`),
-             fetch(`${API_URL}/company/programs`)
+             fetch(`${API_URL}/company/assets`, { headers }),
+             fetch(`${API_URL}/company/programs`, { headers })
          ]);
 
          const assetsData = await assetsRes.json();
