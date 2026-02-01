@@ -203,9 +203,12 @@ export default function ResearcherProfile() {
 
       setIsUploading(true);
       try {
+          const token = localStorage.getItem('token');
           const res = await fetch(`${API_URL}/users/upload-avatar`, {
               method: 'POST',
-              credentials: 'include',
+              headers: {
+                'Authorization': `Bearer ${token}`
+              },
               body: formData,
           });
           const data = await res.json();
@@ -226,10 +229,13 @@ export default function ResearcherProfile() {
   // Handlers
   const handleSave = async (section: 'General' | 'Socials') => {
     try {
+        const token = localStorage.getItem('token');
         const res = await fetch(`${API_URL}/auth/update-me`, {
             method: 'PATCH',
-            credentials: 'include',
-            headers: { 'Content-Type': 'application/json' },
+            headers: { 
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${token}`
+            },
             body: JSON.stringify({
                 name: profile.name,
                 username: profile.nickname,
@@ -267,10 +273,13 @@ export default function ResearcherProfile() {
       setProfile(prev => ({ ...prev, [field]: value }));
 
       try {
+          const token = localStorage.getItem('token');
           const res = await fetch(`${API_URL}/auth/update-me`, {
               method: 'PATCH',
-              credentials: 'include',
-              headers: { 'Content-Type': 'application/json' },
+              headers: { 
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${token}`
+              },
               body: JSON.stringify({ [field]: value })
           });
 
@@ -294,10 +303,13 @@ export default function ResearcherProfile() {
 
     setIsUpdatingPassword(true);
     try {
+        const token = localStorage.getItem('token');
         const res = await fetch(`${API_URL}/auth/update-password`, {
             method: 'PATCH',
-            credentials: 'include',
-            headers: { 'Content-Type': 'application/json' },
+            headers: { 
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${token}`
+            },
             body: JSON.stringify({ currentPassword, newPassword }),
         });
 

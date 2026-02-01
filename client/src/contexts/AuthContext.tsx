@@ -23,15 +23,26 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     const checkAuth = async () => {
       try {
-        // Must include credentials to send the httpOnly cookie
-        const res = await fetch(`${API_URL}/auth/me`, { credentials: 'include' }); 
+        const token = localStorage.getItem('token');
+        if (!token) {
+          setIsLoading(false);
+          return;
+        }
+
+        const res = await fetch(`${API_URL}/auth/me`, {
+          headers: { 
+            'Authorization': `Bearer ${token}` 
+          } 
+        }); 
         const data = await res.json();
         if (res.ok && data.user) {
           setUser(data.user);
         } else {
+          localStorage.removeItem('token');
           setUser(null);
         }
       } catch (error) {
+        localStorage.removeItem('token');
         setUser(null);
       } finally {
         setIsLoading(false);
@@ -44,7 +55,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     try {
       const res = await fetch(`${API_URL}/auth/login`, {
         method: 'POST',
-        credentials: 'include',
+        // credentials: 'include', // Removed for Bearer token
+
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email, password }),
       });
@@ -63,6 +75,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       
       if (!res.ok) throw new Error(data.message || 'Login failed');
 
+      if (data.token) {
+        localStorage.setItem('token', data.token);
+      }
       setUser(data.user);
       return { success: true, user: data.user };
     } catch (error: any) {
@@ -72,7 +87,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const logout = useCallback(async () => {
     try {
-      await fetch(`${API_URL}/auth/logout`, { credentials: 'include' });
+      // await fetch(`${API_URL}/auth/logout`); // Optional: Call server logout if needed
+      localStorage.removeItem('token');
       setUser(null);
     } catch (error) {
       console.error('Logout failed', error);
@@ -89,7 +105,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     try {
       const res = await fetch(`${API_URL}/auth/signup`, {
         method: 'POST',
-        credentials: 'include',
+        // credentials: 'include', // Removed
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ name, email, password, role }),
       });
@@ -107,7 +123,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     try {
       const res = await fetch(`${API_URL}/auth/verify-email`, {
         method: 'POST',
-        credentials: 'include',
+        // credentials: 'include', // Removed
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email, otp }),
       });
@@ -124,7 +140,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const refreshUser = useCallback(async () => {
     try {
-      const res = await fetch(`${API_URL}/auth/me`, { credentials: 'include' }); 
+      const token = localStorage.getItem('token');
+      if (!token) return;
+
+      const res = await fetch(`${API_URL}/auth/me`, {
+        headers: { 
+          'Authorization': `Bearer ${token}` 
+        } 
+      }); 
       const data = await res.json();
       if (res.ok && data.user) {
         setUser(data.user);
