@@ -8,3 +8,6 @@ Policy: https://bugchase.com/disclosure-policy
 
 # BugChase Security
 We take security seriously. If you find a vulnerability, please report it to us.
+
+# Verification
+bc-verification=36fc4ac2ed69ec57a8826b4a4c9f2630
