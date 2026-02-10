@@ -62,7 +62,7 @@ export const StepClassification = ({ data, updateData, programScope = [], isLoad
             {/* Section A: Target Selector */}
             <div className="space-y-4">
                 <h2 className="text-xl font-bold font-mono text-zinc-900 dark:text-white flex items-center gap-2">
-                    <span className="text-emerald-500">01.</span> TARGET ASSET
+                    <span className="text-zinc-500 dark:text-zinc-400">01.</span> TARGET ASSET
                 </h2>
                 
                 {isLoading ? (
@@ -77,16 +77,16 @@ export const StepClassification = ({ data, updateData, programScope = [], isLoad
                                 key={target.id}
                                 onClick={() => updateData({ target: target.url, assetType: target.type as any })}
                                 className={cn(
-                                    "cursor-pointer rounded-xl border p-4 transition-all duration-200 hover:border-emerald-500/50 hover:bg-emerald-500/5",
+                                    "cursor-pointer rounded-xl border p-4 transition-all duration-200 hover:border-zinc-500/50 hover:bg-zinc-500/5",
                                     data.target === target.url 
-                                        ? "border-emerald-500 bg-emerald-500/10 ring-1 ring-emerald-500" 
+                                        ? "border-black dark:border-white bg-zinc-50 dark:bg-white/10 ring-1 ring-black dark:ring-white" 
                                         : "border-zinc-200 dark:border-white/10 bg-white/50 dark:bg-white/5"
                                 )}
                             >
                                 <div className="flex items-center gap-3">
                                     <div className={cn(
                                         "p-2 rounded-lg",
-                                        data.target === target.url ? "bg-emerald-500 text-white" : "bg-zinc-100 dark:bg-white/10 text-zinc-500"
+                                        data.target === target.url ? "bg-black dark:bg-white text-white dark:text-black" : "bg-zinc-100 dark:bg-white/10 text-zinc-500"
                                     )}>
                                         <target.icon className="w-5 h-5" />
                                     </div>
@@ -111,7 +111,7 @@ export const StepClassification = ({ data, updateData, programScope = [], isLoad
                 <div className="space-y-4 animate-slide-down-fade">
                     <div className="space-y-1">
                          <h2 className="text-xl font-bold font-mono text-zinc-900 dark:text-white flex items-center gap-2">
-                            <span className="text-emerald-500">02.</span> CATEGORY
+                            <span className="text-zinc-500 dark:text-zinc-400">02.</span> CATEGORY
                         </h2>
                         <p className="text-sm text-zinc-500 ml-8">Choose the category that best describes the type of vulnerability you are reporting</p>
                     </div>
@@ -166,12 +166,12 @@ export const StepClassification = ({ data, updateData, programScope = [], isLoad
                                                     className={cn(
                                                         "flex items-center justify-between p-3 rounded-lg cursor-pointer transition-all duration-200 border",
                                                         isSelected 
-                                                            ? "bg-emerald-500/10 border-emerald-500/50 shadow-[0_0_15px_rgba(16,185,129,0.1)]" 
-                                                            : "bg-white dark:bg-white/5 border-transparent hover:bg-zinc-100 dark:hover:bg-white/10"
+                                                            ? "bg-zinc-100 dark:bg-zinc-800 border-black/10 dark:border-white/10 shadow-sm" 
+                                                            : "bg-white dark:bg-white/5 border-transparent hover:bg-zinc-50 dark:hover:bg-white/10"
                                                     )}
                                                 >
                                                     <div className="space-y-0.5">
-                                                        <div className={cn("text-sm font-medium", isSelected ? "text-emerald-500" : "text-zinc-700 dark:text-zinc-300")}>
+                                                        <div className={cn("text-sm font-medium", isSelected ? "text-black dark:text-white" : "text-zinc-700 dark:text-zinc-300")}>
                                                             {item.label}
                                                         </div>
                                                         <div className="text-[10px] font-mono text-zinc-500">{item.cwe}</div>
@@ -179,9 +179,9 @@ export const StepClassification = ({ data, updateData, programScope = [], isLoad
                                                     
                                                     <div className={cn(
                                                         "w-5 h-5 rounded-full border-2 flex items-center justify-center transition-colors",
-                                                        isSelected ? "border-emerald-500" : "border-zinc-300 dark:border-zinc-700"
+                                                        isSelected ? "border-black dark:border-white" : "border-zinc-300 dark:border-zinc-700"
                                                     )}>
-                                                        {isSelected && <div className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-in zoom-in-50 duration-200" />}
+                                                        {isSelected && <div className="w-2.5 h-2.5 rounded-full bg-black dark:bg-white animate-in zoom-in-50 duration-200" />}
                                                     </div>
                                                 </div>
                                             );

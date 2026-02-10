@@ -105,7 +105,11 @@ const userSchema = new mongoose.Schema<IUser>({
   trustScore: { type: Number, default: 0 },
   walletBalance: { type: Number, default: 0 },
   country: String,
-  bio: String,
+  bio: { 
+      type: String, 
+      default: "This researcher prefers to let their bugs speak for themselves." 
+  },
+  bioUpdated: { type: Boolean, default: false },
   skills: [String],
   linkedAccounts: {
     github: String,

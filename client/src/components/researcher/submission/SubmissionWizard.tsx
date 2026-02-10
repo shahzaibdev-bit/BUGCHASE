@@ -166,7 +166,7 @@ export const SubmissionWizard = () => {
                              <Button 
                                 onClick={handleSubmit} 
                                 disabled={!data.agreedToTerms}
-                                className="bg-emerald-500 hover:bg-emerald-600 text-white font-bold px-8 shadow-lg shadow-emerald-500/20 hover:shadow-emerald-500/40 hover:-translate-y-1 transition-all"
+                                className="bg-black hover:bg-zinc-800 dark:bg-white dark:hover:bg-zinc-200 text-white dark:text-black font-bold px-8 shadow-lg hover:shadow-xl hover:-translate-y-1 transition-all"
                             >
                                 <Send className="w-4 h-4 mr-2" />
                                 Submit Report

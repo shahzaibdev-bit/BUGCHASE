@@ -93,13 +93,13 @@ export const StepSeverity = ({ data, updateData }: StepSeverityProps) => {
                             className={cn(
                                 "cursor-pointer rounded-xl border p-4 text-center transition-all duration-200 hover:scale-105",
                                 data.severity === sev
-                                    ? "border-emerald-500 bg-emerald-500/10 shadow-[0_0_20px_rgba(16,185,129,0.2)]"
+                                    ? "border-black dark:border-white bg-zinc-50 dark:bg-white/10 shadow-sm"
                                     : "border-zinc-200 dark:border-white/10 bg-white/50 dark:bg-white/5 opacity-60 hover:opacity-100"
                             )}
                         >
                             <div className={cn(
                                 "font-bold font-mono uppercase tracking-wider",
-                                data.severity === sev ? "text-emerald-500" : "text-zinc-500 dark:text-zinc-400"
+                                data.severity === sev ? "text-black dark:text-white" : "text-zinc-500 dark:text-zinc-400"
                             )}>
                                 {sev}
                             </div>
@@ -121,7 +121,7 @@ export const StepSeverity = ({ data, updateData }: StepSeverityProps) => {
                                             className={cn(
                                                 "px-3 py-1.5 text-xs font-bold rounded border transition-colors",
                                                 data.cvssVector[key] === opt.k
-                                                    ? "bg-emerald-500 border-emerald-500 text-white"
+                                                    ? "bg-black dark:bg-white border-black dark:border-white text-white dark:text-black"
                                                     : "bg-white dark:bg-white/5 border-zinc-200 dark:border-white/10 text-zinc-500 hover:border-zinc-300"
                                             )}
                                         >

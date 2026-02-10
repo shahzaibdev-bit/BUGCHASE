@@ -31,8 +31,8 @@ export const StepSidebar = ({ currentStep }: StepSidebarProps) => {
                         <div key={step.id} className="flex items-center gap-4 py-3 group">
                             <div className={cn(
                                 "w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold transition-all duration-300 border-2 z-10",
-                                isCompleted && "bg-emerald-500 border-emerald-500 text-white",
-                                isCurrent && "bg-white dark:bg-black border-emerald-500 text-emerald-500 scale-110",
+                                isCompleted && "bg-black dark:bg-white border-black dark:border-white text-white dark:text-black",
+                                isCurrent && "bg-white dark:bg-black border-black dark:border-white text-black dark:text-white scale-110",
                                 !isCompleted && !isCurrent && "bg-zinc-100 dark:bg-zinc-900 border-zinc-300 dark:border-zinc-700 text-zinc-400"
                             )}>
                                 {isCompleted ? <Check className="w-3.5 h-3.5" /> : step.id}

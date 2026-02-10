@@ -47,8 +47,9 @@ export const StepReview = ({ data, updateData }: StepReviewProps) => {
                          <Badge className={cn(
                              "text-sm px-3 py-1 font-mono uppercase tracking-wide",
                              data.severity === 'Critical' ? "bg-red-500 hover:bg-red-600" :
+                             data.severity === 'Critical' ? "bg-red-500 hover:bg-red-600" :
                              data.severity === 'High' ? "bg-orange-500 hover:bg-orange-600" :
-                             data.severity === 'Medium' ? "bg-yellow-500 hover:bg-yellow-600" : "bg-emerald-500 hover:bg-emerald-600"
+                             data.severity === 'Medium' ? "bg-yellow-500 hover:bg-yellow-600" : "bg-black dark:bg-white dark:text-black hover:bg-zinc-800"
                          )}>
                              {data.severity}
                          </Badge>
@@ -91,12 +92,12 @@ export const StepReview = ({ data, updateData }: StepReviewProps) => {
 
             {/* Legal / Confirmation */}
             <div className="space-y-4 pt-4">
-                <div className="flex items-start gap-3 p-4 rounded-lg bg-emerald-500/5 border border-emerald-500/20">
+                <div className="flex items-start gap-3 p-4 rounded-lg bg-zinc-100 dark:bg-white/5 border border-zinc-200 dark:border-white/10">
                      <Checkbox 
                         id="terms" 
                         checked={data.agreedToTerms} 
                         onCheckedChange={(c) => updateData({ agreedToTerms: c as boolean })}
-                        className="mt-1 data-[state=checked]:bg-emerald-500 data-[state=checked]:border-emerald-500"
+                        className="mt-1 data-[state=checked]:bg-black data-[state=checked]:border-black dark:data-[state=checked]:bg-white dark:data-[state=checked]:border-white dark:data-[state=checked]:text-black"
                      />
                      <div className="space-y-1">
                          <label htmlFor="terms" className="text-sm font-bold text-zinc-900 dark:text-white cursor-pointer select-none">

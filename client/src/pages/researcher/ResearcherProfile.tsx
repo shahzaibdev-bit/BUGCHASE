@@ -228,6 +228,12 @@ export default function ResearcherProfile() {
 
   // Handlers
   const handleSave = async (section: 'General' | 'Socials') => {
+    // Validate Bio
+    if (section === 'General' && (!profile.bio || profile.bio.trim() === '')) {
+        toast({ title: "Error", description: "Bio cannot be empty.", variant: "destructive" });
+        return;
+    }
+
     try {
         const token = localStorage.getItem('token');
         const res = await fetch(`${API_URL}/auth/update-me`, {
@@ -255,6 +261,7 @@ export default function ResearcherProfile() {
         const data = await res.json();
         if (res.ok) {
             toast({ title: 'Success', description: `${section} updated successfully` });
+            await refreshUser(); // Refresh user context to get updated scores
             // Turn off edit mode
             setEditMode(prev => ({ 
                 ...prev, 
@@ -266,6 +273,29 @@ export default function ResearcherProfile() {
     } catch (error) {
         toast({ title: 'Error', description: 'Something went wrong', variant: 'destructive' });
     }
+  };
+
+  const handleCancel = (section: 'General' | 'Socials') => {
+      if (section === 'General') {
+          // Revert to user data
+          setProfile(prev => ({
+              ...prev,
+              name: user?.name || '',
+              nickname: (user as any)?.username || '',
+              country: (user as any)?.country || '',
+              bio: (user as any)?.bio || ''
+          }));
+          setEditMode({...editMode, general: false});
+      } else {
+          // Revert socials
+          setProfile(prev => ({
+              ...prev,
+              twitter: (user as any)?.linkedAccounts?.twitter || '',
+              linkedin: (user as any)?.linkedAccounts?.linkedin || '',
+              github: (user as any)?.linkedAccounts?.github || ''
+          }));
+          setEditMode({...editMode, socials: false});
+      }
   };
 
   const handleAutoSave = async (field: keyof ProfileState, value: any) => {
@@ -288,6 +318,8 @@ export default function ResearcherProfile() {
               toast({ title: 'Error', description: data.message || 'Failed to save setting', variant: 'destructive' });
               // Revert on failure (optional but good practice)
               setProfile(prev => ({ ...prev, [field]: !value })); 
+          } else {
+              await refreshUser(); // Refresh user context
           }
       } catch (error) {
           toast({ title: 'Error', description: 'Failed to save setting', variant: 'destructive' });
@@ -377,7 +409,7 @@ export default function ResearcherProfile() {
                         <div className="flex items-center justify-between mb-6">
                             <h2 className="text-xl font-bold text-zinc-900 dark:text-white flex items-center gap-2">
                                 General info
-                                <span className="text-xs bg-zinc-100 dark:bg-zinc-800 text-zinc-900 dark:text-zinc-200 px-2 py-0.5 rounded-full border border-zinc-200 dark:border-zinc-700">80 Points Earned</span>
+                                <span className="text-xs bg-zinc-100 dark:bg-zinc-800 text-zinc-900 dark:text-zinc-200 px-2 py-0.5 rounded-full border border-zinc-200 dark:border-zinc-700">{(user as any)?.reputationScore || 0} Points Earned</span>
                             </h2>
                             {!editMode.general && (
                                 <Button size="sm" variant="ghost" className="h-8 gap-2" onClick={() => setEditMode({...editMode, general: true})}>
@@ -548,7 +580,7 @@ export default function ResearcherProfile() {
                                         <Button className="bg-black hover:bg-zinc-800 dark:bg-white dark:hover:bg-zinc-200 text-white dark:text-black font-medium" onClick={() => handleSave('General')}>
                                             Save Changes
                                         </Button>
-                                        <Button variant="ghost" className="text-zinc-500" onClick={() => setEditMode({...editMode, general: false})}>
+                                        <Button variant="ghost" className="text-zinc-500" onClick={() => handleCancel('General')}>
                                             Cancel
                                         </Button>
                                     </div>
@@ -831,14 +863,14 @@ export default function ResearcherProfile() {
                             <div className="w-10 h-10 rounded-full bg-zinc-100 dark:bg-white/10 flex items-center justify-center mb-3">
                                 <Bug className="w-5 h-5 text-black dark:text-white" />
                             </div>
-                            <span className="text-2xl font-bold text-zinc-900 dark:text-white">42</span>
+                            <span className="text-2xl font-bold text-zinc-900 dark:text-white">{(user as any)?.reportsCount || 0}</span>
                             <span className="text-xs text-zinc-500 uppercase tracking-wider">Reports</span>
                         </div>
                          <div className="bg-white dark:bg-zinc-900/50 border border-zinc-200 dark:border-zinc-800 rounded-xl p-5 flex flex-col items-center justify-center text-center">
                             <div className="w-10 h-10 rounded-full bg-zinc-100 dark:bg-white/10 flex items-center justify-center mb-3">
                                 <Trophy className="w-5 h-5 text-black dark:text-white" />
                             </div>
-                            <span className="text-2xl font-bold text-zinc-900 dark:text-white">1,250</span>
+                            <span className="text-2xl font-bold text-zinc-900 dark:text-white">{(user as any)?.reputationScore || 0}</span>
                             <span className="text-xs text-zinc-500 uppercase tracking-wider">Reputation</span>
                         </div>
                     </div>
