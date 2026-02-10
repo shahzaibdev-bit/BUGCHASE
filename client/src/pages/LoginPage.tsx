@@ -8,7 +8,7 @@ import { toast } from '@/hooks/use-toast';
 
 export default function LoginPage() {
   const navigate = useNavigate();
-  const { login } = useAuth(); // Keeping hook for future use if needed, but bypassing for now
+  const { login, isAuthenticated, user, isLoading: authLoading } = useAuth(); // Keeping hook for future use if needed, but bypassing for now
   
   // State kept for visual purpose but not required for instant login
   const [email, setEmail] = useState('');
@@ -22,6 +22,14 @@ export default function LoginPage() {
     'triager': '/triager',
     'admin': '/admin'
   };
+
+  React.useEffect(() => {
+    if (!authLoading && isAuthenticated && user) {
+        toast({ title: 'Already Logged In', description: 'Redirecting to dashboard...' });
+        const target = roleRoutes[user.role as keyof typeof roleRoutes] || '/researcher';
+        navigate(target, { replace: true });
+    }
+  }, [authLoading, isAuthenticated, user, navigate]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();

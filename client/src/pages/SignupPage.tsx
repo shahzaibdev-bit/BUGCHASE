@@ -8,7 +8,7 @@ import { toast } from '@/hooks/use-toast';
 
 export default function SignupPage() {
   const navigate = useNavigate();
-  const { signup } = useAuth();
+  const { signup, isAuthenticated, user, isLoading: authLoading } = useAuth();
   
   // Restricted Roles for Signup: Researcher & Company ONLY
   const [selectedRole, setSelectedRole] = useState<'researcher' | 'company'>('researcher');
@@ -24,8 +24,19 @@ export default function SignupPage() {
   // Role Routing Map
   const roleRoutes = {
     'researcher': '/researcher',
-    'company': '/company'
+    'company': '/company',
+    'triager': '/triager',
+    'admin': '/admin'
   };
+
+  React.useEffect(() => {
+    if (!authLoading && isAuthenticated && user) {
+        toast({ title: 'Already Logged In', description: 'Redirecting to dashboard...' });
+        // @ts-ignore
+        const target = roleRoutes[user.role as keyof typeof roleRoutes] || '/researcher';
+        navigate(target, { replace: true });
+    }
+  }, [authLoading, isAuthenticated, user, navigate]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
