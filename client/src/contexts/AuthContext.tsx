@@ -32,7 +32,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         const res = await fetch(`${API_URL}/auth/me`, {
           headers: { 
             'Authorization': `Bearer ${token}` 
-          } 
+          },
+          credentials: 'include',
         }); 
         const data = await res.json();
         if (res.ok && data.user) {
@@ -55,7 +56,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     try {
       const res = await fetch(`${API_URL}/auth/login`, {
         method: 'POST',
-        // credentials: 'include', // Removed for Bearer token
+        credentials: 'include', 
 
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email, password }),
@@ -105,7 +106,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     try {
       const res = await fetch(`${API_URL}/auth/signup`, {
         method: 'POST',
-        // credentials: 'include', // Removed
+        credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ name, email, password, role }),
       });
@@ -123,7 +124,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     try {
       const res = await fetch(`${API_URL}/auth/verify-email`, {
         method: 'POST',
-        // credentials: 'include', // Removed
+        credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email, otp }),
       });
@@ -146,7 +147,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       const res = await fetch(`${API_URL}/auth/me`, {
         headers: { 
           'Authorization': `Bearer ${token}` 
-        } 
+        },
+        credentials: 'include',
       }); 
       const data = await res.json();
       if (res.ok && data.user) {
