@@ -103,16 +103,52 @@ export const verifyDomain = catchAsync(async (req: Request, res: Response, next:
     const user = await User.findById(req.user!.id);
     if (!user) return next(new AppError('User not found', 404));
 
-    // MOCK: In real world, verify DNS TXT record here.
-    // We use the token ALREADY stored in the user profile to verify.
-    // For now, we assume success.
+    const verificationToken = user.verificationToken;
+    if (!verificationToken) {
+        return next(new AppError('No verification token found. Please generate one first.', 400));
+    }
 
-    // Add to verifiedAssets WITH the token used for verification
+    // Attempt to fetch security.txt
+    let content = '';
+    const protocols = ['https', 'http'];
+    let verifiedProtocol = '';
+
+    for (const protocol of protocols) {
+        try {
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), 5000); // 5s timeout
+
+            const response = await fetch(`${protocol}://${rootDomain}/.well-known/security.txt`, {
+                signal: controller.signal
+            });
+            clearTimeout(timeoutId);
+
+            if (response.ok) {
+                content = await response.text();
+                verifiedProtocol = protocol;
+                break; // Found it
+            }
+        } catch (error) {
+            console.log(`Failed to fetch ${protocol}://${rootDomain}/.well-known/security.txt`, error);
+            // Continue to next protocol
+        }
+    }
+
+    if (!content) {
+        return next(new AppError(`Could not find security.txt at ${rootDomain}/.well-known/security.txt. Verified both HTTPS and HTTP.`, 400));
+    }
+
+    // Check if token exists in content
+    if (!content.includes(verificationToken)) {
+         return next(new AppError(`Verification token not found in security.txt. Make sure to add: ${verificationToken}`, 400));
+    }
+
+    // Add to verifiedAssets
     const newAsset = {
         id: crypto.randomBytes(4).toString('hex'),
         domain: rootDomain,
-        method: 'DNS_TXT' as const,
-        verificationToken: user.verificationToken || 'unknown', // Save the token
+        method: 'SECURITY_TXT' as const,
+        verificationToken: user.verificationToken || 'unknown',
         dateVerified: new Date().toISOString().split('T')[0],
         status: 'verified' as const
     };
@@ -120,17 +156,22 @@ export const verifyDomain = catchAsync(async (req: Request, res: Response, next:
     // Check if already exists
     const exists = user.verifiedAssets?.find(a => a.domain === rootDomain);
     if (exists) {
-        return next(new AppError('Domain already verified', 400));
+        // If exists, checks if it was disabled, if so, re-enable? Or just throw error?
+        // Let's just update the status to verified if it exists
+         const assetIndex = user.verifiedAssets!.findIndex(a => a.domain === rootDomain);
+         user.verifiedAssets![assetIndex].status = 'verified';
+         user.verifiedAssets![assetIndex].dateVerified = new Date().toISOString().split('T')[0];
+         user.verifiedAssets![assetIndex].method = 'SECURITY_TXT';
+    } else {
+        if (!user.verifiedAssets) user.verifiedAssets = [];
+        user.verifiedAssets.push(newAsset);
     }
-
-    if (!user.verifiedAssets) user.verifiedAssets = [];
-    user.verifiedAssets.push(newAsset);
     
     await user.save({ validateBeforeSave: false });
 
     res.status(200).json({
         status: 'success',
-        message: 'Domain verified successfully',
+        message: 'Domain verified successfully via security.txt',
         asset: newAsset
     });
 });

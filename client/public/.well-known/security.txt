@@ -1,0 +1,10 @@
+Contact: mailto:security@bugchase.com
+Expires: 2026-12-31T23:59:59.000Z
+Encryption: https://bugchase.com/pgp-key.txt
+Acknowledgments: https://bugchase.com/hall-of-fame
+Preferred-Languages: en
+Canonical: https://bugchase.com/.well-known/security.txt
+Policy: https://bugchase.com/disclosure-policy
+
+# BugChase Security
+We take security seriously. If you find a vulnerability, please report it to us.

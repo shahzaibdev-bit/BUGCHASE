@@ -24,7 +24,7 @@ type VerificationStatus = 'idle' | 'pending' | 'verifying' | 'verified' | 'error
 interface VerifiedDomain {
   id: string;
   domain: string;
-  method: 'DNS_TXT';
+  method: 'DNS_TXT' | 'SECURITY_TXT';
   verificationToken?: string;
   dateVerified: string;
   status: 'verified' | 'disabled';
@@ -55,13 +55,13 @@ export function DomainVerificationTab() {
   const handleGenerateToken = async () => {
     if (!rootDomain) return;
     
-    // Check for subdomain
-    const domainParts = rootDomain.split('.');
-    if (domainParts.length > 2) {
-      setErrorMsg(`Please verify the ROOT domain (e.g., ${domainParts.slice(-2).join('.')}) first.`);
-      setVerificationStatus('error');
-      return;
-    }
+    // Check for subdomain - REMOVED for testing/flexibility as requested
+    // const domainParts = rootDomain.split('.');
+    // if (domainParts.length > 2) {
+    //   setErrorMsg(`Please verify the ROOT domain (e.g., ${domainParts.slice(-2).join('.')}) first.`);
+    //   setVerificationStatus('error');
+    //   return;
+    // }
 
     try {
         const res = await fetch(`${API_URL}/company/generate-token`, {
@@ -113,7 +113,7 @@ export function DomainVerificationTab() {
             }, 2000);
         } else {
             setVerificationStatus('error');
-            setErrorMsg(data.message || "Verification failed. Please check your DNS records.");
+            setErrorMsg(data.message || "Verification failed. Could not find or parse security.txt.");
         }
     } catch (e) {
         setVerificationStatus('error');
@@ -244,20 +244,18 @@ export function DomainVerificationTab() {
             <div className="animate-in fade-in slide-in-from-top-4 duration-300 space-y-4">
                 <Alert className="bg-primary/5 border-primary/20">
                     <Terminal className="h-4 w-4 text-primary" />
-                    <AlertTitle className="text-primary font-mono text-sm font-bold">DNS CONFIGURATION REQUIRED</AlertTitle>
+                    <AlertTitle className="text-primary font-mono text-sm font-bold">SECURITY.TXT CONFIGURATION</AlertTitle>
                     <AlertDescription className="text-muted-foreground text-xs font-mono mt-1">
-                        Add the following TXT record to your DNS provider (GoDaddy, Cloudflare, AWS Route53) to prove ownership.
+                        Create a file at <code className="bg-muted px-1 py-0.5 rounded text-primary">/.well-known/security.txt</code> on your root domain containing the unique token below.
                     </AlertDescription>
                 </Alert>
 
                 <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-                    <div className="md:col-span-1 bg-muted/50 border border-border rounded-lg p-3">
-                        <p className="text-[10px] text-muted-foreground uppercase font-mono mb-1">Type</p>
-                        <p className="font-mono text-sm text-foreground">TXT</p>
-                    </div>
-                    <div className="md:col-span-1 bg-muted/50 border border-border rounded-lg p-3">
-                        <p className="text-[10px] text-muted-foreground uppercase font-mono mb-1">Host</p>
-                        <p className="font-mono text-sm text-foreground">@</p>
+                    <div className="md:col-span-2 bg-muted/50 border border-border rounded-lg p-3">
+                        <p className="text-[10px] text-muted-foreground uppercase font-mono mb-1">File Path</p>
+                        <p className="font-mono text-xs text-foreground break-all">
+                            https://{rootDomain}/.well-known/security.txt
+                        </p>
                     </div>
                     <div className="md:col-span-2 space-y-1">
                         <Label className="text-[10px] text-muted-foreground uppercase font-mono">Value</Label>
@@ -287,12 +285,12 @@ export function DomainVerificationTab() {
                     {verificationStatus === 'verifying' ? (
                         <>
                             <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
-                            VERIFYING_DNS_RECORDS...
+                            VERIFYING_SECURITY_TXT...
                         </>
                     ) : (
                         <>
                             <ShieldCheck className="h-4 w-4 mr-2" />
-                            VERIFY_DNS_RECORD
+                            VERIFY_TEXT_FILE
                         </>
                     )}
                 </Button>
