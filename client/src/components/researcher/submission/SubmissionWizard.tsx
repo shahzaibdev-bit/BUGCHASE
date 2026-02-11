@@ -84,12 +84,16 @@ export const SubmissionWizard = () => {
             const token = localStorage.getItem('token');
             console.log("Submitting report with token:", token ? "Present" : "Missing"); // Debug Log
 
+            const headers: HeadersInit = {
+                'Content-Type': 'application/json'
+            };
+            if (token) {
+                headers['Authorization'] = `Bearer ${token}`;
+            }
+
             const res = await fetch(`${API_URL}/reports`, {
                 method: 'POST',
-                headers: { 
-                    'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${token}`
-                },
+                headers,
                 credentials: 'include', // Ensure cookies are sent if needed
                 body: JSON.stringify({
                     programId, // From URL

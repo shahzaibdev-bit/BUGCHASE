@@ -24,15 +24,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const checkAuth = async () => {
       try {
         const token = localStorage.getItem('token');
-        if (!token) {
-          setIsLoading(false);
-          return;
+        
+        const headers: HeadersInit = {};
+        if (token) {
+            headers['Authorization'] = `Bearer ${token}`;
         }
 
         const res = await fetch(`${API_URL}/auth/me`, {
-          headers: { 
-            'Authorization': `Bearer ${token}` 
-          },
+          headers,
           credentials: 'include',
         }); 
         const data = await res.json();
