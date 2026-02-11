@@ -47,7 +47,6 @@ export const StepReview = ({ data, updateData }: StepReviewProps) => {
                          <Badge className={cn(
                              "text-sm px-3 py-1 font-mono uppercase tracking-wide",
                              data.severity === 'Critical' ? "bg-red-500 hover:bg-red-600" :
-                             data.severity === 'Critical' ? "bg-red-500 hover:bg-red-600" :
                              data.severity === 'High' ? "bg-orange-500 hover:bg-orange-600" :
                              data.severity === 'Medium' ? "bg-yellow-500 hover:bg-yellow-600" : "bg-black dark:bg-white dark:text-black hover:bg-zinc-800"
                          )}>

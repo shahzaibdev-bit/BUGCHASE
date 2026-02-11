@@ -55,13 +55,13 @@ export function DomainVerificationTab() {
   const handleGenerateToken = async () => {
     if (!rootDomain) return;
     
-    // Check for subdomain - REMOVED for testing/flexibility as requested
-    // const domainParts = rootDomain.split('.');
-    // if (domainParts.length > 2) {
-    //   setErrorMsg(`Please verify the ROOT domain (e.g., ${domainParts.slice(-2).join('.')}) first.`);
-    //   setVerificationStatus('error');
-    //   return;
-    // }
+    // Check if domain is already verified
+    const isAlreadyVerified = verifiedDomains.some(d => d.domain === rootDomain);
+    if (isAlreadyVerified) {
+        setErrorMsg('This domain is already verified.');
+        setVerificationStatus('error');
+        return;
+    }
 
     try {
         const res = await fetch(`${API_URL}/company/generate-token`, {

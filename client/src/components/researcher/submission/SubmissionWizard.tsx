@@ -81,9 +81,13 @@ export const SubmissionWizard = () => {
             const vec = data.cvssVector as any;
             const cvssString = `CVSS:3.1/AV:${vec.AV}/AC:${vec.AC}/PR:${vec.PR}/UI:${vec.UI}/S:${vec.S}/C:${vec.C}/I:${vec.I}/A:${vec.A}`;
 
+            const token = localStorage.getItem('token');
             const res = await fetch(`${API_URL}/reports`, {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
+                headers: { 
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${token}`
+                },
                 body: JSON.stringify({
                     programId, // From URL
                     ...data,
