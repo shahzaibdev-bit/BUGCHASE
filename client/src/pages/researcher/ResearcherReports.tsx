@@ -70,7 +70,16 @@ export default function ResearcherReports() {
   useEffect(() => {
     const fetchReports = async () => {
       try {
-        const res = await fetch(`${API_URL}/reports`);
+        const token = localStorage.getItem('token');
+        const headers: HeadersInit = {};
+        if (token) {
+            headers['Authorization'] = `Bearer ${token}`;
+        }
+
+        const res = await fetch(`${API_URL}/reports`, {
+            headers,
+            credentials: 'include'
+        });
         const data = await res.json();
         if (res.ok) {
             // Map backend data to frontend structure if needed, or stick to backend structure if compatible
