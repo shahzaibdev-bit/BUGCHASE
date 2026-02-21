@@ -1,4 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import { 
   Lock, 
@@ -30,6 +32,9 @@ import {
 } from 'lucide-react';
 import { API_URL } from '@/config';
 import { Button } from '@/components/ui/button';
+import { Card, CardContent } from "@/components/ui/card";
+import { Avatar as UIAvatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { HoverCard, HoverCardContent, HoverCardTrigger } from "@/components/ui/hover-card";
 import { Badge } from '@/components/ui/badge';
 import { GlassCard } from '@/components/ui/glass-card';
 import { Input } from '@/components/ui/input';
@@ -63,16 +68,19 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { toast } from '@/hooks/use-toast';
+import { io } from 'socket.io-client';
+import { CvssInteractiveModal } from '@/components/CvssInteractiveModal';
 
 // --- Types ---
+import { useAuth } from '@/contexts/AuthContext';
 type ReportStatus = 'Submitted' | 'Triaging' | 'Under Review' | 'Needs Info' | 'Triaged' | 'Spam' | 'Duplicate' | 'Out-of-Scope' | 'Resolved' | 'Closed' | 'Paid' | 'NA';
 
 interface TimelineEvent {
   id: string;
-  type: 'comment' | 'status_change' | 'action';
+  type: 'comment' | 'status_change' | 'action' | 'assignment' | 'severity_update';
   author: string;
   authorAvatar?: string; // Added field
-  role: 'Triager' | 'Researcher' | 'System';
+  role: 'Triager' | 'Researcher' | 'Company' | 'System';
   content: string; // For comments: HTML/Text. For status: "changed status to X"
   timestamp: string;
   metadata?: any; // e.g. new_status
@@ -97,34 +105,156 @@ interface ReportState {
 // --- Mock Data ---
 // --- Mock Data Removed ---
 
-// --- CVSS Helpers ---
-const parseCvssScore = (vec: string) => {
-    if (!vec) return 0;
-    let score = 4.0;
-    if (vec.includes('AV:N')) score += 2.0;
-    if (vec.includes('AC:L')) score += 1.0;
-    if (vec.includes('C:H')) score += 1.5;
-    if (vec.includes('I:H')) score += 1.5;
-    return Math.min(10.0, score);
+// --- CVSS Helpers and Constants removed (moved to CvssInteractiveModal.tsx) ---
+
+// --- Constants ---
+const STATUS_REASONS: Record<string, string[]> = {
+    'Spam': [
+        "Automated scan report with no manual verification.",
+        "Irrelevant or nonsensical submission.",
+        "Social engineering / Phishing attempt.",
+        "Other"
+    ],
+    'Duplicate': [
+        "Report already exists in our system.",
+        "Known internal issue already being tracked.",
+        "Previously reported by another researcher.",
+        "Other"
+    ],
+    'Out-of-Scope': [
+        "Asset not listed in the program scope.",
+        "Vulnerability type explicitly excluded in policy.",
+        "Third-party service issue not manageable by us.",
+        "Performance issue / Best Practice only.",
+        "Other"
+    ],
+    'Needs Info': [
+        "Cannot reproduce with provided steps.",
+        "Missing proof of concept (PoC).",
+        "Clarification needed on security impact.",
+        "Video evidence required.",
+        "Other"
+    ],
+    'NA': [
+        "Intended functionality, not a vulnerability.",
+        "Theoretical risk with no practical exploitability.",
+        "Acceptable risk as per company policy.",
+        "Browser mechanism / Client-side only behavior.",
+        "Other"
+    ],
+    'Resolved': [
+        "Patch verified and deployed.",
+        "Mitigation control implemented.",
+        "Service decommissioned.",
+        "Other"
+    ],
+    'Triaged': [
+        "Valid vulnerability, forwarded to development team.",
+        "Severity confirmed, priority assigned.",
+        "Reproduced successfully.",
+        "Other"
+    ],
+    'Closed': [
+        "Business decision to accept risk.",
+        "Informative only.",
+        "No longer applicable.",
+        "Other"
+    ]
 };
 
-const CVSS_LABELS: Record<string, string> = {
-    'AV:N': 'Network', 'AV:A': 'Adjacent', 'AV:L': 'Local', 'AV:P': 'Physical',
-    'AC:L': 'Low', 'AC:H': 'High',
-    'PR:N': 'None', 'PR:L': 'Low', 'PR:H': 'High',
-    'UI:N': 'None', 'UI:R': 'Required',
-    'S:U': 'Unchanged', 'S:C': 'Changed',
-    'C:H': 'High', 'C:L': 'Low', 'C:N': 'None',
-    'I:H': 'High', 'I:L': 'Low', 'I:N': 'None',
-    'A:H': 'High', 'A:L': 'Low', 'A:N': 'None',
+const ReasonSelectionModal = ({
+    isOpen,
+    onClose,
+    onConfirm,
+    status
+}: {
+    isOpen: boolean;
+    onClose: () => void;
+    onConfirm: (reason: string) => void;
+    status: ReportStatus | null;
+}) => {
+    const [selectedReason, setSelectedReason] = useState<string>("");
+    const [customReason, setCustomReason] = useState<string>("");
+    
+    // Reset state when modal opens
+    useEffect(() => {
+        if (isOpen) {
+            setSelectedReason("");
+            setCustomReason("");
+        }
+    }, [isOpen]);
+
+    const reasons = status ? STATUS_REASONS[status] || ["Other"] : [];
+
+    const handleConfirm = () => {
+        if (selectedReason === "Other") {
+            onConfirm(customReason);
+        } else {
+            onConfirm(selectedReason || customReason);
+        }
+        onClose();
+    };
+
+    return (
+        <Dialog open={isOpen} onOpenChange={onClose}>
+            <DialogContent className="max-w-md bg-white dark:bg-zinc-950 border-zinc-200 dark:border-zinc-800">
+                <DialogHeader>
+                    <DialogTitle className="font-mono text-lg">Update Status: {status}</DialogTitle>
+                    <DialogDescription>
+                        Please select a professional reason for this status change.
+                    </DialogDescription>
+                </DialogHeader>
+                
+                <div className="space-y-4 py-4">
+                    <div className="space-y-2">
+                        <label className="text-xs font-bold text-zinc-500 uppercase">Reason Category</label>
+                        <Select value={selectedReason} onValueChange={setSelectedReason}>
+                            <SelectTrigger className="bg-white dark:bg-zinc-900 border-zinc-200 dark:border-zinc-800">
+                                <SelectValue placeholder="Select a reason..." />
+                            </SelectTrigger>
+                            <SelectContent className="bg-white dark:bg-zinc-900 border-zinc-200 dark:border-zinc-800">
+                                {reasons.map((r) => (
+                                    <SelectItem key={r} value={r}>{r}</SelectItem>
+                                ))}
+                            </SelectContent>
+                        </Select>
+                    </div>
+
+                    {(selectedReason === "Other" || !reasons.length) && (
+                        <div className="space-y-2 animate-in fade-in slide-in-from-top-2">
+                            <label className="text-xs font-bold text-zinc-500 uppercase">
+                                {selectedReason === "Other" ? "Custom Reason" : "Reason"}
+                            </label>
+                            <Textarea 
+                                value={customReason} 
+                                onChange={(e) => setCustomReason(e.target.value)}
+                                placeholder="Provide specific details for the researcher..."
+                                className="min-h-[100px] font-mono text-sm"
+                            />
+                        </div>
+                    )}
+                </div>
+
+                <DialogFooter>
+                    <Button variant="ghost" onClick={onClose}>CANCEL</Button>
+                    <Button 
+                        onClick={handleConfirm}
+                        disabled={!selectedReason || (selectedReason === "Other" && !customReason.trim())}
+                        className="bg-black hover:bg-zinc-800 dark:bg-white dark:hover:bg-zinc-200 text-white dark:text-black font-bold"
+                    >
+                        CONFIRM CHANGE
+                    </Button>
+                </DialogFooter>
+            </DialogContent>
+        </Dialog>
+    );
 };
 
-// --- Sub-Components ---
-
-const TimelineNode = ({ event }: { event: TimelineEvent }) => {
+const TimelineNode = ({ event, isConsecutive }: { event: TimelineEvent, isConsecutive?: boolean }) => {
     const isSystem = event.role === 'System';
     const isTriager = event.role === 'Triager';
     const isResearcher = event.role === 'Researcher';
+    const isCompany = event.role === 'Company';
 
     const getInitials = (name: string) => {
         if (!name) return '??';
@@ -136,22 +266,25 @@ const TimelineNode = ({ event }: { event: TimelineEvent }) => {
     };
 
     const Avatar = () => {
+        if (isConsecutive) {
+            return <div className="absolute left-[10px] top-4 w-3 h-3 rounded-full border-2 border-zinc-300 dark:border-zinc-700 bg-background z-10" />;
+        }
+
         if (isSystem) return <div className="h-8 w-8 rounded-full bg-zinc-100 dark:bg-zinc-800 flex items-center justify-center border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-900 shadow-sm z-10"><Activity className="h-4 w-4 text-zinc-500" /></div>;
-        if (isTriager) return <div className="h-8 w-8 rounded-full bg-black dark:bg-white text-white dark:text-black flex items-center justify-center font-bold text-xs z-10">ME</div>;
         
-        // Researcher Logic
+        // Show avatar for Triager (User), Company, and Researcher
         if (event.authorAvatar && event.authorAvatar !== 'default.jpg') {
             return (
                 <img 
                     src={event.authorAvatar} 
                     alt={event.author} 
-                    className="h-8 w-8 rounded-full object-cover border border-zinc-200 dark:border-zinc-800 z-10"
+                    className="h-8 w-8 rounded-full object-cover border border-zinc-200 dark:border-zinc-800 z-10 bg-white"
                 />
             );
         }
 
         return (
-            <div className="h-8 w-8 rounded-full bg-indigo-100 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400 flex items-center justify-center font-bold text-xs z-10">
+            <div className={`h-8 w-8 rounded-full flex items-center justify-center font-bold text-xs z-10 text-white bg-blue-600`}>
                 {getInitials(event.author)}
             </div>
         );
@@ -159,218 +292,94 @@ const TimelineNode = ({ event }: { event: TimelineEvent }) => {
 
     return (
         <div className="relative flex gap-4 animate-in fade-in slide-in-from-bottom-2 duration-300">
-            <div className="absolute left-4 top-8 bottom-[-24px] w-px bg-zinc-200 dark:bg-zinc-800 last:hidden"></div>
-            <div className="relative shrink-0"><Avatar /></div>
+            <div className="absolute left-[15px] top-0 bottom-[-24px] w-0.5 bg-zinc-200 dark:bg-zinc-800 last:hidden"></div>
+            <div className="relative shrink-0 w-8"><Avatar /></div>
             <div className="flex-1 pb-6 relative group">
-                 <div className="flex items-center gap-2 text-xs mb-1.5">
-                    <span className={`font-bold ${isTriager ? 'text-black dark:text-white' : isResearcher ? 'text-indigo-600 dark:text-indigo-400' : 'text-zinc-500'}`}>
-                        {event.author}
-                    </span>
-                    {event.type === 'status_change' && (
-                        <span className="text-zinc-500 flex items-center gap-1">
-                             changed status to 
-                             <Badge variant="outline" className="text-[10px] h-5 px-1.5 font-bold uppercase text-zinc-700 dark:text-zinc-300 border-zinc-300 dark:border-zinc-700">{event.content}</Badge>
+                 <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2 flex-wrap">
+                        {event.role === 'Researcher' ? (
+                            <div className="flex items-center gap-2">
+                                <HoverCard>
+                                    <HoverCardTrigger asChild>
+                                        <a href={`/h/${event.author}`} target="_blank" rel="noopener noreferrer" className="text-sm font-bold text-blue-600 dark:text-blue-400 hover:underline cursor-pointer">
+                                            @{event.author}
+                                        </a>
+                                    </HoverCardTrigger>
+                                    <HoverCardContent className="w-80 font-inter">
+                                        <div className="flex justify-between space-x-4">
+                                            <UIAvatar>
+                                                <AvatarImage src={event.authorAvatar} />
+                                                <AvatarFallback>{event.author[0]?.toUpperCase()}</AvatarFallback>
+                                            </UIAvatar>
+                                            <div className="space-y-1 flex-1">
+                                                <h4 className="text-sm font-semibold">@{event.author}</h4>
+                                                <p className="text-sm text-muted-foreground">
+                                                    Security Researcher
+                                                </p>
+                                            </div>
+                                        </div>
+                                    </HoverCardContent>
+                                </HoverCard>
+                                <Badge variant="outline" className="text-[10px] px-1 py-0 border-zinc-200 dark:border-zinc-800 text-zinc-500 font-normal">Security Researcher</Badge>
+                            </div>
+                        ) : (
+                            <div className="flex items-center gap-2">
+                                <span className="text-sm font-bold text-zinc-900 dark:text-zinc-100">
+                                    {isSystem ? event.author : `@${event.author}`}
+                                </span>
+                                {!isSystem && (
+                                    <Badge variant="outline" className="text-[10px] px-1 py-0 border-zinc-200 dark:border-zinc-800 text-zinc-500 font-normal">
+                                        {event.role === 'Triager' ? 'Bugchase Triage' : event.role}
+                                    </Badge>
+                                )}
+                            </div>
+                        )}
+                        {event.type === 'status_change' && (
+                            <span className="text-zinc-500 text-sm flex items-center gap-1">
+                                 changed the status to 
+                                 <span className="font-bold text-zinc-800 dark:text-zinc-200">
+                                     {event.metadata?.newStatus || event.content.replace('Changed status to ', '')}
+                                 </span>
+                                 <span>.</span>
+                            </span>
+                        )}
+                        <span className="text-zinc-400 text-[10px] ml-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                            {new Date(event.timestamp).toLocaleString(undefined, {
+                                day: '2-digit', month: '2-digit', year: 'numeric',
+                                hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: true
+                            })}
                         </span>
-                    )}
-                    <span className="text-zinc-400 text-[10px] ml-auto opacity-0 group-hover:opacity-100 transition-opacity">
-                        {new Date(event.timestamp).toLocaleString()}
-                    </span>
-                 </div>
-                 {event.type === 'comment' && (
-                     <div className="text-sm text-zinc-800 dark:text-zinc-300 bg-transparent leading-relaxed tracking-normal">
-                         <div dangerouslySetInnerHTML={{ __html: event.content }} />
-                     </div>
-                 )}
-                 {event.metadata?.reason && (
-                     <div className="mt-2 p-3 bg-zinc-50 dark:bg-zinc-900 border border-zinc-100 dark:border-zinc-800 rounded text-xs text-zinc-600 dark:text-zinc-400 italic">
-                         "{event.metadata.reason}"
-                     </div>
-                 )}
-            </div>
-        </div>
-    );
-};
-
-const CvssInteractiveModal = ({ 
-    isOpen, 
-    onClose, 
-    aiVector, 
-    researcherVector,
-    currentVector, 
-    onSave 
-}: { 
-    isOpen: boolean;
-    onClose: () => void;
-    aiVector: string;
-    researcherVector: string;
-    currentVector: string;
-    onSave: (vector: string, score: number) => void;
-}) => {
-    const [localVector, setLocalVector] = useState(currentVector || aiVector);
-    
-    // Scores
-    const aiScore = parseCvssScore(aiVector);
-    const researcherScore = parseCvssScore(researcherVector);
-    const localScore = parseCvssScore(localVector);
-
-    const updateMetric = (metric: string, value: string) => {
-        let newVec = localVector;
-        const regex = new RegExp(`${metric}:[A-Z]`);
-        if (newVec.match(regex)) {
-            newVec = newVec.replace(regex, `${metric}:${value}`);
-        } else {
-            newVec += `/${metric}:${value}`;
-        }
-        setLocalVector(newVec);
-    };
-
-    const MetricBtn = ({ code, val }: { code: string, val: string }) => {
-        const fullVector = `${code}:${val}`;
-        const label = CVSS_LABELS[fullVector] || val;
-        const isActive = localVector.includes(fullVector);
-        
-        return (
-            <button 
-               onClick={() => updateMetric(code, val)}
-               className={`px-3 py-2 text-xs font-mono font-medium border rounded transition-all active:scale-95 flex-1 text-center ${isActive ? 'bg-black text-white dark:bg-white dark:text-black border-black dark:border-white shadow-sm' : 'bg-transparent text-zinc-500 border-zinc-200 dark:border-zinc-800 hover:border-zinc-400 dark:hover:border-zinc-600'}`}
-            >
-                {label}
-            </button>
-        );
-    };
-
-    const ScoreCard = ({ title, score, vector, icon: Icon, colorClass, borderClass, onClick }: any) => (
-        <div 
-            onClick={onClick}
-            className={`p-4 rounded-xl border ${borderClass} bg-white dark:bg-zinc-900 shadow-sm relative overflow-hidden group transition-all cursor-pointer hover:shadow-md`}
-        >
-            <div className="flex items-center justify-between mb-2 relative z-10">
-                <div className="flex items-center gap-2">
-                    <Icon className={`h-4 w-4 ${colorClass}`} />
-                    <span className={`font-bold text-xs uppercase tracking-wider ${colorClass}`}>{title}</span>
-                </div>
-                <span className={`font-mono font-bold text-2xl ${colorClass}`}>{score.toFixed(1)}</span>
-            </div>
-            <code className="block text-[10px] font-mono opacity-60 break-all leading-tight relative z-10">{vector}</code>
-            {onClick && (
-                <div className={`mt-2 text-[10px] font-bold uppercase tracking-widest opacity-0 group-hover:opacity-100 transition-opacity flex items-center gap-1 ${colorClass}`}>
-                    Click to Apply <ArrowLeft className="h-3 w-3 rotate-180" />
-                </div>
-            )}
-        </div>
-    );
-
-    return (
-        <Dialog open={isOpen} onOpenChange={onClose}>
-            <DialogContent className="max-w-5xl bg-white dark:bg-zinc-950 border-zinc-200 dark:border-zinc-800 p-0 overflow-hidden gap-0 shadow-2xl">
-                <DialogHeader className="p-6 border-b border-zinc-100 dark:border-zinc-900 bg-zinc-50/50 dark:bg-zinc-900/10">
-                    <DialogTitle className="font-mono text-lg tracking-tight flex items-center gap-2">
-                        <Calculator className="h-4 w-4" /> CVSS 3.1 CALCULATOR
-                    </DialogTitle>
-                </DialogHeader>
-                
-                <div className="grid grid-cols-1 md:grid-cols-12 h-[550px]">
-                    {/* Left: Comparison Panel (4 Cols) */}
-                    <div className="md:col-span-4 bg-zinc-50/50 dark:bg-zinc-900/10 border-r border-zinc-100 dark:border-zinc-900 p-6 space-y-4 overflow-y-auto">
-                         <h4 className="text-xs font-bold text-zinc-400 uppercase tracking-widest mb-2">Sources</h4>
-                         
-                         <ScoreCard 
-                            title="AI Estimate" 
-                            score={aiScore} 
-                            vector={aiVector} 
-                            icon={Brain} 
-                            colorClass="text-cyan-600 dark:text-cyan-400" 
-                            borderClass="border-cyan-100 dark:border-cyan-900/30 hover:border-cyan-300"
-                            onClick={() => setLocalVector(aiVector)}
-                         />
-
-                         <ScoreCard 
-                            title="Researcher" 
-                            score={researcherScore} 
-                            vector={researcherVector} 
-                            icon={Bug} 
-                            colorClass="text-indigo-600 dark:text-indigo-400" 
-                            borderClass="border-indigo-100 dark:border-indigo-900/30 hover:border-indigo-300"
-                            onClick={() => setLocalVector(researcherVector)}
-                         />
-
-                         <div className="pt-4 border-t border-zinc-200 dark:border-zinc-800">
-                             <h4 className="text-xs font-bold text-zinc-400 uppercase tracking-widest mb-3">Active Score</h4>
-                             <div className="p-5 rounded-xl bg-black dark:bg-white border border-black dark:border-white shadow-lg relative overflow-hidden text-white dark:text-black">
-                                 <div className="flex items-center justify-between mb-3 relative z-10">
-                                     <div className="flex items-center gap-2">
-                                         <User className="h-4 w-4" />
-                                         <span className="font-bold text-xs uppercase tracking-wider">YOUR SCORE</span>
-                                     </div>
-                                     <span className="font-mono font-bold text-3xl">{localScore.toFixed(1)}</span>
-                                 </div>
-                                 <code className="block text-[10px] font-mono opacity-70 break-all leading-tight relative z-10">{localVector}</code>
-                             </div>
-                         </div>
                     </div>
-
-                    {/* Right: Calculator Controls (8 Cols) */}
-                    <ScrollArea className="md:col-span-8 bg-white dark:bg-zinc-950 p-8">
-                        <div className="space-y-8 pb-20">
-                            <div className="space-y-4">
-                                <label className="text-xs font-extrabold text-zinc-400 uppercase tracking-widest flex items-center gap-2"><Lock className="h-3 w-3"/> Base Metric Group</label>
-                                <div className="grid grid-cols-1 gap-6">
-                                    <div className="space-y-2">
-                                        <span className="text-xs font-bold text-zinc-700 dark:text-zinc-300">Attack Vector (AV)</span>
-                                        <div className="flex gap-2"><MetricBtn code="AV" val="N" /><MetricBtn code="AV" val="A" /><MetricBtn code="AV" val="L" /><MetricBtn code="AV" val="P" /></div>
-                                    </div>
-                                    <div className="space-y-2">
-                                        <span className="text-xs font-bold text-zinc-700 dark:text-zinc-300">Attack Complexity (AC)</span>
-                                        <div className="flex gap-2"><MetricBtn code="AC" val="L" /><MetricBtn code="AC" val="H" /></div>
-                                    </div>
-                                     <div className="space-y-2">
-                                        <span className="text-xs font-bold text-zinc-700 dark:text-zinc-300">Privileges Required (PR)</span>
-                                        <div className="flex gap-2"><MetricBtn code="PR" val="N" /><MetricBtn code="PR" val="L" /><MetricBtn code="PR" val="H" /></div>
-                                    </div>
-                                    <div className="space-y-2">
-                                        <span className="text-xs font-bold text-zinc-700 dark:text-zinc-300">User Interaction (UI)</span>
-                                        <div className="flex gap-2"><MetricBtn code="UI" val="N" /><MetricBtn code="UI" val="R" /></div>
-                                    </div>
-                                    <div className="space-y-2">
-                                        <span className="text-xs font-bold text-zinc-700 dark:text-zinc-300">Scope (S)</span>
-                                        <div className="flex gap-2"><MetricBtn code="S" val="U" /><MetricBtn code="S" val="C" /></div>
-                                    </div>
-                                </div>
-                            </div>
-                            
-                            <Separator className="bg-zinc-100 dark:bg-zinc-900" />
-                            
-                            <div className="space-y-4">
-                                <label className="text-xs font-extrabold text-zinc-400 uppercase tracking-widest flex items-center gap-2"><Activity className="h-3 w-3"/> Impact Metric Group</label>
-                                <div className="grid grid-cols-1 gap-6">
-                                    <div className="space-y-2">
-                                        <span className="text-xs font-bold text-zinc-700 dark:text-zinc-300">Confidentiality (C)</span>
-                                        <div className="flex gap-2"><MetricBtn code="C" val="H" /><MetricBtn code="C" val="L" /><MetricBtn code="C" val="N" /></div>
-                                    </div>
-                                    <div className="space-y-2">
-                                        <span className="text-xs font-bold text-zinc-700 dark:text-zinc-300">Integrity (I)</span>
-                                        <div className="flex gap-2"><MetricBtn code="I" val="H" /><MetricBtn code="I" val="L" /><MetricBtn code="I" val="N" /></div>
-                                    </div>
-                                     <div className="space-y-2">
-                                        <span className="text-xs font-bold text-zinc-700 dark:text-zinc-300">Availability (A)</span>
-                                        <div className="flex gap-2"><MetricBtn code="A" val="H" /><MetricBtn code="A" val="L" /><MetricBtn code="A" val="N" /></div>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                    </ScrollArea>
-                </div>
-
-                <div className="p-4 border-t border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 flex justify-end gap-3 z-20 relative">
-                    <Button variant="ghost" onClick={onClose} className="hover:bg-zinc-100 dark:hover:bg-zinc-900">CANCEL</Button>
-                    <Button className="bg-black hover:bg-zinc-800 dark:bg-white dark:hover:bg-zinc-200 text-white dark:text-black font-bold px-6" onClick={() => { onSave(localVector, localScore); onClose(); }}>
-                        CONFIRM & UPDATE SEVERITY
-                    </Button>
-                </div>
-            </DialogContent>
-        </Dialog>
+                 </div>
+                 {(event.type === 'comment' || event.type === 'assignment') && (() => {
+                     // TipTap (CyberpunkEditor) stores HTML; triager notes/assignment messages are plain markdown.
+                     // Detect by checking if content starts with an HTML tag.
+                     const isHtml = /^\s*<[a-z]/i.test(event.content);
+                     return (
+                         <div className="mt-1 bg-white dark:bg-zinc-900/50 rounded-xl p-3 px-4 text-sm text-zinc-800 dark:text-zinc-200 border border-zinc-200 dark:border-zinc-800 shadow-sm inline-block max-w-full font-inter leading-relaxed">
+                             {isHtml ? (
+                                 <div dangerouslySetInnerHTML={{ __html: event.content }} />
+                             ) : (
+                                 <div className="prose prose-sm prose-zinc dark:prose-invert max-w-none">
+                                     <ReactMarkdown remarkPlugins={[remarkGfm]}>{event.content}</ReactMarkdown>
+                                 </div>
+                             )}
+                         </div>
+                     );
+                 })()}
+                 {event.metadata?.reason && (
+                     <div className="mt-2 p-3 bg-zinc-50 dark:bg-zinc-900/60 border border-zinc-200 dark:border-zinc-800 rounded-lg text-sm text-zinc-700 dark:text-zinc-300">
+                         <div className="prose prose-sm prose-zinc dark:prose-invert max-w-none">
+                             <ReactMarkdown remarkPlugins={[remarkGfm]}>{event.metadata.reason}</ReactMarkdown>
+                         </div>
+                     </div>
+                 )}
+            </div>
+        </div>
     );
 };
+
+
 
 // --- Main Component ---
 export default function TriagerReportDetails() {
@@ -378,6 +387,7 @@ export default function TriagerReportDetails() {
     const navigate = useNavigate();
     const location = useLocation();
     const editorRef = useRef<HTMLDivElement>(null);
+    const { user } = useAuth();
 
     // Initial State - Loading
     const [report, setReport] = useState<any>(null);
@@ -425,15 +435,29 @@ export default function TriagerReportDetails() {
                 setReport(r);
                 
                 // Transform comments to timeline
-                const comments = r.comments.map((c: any) => ({
+                const comments: TimelineEvent[] = r.comments && Array.isArray(r.comments) ? r.comments.map((c: any) => ({
                     id: c._id,
-                    type: 'comment',
-                    author: c.sender.name,
-                    authorAvatar: c.sender.avatar,
-                    role: c.sender.role === 'researcher' ? 'Researcher' : c.sender.role === 'triager' ? 'Triager' : 'System',
+                    type: c.type || 'comment',
+                    author: c.sender?.role !== 'company' ? (c.sender?.username || c.sender?.name || 'Unknown User') : (c.sender?.name || 'Unknown Company'),
+                    authorAvatar: c.sender?.avatar,
+                    role: c.sender?.role === 'researcher' ? 'Researcher' : c.sender?.role === 'triager' ? 'Triager' : c.sender?.role === 'company' ? 'Company' : 'System',
                     content: c.content,
-                    timestamp: c.createdAt
-                }));
+                    timestamp: c.createdAt,
+                    metadata: c.metadata || {}
+                })) : [];
+
+                // Add Initial Submission Event
+                const submissionEvent: TimelineEvent = {
+                    id: 'submission',
+                    type: 'comment',
+                    author: r.researcherId?.username || r.researcherId?.name || 'Researcher',
+                    authorAvatar: r.researcherId?.avatar,
+                    role: 'Researcher',
+                    content: `Hi, I found a vulnerability in <b>${r.assets?.[0] || 'the program'}</b>. Please verify.`,
+                    timestamp: r.createdAt
+                };
+                
+                const finalTimeline = [submissionEvent, ...comments];
 
                 setState({
                     status: r.status,
@@ -443,7 +467,7 @@ export default function TriagerReportDetails() {
                         vector: r.cvssVector || '',
                         researcherVector: r.cvssVector || '' // Assuming we start with this
                     },
-                    timeline: comments, // For now only showing comments in timeline. Ideally would fetch audit logs too.
+                    timeline: finalTimeline, // For now only showing comments in timeline. Ideally would fetch audit logs too.
                     isLocked: !!r.triagerId,
                     validation: { 
                         reproduced: r.isReproduced || false, 
@@ -465,6 +489,58 @@ export default function TriagerReportDetails() {
         if (id) fetchReport();
     }, [id]);
 
+    // Socket.io integration
+    useEffect(() => {
+        if (!id) return;
+        
+        const socketUrl = API_URL.replace(/\/api\/?$/, '');
+        const socket = io(socketUrl, {
+            withCredentials: true
+        });
+
+        socket.on('connect', () => {
+            socket.emit('join_report', id);
+        });
+
+        socket.on('new_activity', (activity: TimelineEvent) => {
+            setState((prev) => {
+                // Prevent duplicate entries
+                if (prev.timeline.find(e => e.id === activity.id)) return prev;
+                return { 
+                    ...prev, 
+                    timeline: [...prev.timeline, activity] 
+                };
+            });
+            // Show toast if the activity is not from "Me" 
+            if (activity.author !== 'Me' && activity.role !== 'System') {
+                toast({ title: "New Activity", description: `New ${activity.type} from ${activity.author}` });
+            }
+        });
+
+        socket.on('report_updated', (data: any) => {
+            setState((prev) => ({
+                ...prev,
+                severity: {
+                    ...prev.severity,
+                    final: data.cvssScore !== undefined ? data.cvssScore : prev.severity.final,
+                    vector: data.cvssVector !== undefined ? data.cvssVector : prev.severity.vector
+                }
+            }));
+        });
+
+        socket.on('status_updated', (data: any) => {
+             setState((prev) => ({
+                 ...prev,
+                 status: data.status
+             }));
+        });
+
+        return () => {
+            socket.emit('leave_report', id);
+            socket.disconnect();
+        };
+    }, [id]);
+
     // Scroll Logic for "Reply"
     useEffect(() => {
         if (location.hash === '#reply' && editorRef.current) {
@@ -476,16 +552,12 @@ export default function TriagerReportDetails() {
 
     // --- Handlers ---
     
-    const handleStatusSelect = (status: ReportStatus, skipReason = false) => {
+    const handleStatusSelect = (status: ReportStatus) => {
         setPendingStatus(status);
-        
-        // Skip reason modal for specific statuses as requested
-        const noReasonStatuses = ['Duplicate', 'Triaged', 'Resolved', 'Submitted'];
-        
-        if (skipReason || noReasonStatuses.includes(status)) {
-            performStatusUpdate(status, '');
+        if (status === 'Triaged') {
+            setSummaryModalOpen(true);
         } else {
-             setReasonModalOpen(true);
+            setReasonModalOpen(true);
         }
     };
 
@@ -506,21 +578,9 @@ export default function TriagerReportDetails() {
                 throw new Error(errData.message || 'Failed to update status');
             }
 
-            // Add local timeline event for immediate feedback
-            const newEvent: TimelineEvent = {
-                id: Date.now().toString(),
-                type: 'status_change',
-                author: 'Me',
-                role: 'Triager',
-                content: status,
-                timestamp: new Date().toISOString(),
-                metadata: reason ? { reason } : undefined
-            };
-            
             setState(p => ({ 
                 ...p, 
-                status: status, 
-                timeline: [...p.timeline, newEvent] 
+                status: status
             }));
 
             if (status === 'Triaged') {
@@ -538,9 +598,9 @@ export default function TriagerReportDetails() {
         }
     };
 
-    const confirmStatusChange = () => {
+    const confirmStatusChange = (reason: string) => {
         if (!pendingStatus) return;
-        performStatusUpdate(pendingStatus, statusReason);
+        performStatusUpdate(pendingStatus, reason);
     };
 
     const handleDuplicateScan = () => {
@@ -596,7 +656,8 @@ export default function TriagerReportDetails() {
                 const newSystemEvent: TimelineEvent = {
                     id: Date.now().toString(),
                     type: 'comment', 
-                    author: 'Me', 
+                    author: user?.username || user?.name || 'Unknown User', 
+                    authorAvatar: user?.avatar,
                     role: 'Triager', 
                     content: `Updated severity to ${score >= 9 ? 'Critical' : score >= 7 ? 'High' : score >= 4 ? 'Medium' : 'Low'} (${score}).`,
                     timestamp: new Date().toISOString()
@@ -639,13 +700,41 @@ export default function TriagerReportDetails() {
         }
     };
 
-    const handleGenerateSummary = () => {
-        setSummaryForm(p => ({
-            ...p,
-            technical: "The application is vulnerable to Stored XSS in the Profile Bio field...",
-            remediation: "Input sanitization and output encoding..."
-        }));
-        toast({ title: "AI Generated", description: "Drafted executive summary." });
+    const [generatingSummary, setGeneratingSummary] = useState(false);
+
+    const handleGenerateSummary = async () => {
+        setGeneratingSummary(true);
+        toast({ title: "Generating Summary", description: "AI is analyzing the report..." });
+        
+        try {
+            const token = localStorage.getItem('token');
+            const res = await fetch(`${API_URL}/triager/reports/${id}/generate-summary`, {
+                method: 'POST',
+                headers: { 
+                    'Authorization': `Bearer ${token}`
+                }
+            });
+            
+            const data = await res.json();
+            
+            if (res.ok && data.data.summary) {
+                const { title, technical_summary, remediation } = data.data.summary;
+                setSummaryForm(p => ({
+                    ...p,
+                    title: title || p.title,
+                    technical: technical_summary || "",
+                    remediation: remediation || ""
+                }));
+                toast({ title: "Summary Generated", description: "AI has drafted the executive summary." });
+            } else {
+                throw new Error("Failed to generate summary");
+            }
+        } catch (error) {
+            console.error(error);
+            toast({ title: "Error", description: "Failed to generate AI summary", variant: "destructive" });
+        } finally {
+            setGeneratingSummary(false);
+        }
     };
 
     if (loading || !report) return <div className="p-10 text-center">Loading Report Details...</div>;
@@ -700,12 +789,22 @@ export default function TriagerReportDetails() {
                                         dangerouslySetInnerHTML={{ __html: report.description }}
                                      />
                                      
-                                     {report.stepsToReproduce && (
+                                     {report.impact && (
                                         <>
-                                         <h3 className="text-sm font-bold uppercase tracking-wider text-zinc-500 mt-8 mb-2">Steps To Reproduce</h3>
+                                         <h3 className="text-sm font-bold uppercase tracking-wider text-zinc-500 mt-8 mb-2">Impact</h3>
                                          <div 
-                                            className="font-mono text-sm text-zinc-800 dark:text-zinc-300 leading-relaxed"
-                                            dangerouslySetInnerHTML={{ __html: report.stepsToReproduce }}
+                                            className="text-base text-zinc-800 dark:text-zinc-300 leading-relaxed"
+                                            dangerouslySetInnerHTML={{ __html: report.impact }}
+                                         />
+                                        </>
+                                     )}
+
+                                     {report.pocSteps && (
+                                        <>
+                                         <h3 className="text-sm font-bold uppercase tracking-wider text-zinc-500 mt-8 mb-2">Proof of Concept</h3>
+                                         <div 
+                                            className="font-mono text-sm text-zinc-800 dark:text-zinc-300 leading-relaxed p-4 bg-zinc-50 dark:bg-zinc-900 rounded-lg border border-zinc-100 dark:border-zinc-800 overflow-x-auto"
+                                            dangerouslySetInnerHTML={{ __html: report.pocSteps }}
                                          />
                                         </>
                                      )}
@@ -720,9 +819,10 @@ export default function TriagerReportDetails() {
                              <div className={`${mobileTab === 'details' ? 'hidden lg:block' : ''}`}>
                                  <h3 className="text-lg font-bold text-black dark:text-white mb-6">Activity</h3>
                                  <div className="pl-2">
-                                     {state.timeline.map((event) => (
-                                         <TimelineNode key={event.id} event={event} />
-                                     ))}
+                                     {state.timeline.map((event, index) => {
+                                         const isConsecutive = index > 0 && state.timeline[index - 1].author === event.author && event.type !== 'status_change' && state.timeline[index - 1].type !== 'status_change';
+                                         return <TimelineNode key={event.id} event={event} isConsecutive={isConsecutive} />
+                                     })}
                                  </div>
 
                                  {/* Sleek Compact Editor */}
@@ -747,14 +847,49 @@ export default function TriagerReportDetails() {
                                                             </Button>
                                                         </DropdownMenuTrigger>
                                                         <DropdownMenuContent align="end" className="w-[150px]">
-                                                            <DropdownMenuItem onClick={() => handleStatusSelect('Triaged')}>Triaged (Promote)</DropdownMenuItem>
-                                                            <DropdownMenuItem onClick={() => handleStatusSelect('Needs Info')}>Needs Info</DropdownMenuItem>
-                                                            <DropdownMenuItem onClick={() => handleStatusSelect('Spam')}>Spam</DropdownMenuItem>
-                                                            <DropdownMenuItem onClick={() => handleStatusSelect('Resolved')}>Resolved</DropdownMenuItem>
-                                                            <DropdownMenuItem onClick={() => handleStatusSelect('Duplicate')}>Duplicate</DropdownMenuItem>
-                                                            <DropdownMenuItem onClick={() => handleStatusSelect('Out-of-Scope')}>Out-of-Scope</DropdownMenuItem>
+                                                            <DropdownMenuItem 
+                                                                onClick={() => handleStatusSelect('Triaged')}
+                                                                disabled={state.status === 'Triaged'}
+                                                            >
+                                                                Triaged (Promote)
+                                                            </DropdownMenuItem>
+                                                            <DropdownMenuItem 
+                                                                onClick={() => handleStatusSelect('Needs Info')}
+                                                                disabled={state.status === 'Needs Info'}
+                                                            >
+                                                                Needs Info
+                                                            </DropdownMenuItem>
+                                                            <DropdownMenuItem 
+                                                                onClick={() => handleStatusSelect('Spam')}
+                                                                disabled={state.status === 'Spam'}
+                                                            >
+                                                                Spam
+                                                            </DropdownMenuItem>
+                                                            <DropdownMenuItem 
+                                                                onClick={() => handleStatusSelect('Resolved')}
+                                                                disabled={state.status === 'Resolved'}
+                                                            >
+                                                                Resolved
+                                                            </DropdownMenuItem>
+                                                            <DropdownMenuItem 
+                                                                onClick={() => handleStatusSelect('Duplicate')}
+                                                                disabled={state.status === 'Duplicate'}
+                                                            >
+                                                                Duplicate
+                                                            </DropdownMenuItem>
+                                                            <DropdownMenuItem 
+                                                                onClick={() => handleStatusSelect('Out-of-Scope')}
+                                                                disabled={state.status === 'Out-of-Scope'}
+                                                            >
+                                                                Out-of-Scope
+                                                            </DropdownMenuItem>
                                                             <DropdownMenuSeparator />
-                                                            <DropdownMenuItem onClick={() => handleStatusSelect('Closed')}>Closed</DropdownMenuItem>
+                                                            <DropdownMenuItem 
+                                                                onClick={() => handleStatusSelect('Closed')}
+                                                                disabled={state.status === 'Closed'}
+                                                            >
+                                                                Closed
+                                                            </DropdownMenuItem>
                                                         </DropdownMenuContent>
                                                      </DropdownMenu>
                                                      <Button size="sm" className="h-7 bg-black hover:bg-zinc-800 dark:bg-white dark:hover:bg-zinc-200 text-white dark:text-black font-bold text-xs px-4" onClick={handleSendMessage}>
@@ -817,7 +952,13 @@ export default function TriagerReportDetails() {
                                 <div>
                                     <p className="text-zinc-500 text-xs mb-1">Reporter</p>
                                     <div className="flex items-center gap-2">
-                                         <div className="h-5 w-5 rounded-full bg-indigo-100 flex items-center justify-center text-[10px] text-indigo-700 font-bold">BH</div>
+                                         {report.researcherId?.avatar && report.researcherId.avatar !== 'default.jpg' ? (
+                                             <img src={report.researcherId.avatar} alt="Reporter" className="h-5 w-5 rounded-full object-cover" />
+                                         ) : (
+                                             <div className="h-5 w-5 rounded-full bg-indigo-100 flex items-center justify-center text-[10px] text-indigo-700 font-bold">
+                                                 {(report.researcherId?.name || 'U').charAt(0)}
+                                             </div>
+                                         )}
                                          <span className="font-medium">{report.researcherId?.name || 'Unknown'}</span>
                                     </div>
                                 </div>
@@ -890,7 +1031,7 @@ export default function TriagerReportDetails() {
                                              <Button 
                                                 size="sm" 
                                                 className="w-full h-7 text-xs bg-orange-500 hover:bg-orange-600 text-white border-0"
-                                                onClick={() => handleStatusSelect('Duplicate', true)}
+                                                onClick={() => handleStatusSelect('Duplicate')}
                                              >
                                                 MARK AS DUPLICATE
                                              </Button>
@@ -934,35 +1075,21 @@ export default function TriagerReportDetails() {
                 onSave={handleSeverityUpdate}
             />
 
-            <Dialog open={reasonModalOpen} onOpenChange={setReasonModalOpen}>
-                <DialogContent className="max-w-md bg-white dark:bg-zinc-950 border-zinc-200 dark:border-zinc-800">
-                    <DialogHeader>
-                        <DialogTitle className="font-mono">Status Change Reason</DialogTitle>
-                        <DialogDescription>
-                            Changing status to <span className="font-bold text-black dark:text-white">{pendingStatus?.toUpperCase()}</span>.
-                            Please explain why for the researcher.
-                        </DialogDescription>
-                    </DialogHeader>
-                    <Textarea 
-                        value={statusReason}
-                        onChange={(e) => setStatusReason(e.target.value)}
-                        placeholder="e.g. Verified valid issue, needs more information..."
-                        className="min-h-[100px] font-mono text-sm bg-zinc-50 dark:bg-zinc-900 border-zinc-200 dark:border-zinc-800 focus-visible:ring-black"
-                    />
-                    <DialogFooter>
-                        <Button variant="ghost" onClick={() => setReasonModalOpen(false)}>CANCEL</Button>
-                        <Button onClick={confirmStatusChange} className="bg-black dark:bg-white text-white dark:text-black font-bold">CONFIRM CHANGE</Button>
-                    </DialogFooter>
-                </DialogContent>
-            </Dialog>
+            <ReasonSelectionModal
+                isOpen={reasonModalOpen}
+                onClose={() => setReasonModalOpen(false)}
+                onConfirm={confirmStatusChange}
+                status={pendingStatus}
+            />
 
              <Dialog open={summaryModalOpen} onOpenChange={setSummaryModalOpen}>
                 <DialogContent className="max-w-2xl bg-white dark:bg-zinc-950 border-zinc-200 dark:border-zinc-800 p-0 overflow-hidden">
                     <DialogHeader className="p-6 border-b border-zinc-100 dark:border-zinc-900 bg-zinc-50/50 dark:bg-zinc-900/10">
                         <div className="flex items-center justify-between">
                              <DialogTitle className="font-mono text-lg tracking-tight">EXECUTIVE SUMMARY</DialogTitle>
-                             <Button size="sm" variant="outline" className="h-7 text-xs border-zinc-200 bg-white" onClick={handleGenerateSummary}>
-                                 <Brain className="h-3 w-3 mr-2 text-purple-600" /> AUTO-GENERATE
+                             <Button size="sm" variant="outline" className="h-7 text-xs border-zinc-200 bg-white" onClick={handleGenerateSummary} disabled={generatingSummary}>
+                                 <Brain className={`h-3 w-3 mr-2 text-purple-600 ${generatingSummary ? 'animate-pulse' : ''}`} /> 
+                                 {generatingSummary ? 'GENERATING...' : 'AUTO-GENERATE'}
                              </Button>
                         </div>
                     </DialogHeader>

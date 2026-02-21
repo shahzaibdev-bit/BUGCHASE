@@ -4,11 +4,15 @@ import { CheckCircle, Clock, Users, Link as LinkIcon, ExternalLink, ChevronRight
 import { cn } from '@/lib/utils';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { HoverCard, HoverCardContent, HoverCardTrigger } from "@/components/ui/hover-card";
+import { GlassCard } from '@/components/ui/glass-card';
 import CyberpunkEditor from '@/components/ui/CyberpunkEditor';
 import { format } from 'date-fns';
 import { toast } from '@/hooks/use-toast';
 import { API_URL } from '@/config';
-
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 const Timeline = ({ currentStep }: { currentStep: number }) => {
   const steps = ['Submitted', 'Triaging', 'Triaged', 'Paid', 'Resolved']; // Updated to match backend roughly
 
@@ -157,12 +161,12 @@ export default function ReportDetails() {
 
   // Participants logic
   const participants = [
-      { name: report.researcherId?.name || 'Researcher', role: 'Author', avatar: 'bg-blue-500' },
+      { name: report.researcherId?.name || 'Researcher', role: 'Author', avatarUrl: report.researcherId?.avatar, fallbackClass: 'bg-blue-500' },
       // Add unique commenters
       ...Array.from(new Set(report.comments?.map((c: any) => c.sender?._id))).map(id => {
           const c = report.comments.find((x: any) => x.sender?._id === id);
           if (c?.sender?._id === report.researcherId?._id) return null; // Skip author
-          return { name: c?.sender?.name || 'User', role: c?.sender?.role || 'Participant', avatar: 'bg-green-500' };
+          return { name: c?.sender?.name || 'User', role: c?.sender?.role || 'Participant', avatarUrl: c?.sender?.avatar, fallbackClass: 'bg-green-500' };
       }).filter(Boolean)
   ];
 
@@ -193,9 +197,12 @@ export default function ReportDetails() {
             
             {/* Section 1: Target */}
             <div className="flex items-center gap-4 pb-8 border-b border-zinc-200 dark:border-zinc-800">
-                <div className="w-12 h-12 rounded-full bg-zinc-100 dark:bg-zinc-800 flex items-center justify-center text-sm font-bold text-zinc-700 dark:text-white uppercase border border-zinc-200 dark:border-zinc-700 shadow-sm">
-                    {(report.assets?.[0] || 'Unknown').charAt(0)}
-                </div>
+                <Avatar className="w-12 h-12 border border-zinc-200 dark:border-zinc-700 bg-zinc-100 dark:bg-zinc-800 shadow-sm">
+                    <AvatarImage src={report.programId?.companyId?.avatar} alt={report.assets?.[0]} className="object-cover" />
+                    <AvatarFallback className="text-sm font-bold text-zinc-700 dark:text-white uppercase">
+                        {(report.assets?.[0] || 'Unknown').charAt(0)}
+                    </AvatarFallback>
+                </Avatar>
                 <div>
                      <h3 className="text-zinc-500 dark:text-zinc-400 font-mono text-xs mb-1 uppercase tracking-wider">Target</h3>
                     <span className="text-xl font-bold text-zinc-900 dark:text-white">{report.assets?.[0] || 'Unknown Target'}</span>
@@ -245,7 +252,7 @@ export default function ReportDetails() {
                  {/* Initial Submission Event */}
                  <div className="relative group">
                          {/* Line Segment */}
-                         <div className="absolute -left-[24px] top-10 -bottom-12 w-px bg-zinc-200 dark:bg-zinc-800 -z-10" />
+                         <div className="absolute -left-[25px] top-0 -bottom-12 w-0.5 bg-zinc-200 dark:bg-zinc-800 -z-10" />
 
                      {/* Timeline Dot */}
                      <div className="absolute -left-[44px] top-0 w-10 h-10 rounded-full bg-blue-100 text-blue-600 dark:bg-blue-950 dark:text-blue-400 flex items-center justify-center border-4 border-white dark:border-zinc-950 z-10">
@@ -254,56 +261,150 @@ export default function ReportDetails() {
 
                      <div className="flex flex-col gap-2">
                          <div className="flex items-baseline gap-2">
-                             <span className="font-bold text-blue-600 dark:text-blue-400">
-                                 {report.researcherId?.name || report.researcherId?.nickname || 'Unknown Researcher'}
-                             </span>
+                             <div className="flex items-center gap-2">
+                                 <HoverCard>
+                                     <HoverCardTrigger asChild>
+                                         <a href={`/h/${report.researcherId?.username || report.researcherId?.name}`} target="_blank" rel="noopener noreferrer" className="text-sm font-bold text-blue-600 dark:text-blue-400 hover:underline cursor-pointer">
+                                             @{report.researcherId?.username || report.researcherId?.name || 'Unknown Researcher'}
+                                         </a>
+                                     </HoverCardTrigger>
+                                     <HoverCardContent className="w-80 font-inter">
+                                         <div className="flex justify-between space-x-4">
+                                             <Avatar>
+                                                 <AvatarImage src={report.researcherId?.avatar} />
+                                                 <AvatarFallback>{(report.researcherId?.name || 'U').charAt(0)}</AvatarFallback>
+                                             </Avatar>
+                                             <div className="space-y-1 flex-1">
+                                                 <h4 className="text-sm font-semibold">@{report.researcherId?.username || report.researcherId?.name}</h4>
+                                                 <p className="text-sm text-muted-foreground">
+                                                     Security Researcher
+                                                 </p>
+                                             </div>
+                                         </div>
+                                     </HoverCardContent>
+                                 </HoverCard>
+                                 <Badge variant="outline" className="text-[10px] px-1 py-0 border-zinc-200 dark:border-zinc-800 text-zinc-500 font-normal">Security Researcher</Badge>
+                             </div>
                              <span className="text-xs text-zinc-500">{format(new Date(report.createdAt), 'MMM d, HH:mm')}</span>
                          </div>
-                         <div className="text-zinc-800 dark:text-zinc-200 text-lg">
+                         <div className="mt-1 bg-white dark:bg-zinc-900/50 rounded-xl p-3 px-4 text-sm text-zinc-800 dark:text-zinc-200 border border-zinc-200 dark:border-zinc-800 shadow-sm inline-block max-w-full font-inter leading-relaxed">
                              Hi, I found a vulnerability in <span className="font-bold">{(report.assets?.[0] || 'the program')}</span>. Please verify.
                          </div>
                      </div>
                  </div>
 
-                 {/* System Status Event */}
-                 {report.status !== 'Submitted' && (
-                     <div className="relative group">
-                         {/* Line Segment */}
-                        <div className="absolute -left-[24px] top-10 -bottom-12 w-px bg-zinc-200 dark:bg-zinc-800 -z-10" />
-
-                        <div className="absolute -left-[44px] top-1 w-10 h-10 rounded-full bg-zinc-100 text-zinc-500 dark:bg-zinc-900 dark:text-zinc-400 flex items-center justify-center border-4 border-white dark:border-zinc-950 z-10">
-                             <Activity className="w-5 h-5" />
-                        </div>
-                        <div className="text-zinc-500 dark:text-zinc-400 pt-3">
-                            System changed status to <Badge variant="outline" className="ml-2 uppercase text-[10px] tracking-wider">{report.status}</Badge>
-                        </div>
-                     </div>
-                 )}
 
                  {/* Comments */}
-                 {report.comments?.map((comment: any, idx: number) => (
-                     <div key={idx} className="relative group">
-                         {/* Line Segment */}
-                         <div className="absolute -left-[24px] top-10 -bottom-12 w-px bg-zinc-200 dark:bg-zinc-800 -z-10" />
+                 {report.comments?.map((comment: any, idx: number) => {
+                     // Check if previous comment is same author
+                     let isConsecutive = false;
+                     if (idx === 0) {
+                         // Compare first comment with the initial submission author
+                         isConsecutive = comment.sender?.username === report.researcherId?.username;
+                     } else {
+                         isConsecutive = report.comments[idx - 1].sender?.username === comment.sender?.username && report.comments[idx - 1].sender?.name === comment.sender?.name;
+                     }
 
-                         <div className="absolute -left-[44px] top-0 w-10 h-10 rounded-full bg-purple-100 text-purple-600 dark:bg-purple-950 dark:text-purple-400 flex items-center justify-center border-4 border-white dark:border-zinc-950 z-10">
-                             <span className="font-bold text-xs">{comment.sender?.name?.charAt(0) || '?'}</span>
-                         </div>
+                     return (
+                     <div key={idx} className="relative group pl-12 -ml-12 mt-4 pt-2">
+                         {/* Line Segment */}
+                         <div className="absolute left-[23px] top-0 -bottom-12 w-0.5 bg-zinc-200 dark:bg-zinc-800 z-0" />
+
+                         {!isConsecutive ? (
+                             <div className={cn(
+                                 "absolute left-[4px] top-2 w-10 h-10 rounded-full flex items-center justify-center border-4 border-white dark:border-zinc-950 z-10",
+                                 !comment.sender?.avatar && "bg-blue-600 text-white dark:bg-blue-600 dark:text-white"
+                             )}>
+                                  {comment.sender?.avatar ? (
+                                    <img 
+                                        src={comment.sender.avatar} 
+                                        alt={comment.sender.name} 
+                                        className="w-full h-full rounded-full object-cover"
+                                    />
+                                 ) : (
+                                    <span className="font-bold text-xs">{comment.sender?.name?.charAt(0) || '?'}</span>
+                                 )}
+                             </div>
+                         ) : (
+                             <div className="absolute left-[18px] top-6 w-3 h-3 rounded-full border-2 border-zinc-300 dark:border-zinc-700 bg-background z-10" />
+                         )}
 
                          <div className="flex flex-col gap-2">
-                             <div className="flex items-baseline gap-2">
-                                 <span className="font-bold text-blue-600 dark:text-blue-400">
-                                     {comment.sender?.name}
+                             <div className="flex items-center gap-2 flex-wrap">
+                                 {comment.sender?.role !== 'company' ? (
+                                    <div className="flex items-center gap-2">
+                                        <HoverCard>
+                                            <HoverCardTrigger asChild>
+                                                <a href={`/h/${comment.sender?.username || comment.sender?.name}`} target="_blank" rel="noopener noreferrer" className="text-sm font-bold text-blue-600 dark:text-blue-400 hover:underline cursor-pointer">
+                                                    @{comment.sender?.username || comment.sender?.name || 'Unknown User'}
+                                                </a>
+                                            </HoverCardTrigger>
+                                            <HoverCardContent className="w-80 font-inter">
+                                                <div className="flex justify-between space-x-4">
+                                                    <Avatar>
+                                                        <AvatarImage src={comment.sender?.avatar} />
+                                                        <AvatarFallback>{comment.sender?.name?.charAt(0) || 'U'}</AvatarFallback>
+                                                    </Avatar>
+                                                    <div className="space-y-1 flex-1">
+                                                        <h4 className="text-sm font-semibold">@{comment.sender?.username || comment.sender?.name}</h4>
+                                                        <p className="text-sm text-muted-foreground">
+                                                            Security Researcher
+                                                        </p>
+                                                    </div>
+                                                </div>
+                                            </HoverCardContent>
+                                        </HoverCard>
+                                        <Badge variant="outline" className="text-[10px] px-1 py-0 border-zinc-200 dark:border-zinc-800 text-zinc-500 font-normal">Security Researcher</Badge>
+                                    </div>
+                                 ) : (
+                                     <div className="flex items-center gap-2">
+                                         <span className="text-sm font-bold text-zinc-900 dark:text-zinc-100">
+                                            {comment.sender?.name}
+                                         </span>
+                                         <Badge variant="outline" className="text-[10px] px-1 py-0 border-zinc-200 dark:border-zinc-800 text-zinc-500 font-normal">
+                                             Company
+                                         </Badge>
+                                     </div>
+                                 )}
+                                 {comment.type === 'status_change' && (
+                                     <span className="text-zinc-500 text-sm flex items-center gap-1">
+                                          changed the status to 
+                                          <span className="font-bold text-zinc-800 dark:text-zinc-200">
+                                              {comment.metadata?.newStatus || comment.content.replace('Changed status to ', '').replace('System changed status to ', '')}
+                                          </span>
+                                          <span>.</span>
+                                     </span>
+                                 )}
+                                 <span className="text-zinc-400 text-[10px] ml-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                                    {new Date(comment.createdAt).toLocaleString(undefined, {
+                                        day: '2-digit', month: '2-digit', year: 'numeric',
+                                        hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: true
+                                    })}
                                  </span>
-                                 <span className="text-xs text-zinc-500">{format(new Date(comment.createdAt), 'MMM d, HH:mm')}</span>
                              </div>
-                             <div 
-                                className="text-zinc-800 dark:text-zinc-200 text-lg prose dark:prose-invert max-w-none"
-                                dangerouslySetInnerHTML={{ __html: comment.content }}
-                             />
+                             {comment.type === 'status_change' ? (
+                                <div className="mt-1 flex flex-col items-start w-full">
+                                    {comment.metadata?.reason && (
+                                        <div className="mt-2 p-3 bg-zinc-50 dark:bg-zinc-900/60 border border-zinc-200 dark:border-zinc-800 rounded-lg text-sm text-zinc-700 dark:text-zinc-300 w-full">
+                                             <div className="prose prose-sm prose-zinc dark:prose-invert max-w-none">
+                                                 <ReactMarkdown remarkPlugins={[remarkGfm]}>{comment.metadata.reason}</ReactMarkdown>
+                                             </div>
+                                        </div>
+                                    )}
+                                </div>
+                             ) : comment.type === 'severity_update' ? (
+                                <div className="flex items-center gap-1 mt-1 text-sm text-zinc-500 dark:text-zinc-400">
+                                    <span>updated severity —</span>
+                                    <span className="font-bold" dangerouslySetInnerHTML={{ __html: comment.content }} />
+                                </div>
+                             ) : (
+                                <div className="mt-1 bg-white dark:bg-zinc-900/50 rounded-xl p-3 px-4 text-sm text-zinc-800 dark:text-zinc-200 border border-zinc-200 dark:border-zinc-800 shadow-sm inline-block max-w-full font-inter leading-relaxed">
+                                    <div dangerouslySetInnerHTML={{ __html: comment.content }} />
+                                </div>
+                             )}
                          </div>
                      </div>
-                 ))}
+                 )})}
 
                  {/* Editor (Fixed Activity Item) */}
                  <div className="relative">
@@ -397,9 +498,12 @@ export default function ReportDetails() {
                  <div className="space-y-3">
                     {participants.map((p: any, i) => (
                         <div key={i} className="flex items-center gap-3">
-                            <div className={cn("w-6 h-6 rounded-full flex items-center justify-center text-[10px] text-white font-bold", p.avatar)}>
-                                {p.name.charAt(0).toUpperCase()}
-                            </div>
+                            <Avatar className="w-8 h-8 border border-zinc-200 dark:border-zinc-800 bg-white">
+                                <AvatarImage src={p.avatarUrl} alt={p.name} className="object-cover" />
+                                <AvatarFallback className={cn("text-[10px] text-white font-bold", p.fallbackClass)}>
+                                    {p.name.charAt(0).toUpperCase()}
+                                </AvatarFallback>
+                            </Avatar>
                             <div className="flex flex-col">
                                 <span className="text-sm text-zinc-900 dark:text-zinc-300 font-medium leading-none">{p.name}</span>
                                 <span className="text-[10px] text-zinc-500 dark:text-zinc-600 font-mono mt-0.5">{p.role}</span>

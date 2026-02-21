@@ -78,6 +78,11 @@ if (process.env.NODE_ENV !== 'production' && !process.env.VERCEL) {
     console.log(`Server running in ${process.env.NODE_ENV} mode on port ${PORT}`);
   });
 
+  // Initialize WebSockets
+  import('./services/socketService').then(({ initSocket }) => {
+      initSocket(server);
+  });
+
   // Handle Unhandled Rejections
   process.on('unhandledRejection', (err: any) => {
     console.log('UNHANDLED REJECTION! 💥');

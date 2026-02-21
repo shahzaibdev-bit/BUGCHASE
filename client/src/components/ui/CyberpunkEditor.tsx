@@ -48,7 +48,8 @@ export default function CyberpunkEditor({ content, onChange, placeholder }: Edit
   const [linkUrl, setLinkUrl] = useState('');
   const [imageUrl, setImageUrl] = useState('');
   const [isPreview, setIsPreview] = useState(false);
-  
+  const [, setRevision] = useState(0);
+
   const editor = useEditor({
     extensions: [
       StarterKit,
@@ -70,6 +71,12 @@ export default function CyberpunkEditor({ content, onChange, placeholder }: Edit
     onUpdate: ({ editor }) => {
       onChange(editor.getHTML());
     },
+    onSelectionUpdate: () => {
+        setRevision(r => r + 1);
+    },
+    onTransaction: () => {
+        setRevision(r => r + 1);
+    }
   });
 
   if (!editor) return null;
@@ -91,13 +98,13 @@ export default function CyberpunkEditor({ content, onChange, placeholder }: Edit
   };
 
   return (
-    <div className="border border-border rounded-lg overflow-hidden bg-background shadow-sm transition-all focus-within:ring-1 focus-within:ring-foreground">
+    <div className="border border-border rounded-lg bg-background shadow-sm transition-all focus-within:ring-1 focus-within:ring-foreground flex flex-col h-full w-full">
       
       {/* 1. Enhanced Toolbar - Compact */}
-      <div className="flex items-center flex-wrap gap-1 p-1.5 border-b border-border bg-muted/30 backdrop-blur-sm">
+      <div className="flex flex-wrap items-center gap-1 p-1 border-b border-border bg-muted/30 backdrop-blur-sm shrink-0">
         
         {/* Formatting Group */}
-        <div className="flex items-center gap-0.5 border-r border-border pr-1.5 mr-1.5">
+        <div className="flex items-center gap-0.5 border-r border-border pr-1 mr-1">
             <ToolbarButton onClick={() => editor.chain().focus().toggleBold().run()} isActive={editor.isActive('bold')} icon={Bold} title="Bold" disabled={isPreview} />
             <ToolbarButton onClick={() => editor.chain().focus().toggleUnderline().run()} isActive={editor.isActive('underline')} icon={UnderlineIcon} title="Underline" disabled={isPreview} />
             <ToolbarButton onClick={() => editor.chain().focus().toggleItalic().run()} isActive={editor.isActive('italic')} icon={Italic} title="Italic" disabled={isPreview} />
@@ -105,14 +112,14 @@ export default function CyberpunkEditor({ content, onChange, placeholder }: Edit
         </div>
 
         {/* Structure Group */}
-        <div className="flex items-center gap-0.5 border-r border-border pr-1.5 mr-1.5">
+        <div className="flex items-center gap-0.5 border-r border-border pr-1 mr-1">
             <ToolbarButton onClick={() => editor.chain().focus().toggleBlockquote().run()} isActive={editor.isActive('blockquote')} icon={Quote} title="Quote" disabled={isPreview} />
             <ToolbarButton onClick={() => editor.chain().focus().toggleBulletList().run()} isActive={editor.isActive('bulletList')} icon={List} title="Bullet List" disabled={isPreview} />
             <ToolbarButton onClick={() => editor.chain().focus().toggleOrderedList().run()} isActive={editor.isActive('orderedList')} icon={ListOrdered} title="Numbered List" disabled={isPreview} />
         </div>
 
         {/* Insert Group */}
-        <div className="flex items-center gap-0.5 border-r border-border pr-1.5 mr-1.5">
+        <div className="flex items-center gap-0.5 border-r border-border pr-1 mr-1">
             <ToolbarButton onClick={() => editor.chain().focus().toggleCodeBlock().run()} isActive={editor.isActive('codeBlock')} icon={Code} title="Code Block" disabled={isPreview} />
             
             {/* Custom Link Popover */}
@@ -192,14 +199,16 @@ export default function CyberpunkEditor({ content, onChange, placeholder }: Edit
       </div>
 
       {/* 2. The Editor Area */}
-      {isPreview ? (
-        <div 
-            className="prose prose-sm dark:prose-invert max-w-none p-3 min-h-[100px] outline-none prose-ul:list-disc prose-ul:pl-4 prose-ol:list-decimal prose-ol:pl-4 prose-blockquote:border-l-2 prose-blockquote:border-foreground prose-blockquote:pl-4 prose-blockquote:italic animate-in fade-in duration-200"
-            dangerouslySetInnerHTML={{ __html: editor.getHTML() }}
-        />
-      ) : (
-        <EditorContent editor={editor} className="cursor-text animate-in fade-in duration-200" />
-      )}
+      <div className="flex-1 overflow-y-auto cursor-text bg-transparent">
+          {isPreview ? (
+            <div 
+                className="prose prose-sm dark:prose-invert max-w-none p-2 outline-none prose-ul:list-disc prose-ul:pl-4 prose-ol:list-decimal prose-ol:pl-4 prose-blockquote:border-l-2 prose-blockquote:border-foreground prose-blockquote:pl-4 prose-blockquote:italic animate-in fade-in duration-200"
+                dangerouslySetInnerHTML={{ __html: editor.getHTML() }}
+            />
+          ) : (
+            <EditorContent editor={editor} className="h-full w-full [&>div]:min-h-full" />
+          )}
+      </div>
       
     </div>
   );

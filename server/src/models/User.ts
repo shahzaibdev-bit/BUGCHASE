@@ -15,6 +15,7 @@ export interface IUser extends Document {
   walletBalance: number;
   country?: string;
   bio?: string;
+  bioUpdated?: boolean;
   skills: string[];
   linkedAccounts: {
     github?: string;
@@ -27,35 +28,34 @@ export interface IUser extends Document {
   industry?: string;
   website?: string;
   city?: string;
-  website?: string;
-  city?: string;
-  expertise?: string[];
-  severityPreferences?: string[];
-  maxConcurrentReports?: number;
-  isAvailable?: boolean;
-  // Team Management
-  parentCompany?: mongoose.Types.ObjectId;
-  companyRole?: 'admin' | 'manager' | 'viewer' | 'custom';
-  permissions?: string[];
-  isPrivate: boolean; // Keeping existing
-  
-  // Domain Verification
-  verificationToken?: string;
-  verifiedAssets: {
-    id: string;
-    domain: string;
-    method: 'DNS_TXT';
-    verificationToken: string; // Added as per request
-    dateVerified: string; // ISO Date
-    status: 'verified';
-  }[];
-  achievements?: {
-      title: string;
-      sub: string;
-      date: Date;
-      desc: string;
-      icon: string;
-  }[];
+
+    expertise?: string[];
+    severityPreferences?: string[];
+    maxConcurrentReports?: number;
+    isAvailable?: boolean;
+    // Team Management
+    parentCompany?: mongoose.Types.ObjectId;
+    companyRole?: 'admin' | 'manager' | 'viewer' | 'custom';
+    permissions?: string[];
+    isPrivate: boolean; // Keeping existing
+    
+    // Domain Verification
+    verificationToken?: string;
+    verifiedAssets: {
+        id: string;
+        domain: string;
+        method: 'DNS_TXT' | 'SECURITY_TXT'; 
+        verificationToken: string; // Added as per request
+        dateVerified: string; // ISO Date
+        status: 'verified' | 'disabled';
+    }[];
+    achievements?: {
+        title: string;
+        sub: string;
+        date: Date;
+        desc: string;
+        icon: string;
+    }[];
 
   status: 'Active' | 'Suspended' | 'Banned';
   statusReason?: string;
@@ -148,10 +148,17 @@ const userSchema = new mongoose.Schema<IUser>({
   verifiedAssets: [{
       id: String,
       domain: String,
-      method: String,
-      verificationToken: String, // Added
-      dateVerified: String,
-      status: String
+        method: {
+            type: String,
+            enum: ['DNS_TXT', 'SECURITY_TXT'],
+        },
+        verificationToken: String, // Added
+        dateVerified: String,
+        status: {
+            type: String,
+            enum: ['verified', 'disabled'],
+            default: 'verified'
+        }
   }],
   achievements: [{
       title: String,

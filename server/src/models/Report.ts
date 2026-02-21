@@ -29,6 +29,10 @@ const reportSchema = new mongoose.Schema({
     enum: ['Submitted', 'Triaging', 'Triaged', 'Pending_Fix', 'Resolved', 'Paid', 'Spam', 'Duplicate', 'NA', 'Needs Info', 'Out-of-Scope', 'Under Review', 'Closed'],
     default: 'Submitted',
   },
+  bounty: {
+    type: Number,
+    default: 0
+  },
   
   // Attachments (S3 URLs or local paths)
   attachments: [{
@@ -45,6 +49,12 @@ const reportSchema = new mongoose.Schema({
           required: true
       },
       content: { type: String, required: true },
+      type: { 
+          type: String, 
+          enum: ['comment', 'status_change', 'severity_update', 'assignment'], 
+          default: 'comment' 
+      },
+      metadata: { type: mongoose.Schema.Types.Mixed }, // Flexible for reason, oldStatus, newStatus
       createdAt: { type: Date, default: Date.now }
   }],
 

@@ -86,6 +86,11 @@ export const updateMe = catchAsync(async (req: Request, res: Response, next: Nex
     // 2) Filtered out unwanted field names that are not allowed to be updated
     const filteredBody = filterObj(req.body, 'name', 'companyName', 'industry', 'website', 'city', 'country', 'bio', 'linkedAccounts', 'username');
 
+    // Sync companyName with name for company users so it applies globally (e.g. on comments)
+    if (req.user && (req.user as any).role === 'company' && filteredBody.companyName) {
+        filteredBody.name = filteredBody.companyName;
+    }
+
     // 3) Update user document
     const updatedUser = await User.findByIdAndUpdate(req.user!.id, filteredBody, {
         new: true,

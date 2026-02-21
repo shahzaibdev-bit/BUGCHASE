@@ -327,3 +327,60 @@ body { margin: 0; padding: 0; background-color: #000000; }
   `;
   return juice(html);
 };
+export const threadNotificationTemplate = (recipientName: string, senderName: string, actionType: string, reportTitle: string, content: string, link: string) => {
+  const html = `
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Report Update</title>
+<style>
+body { margin: 0; padding: 0; background-color: #000000; }
+.wrapper { width: 100%; table-layout: fixed; background-color: #000000; padding-bottom: 40px; }
+.container { background-color: #09090b; margin: 0 auto; width: 100%; max-width: 800px; border: 1px solid #27272a; border-radius: 8px; overflow: hidden; }
+.header { background-color: #18181b; padding: 20px; text-align: center; border-bottom: 1px solid #27272a; }
+.logo { color: #ffffff; font-family: 'Courier New', Courier, monospace; font-weight: bold; font-size: 20px; letter-spacing: 1px; text-transform: uppercase; text-decoration: none; }
+.content { padding: 40px 20px; text-align: left; font-family: 'Courier New', Courier, monospace; }
+.title { font-size: 20px; margin: 0 0 20px; color: #ffffff; }
+.text { font-size: 16px; color: #a1a1aa; line-height: 1.6; margin: 0 0 20px; }
+.box { background-color: #18181b; border: 1px solid #27272a; border-radius: 8px; padding: 20px; margin-bottom: 30px; }
+.label { font-size: 12px; color: #71717a; margin-bottom: 5px; text-transform: uppercase; letter-spacing: 1px; font-weight: bold; }
+.value { font-size: 16px; color: #ffffff; font-family: monospace; white-space: pre-wrap; }
+.button { display: inline-block; background-color: #ffffff; color: #000000; padding: 12px 24px; border-radius: 6px; text-decoration: none; font-weight: bold; font-size: 14px; font-family: 'Courier New', Courier, monospace; text-transform: uppercase; }
+.footer { padding: 20px; text-align: center; color: #52525b; font-size: 12px; font-family: 'Courier New', Courier, monospace; border-top: 1px solid #27272a; background-color: #09090b; }
+</style>
+</head>
+<body>
+<div class="wrapper">
+    <div style="height: 40px;"></div>
+    <div class="container">
+      <div class="header">
+        <a href="#" class="logo">BugChase Security</a>
+      </div>
+      <div class="content">
+        <h1 class="title">New Activity on Report</h1>
+        <p class="text">
+          Hello ${recipientName},<br/><br/>
+          <strong>${senderName}</strong> has performed an action: <span style="color: #fff; background: #27272a; padding: 2px 6px; border-radius: 4px; font-size: 12px; text-transform: uppercase;">${actionType}</span>
+        </p>
+        <p class="text" style="margin-bottom: 10px; font-size: 14px; color: #71717a;">Report: ${reportTitle}</p>
+        
+        <div class="box">
+          <div class="value">${content}</div>
+        </div>
+
+        <div style="text-align: center;">
+          <a href="${link}" class="button">View Report Thread</a>
+        </div>
+      </div>
+      <div class="footer">
+        &copy; ${new Date().getFullYear()} BugChase. All rights reserved.
+      </div>
+    </div>
+</div>
+</body>
+</html>
+  `;
+  return juice(html);
+};

@@ -138,6 +138,12 @@ export default function TriagerQueue() {
     );
   };
 
+// Helper to strip HTML tags for preview
+  const stripHtml = (html: string) => {
+    if (!html) return "";
+    return html.replace(/<[^>]*>?/gm, '');
+  };
+
   return (
     <div className="space-y-8 animate-fade-in p-6 min-h-screen bg-white dark:bg-black">
       {/* Header Section */}
@@ -239,7 +245,7 @@ export default function TriagerQueue() {
                                         {report.title}
                                     </h3>
                                     <p className="text-zinc-500 text-sm line-clamp-1 mt-1 font-sans">
-                                        {report.description}
+                                        {stripHtml(report.description)}
                                     </p>
                                 </div>
 
@@ -323,7 +329,7 @@ export default function TriagerQueue() {
                                         {report.title}
                                     </h3>
                                     <p className="text-zinc-500 text-sm line-clamp-1 mt-1 font-sans">
-                                        {report.description}
+                                        {stripHtml(report.description)}
                                     </p>
                                 </div>
                             </div>

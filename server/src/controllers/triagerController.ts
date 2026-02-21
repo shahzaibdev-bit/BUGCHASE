@@ -5,7 +5,9 @@ import Report from '../models/Report';
 import User from '../models/User';
 import Program from '../models/Program';
 import Notification from '../models/Notification';
-import { sendEmail } from '../services/emailService';
+import { sendEmail, threadNotificationTemplate } from '../services/emailService';
+import { generateReportSummary } from '../services/geminiService';
+import { getIO } from '../services/socketService';
 
 // Dashboard Stats
 export const getDashboardStats = catchAsync(async (req: Request, res: Response, next: NextFunction) => {
@@ -127,13 +129,6 @@ export const getMyQueue = catchAsync(async (req: Request, res: Response, next: N
             reports
         }
     });
-    res.status(200).json({
-        status: 'success',
-        results: reports.length,
-        data: {
-            reports
-        }
-    });
 });
 
 // Get Assigned Reports (For Assigned Page)
@@ -185,7 +180,6 @@ export const getGlobalPool = catchAsync(async (req: Request, res: Response, next
 });
 
 // Claim a Report
-// Claim a Report
 export const claimReport = catchAsync(async (req: Request, res: Response, next: NextFunction) => {
     const { id } = req.params;
     const triagerId = req.user.id;
@@ -201,7 +195,6 @@ export const claimReport = catchAsync(async (req: Request, res: Response, next: 
         return next(new AppError('Report already claimed by another triager', 400));
     }
 
-    // Only add welcome message if it's the first time being claimed (or status was Submitted)
     if (report.status === 'Submitted') {
         const researcherName = (report.researcherId as any)?.username || (report.researcherId as any)?.name || 'Researcher';
         
@@ -217,6 +210,7 @@ Best regards,
         report.comments.push({
             sender: triagerId as any,
             content: welcomeMessage,
+            type: 'assignment',
             createdAt: new Date()
         });
     }
@@ -224,7 +218,25 @@ Best regards,
     report.triagerId = triagerId as any;
     report.status = 'Triaging';
     report.triagerNote = 'Report claimed for triage.';
+
     await report.save();
+
+    try {
+        const io = getIO();
+        const newAssignmentComment = report.comments[report.comments.length - 1];
+        
+        io.to(id).emit('new_activity', {
+            id: newAssignmentComment._id,
+            type: 'assignment',
+            author: triagerName,
+            role: 'Triager',
+            content: newAssignmentComment.content,
+            timestamp: newAssignmentComment.createdAt,
+            // authorAvatar: ... we don't populate sender here immediately in claimReport
+        });
+    } catch (socketError) {
+        console.error("Socket emit failed on claim:", socketError);
+    }
 
     res.status(200).json({
         status: 'success',
@@ -233,14 +245,38 @@ Best regards,
             report
         }
     });
+
+    // Send Email to Researcher in background
+    (async () => {
+        const researcherEmail = (report.researcherId as any)?.email;
+        const researcherName = (report.researcherId as any)?.name || 'Researcher';
+        if (researcherEmail) {
+            try {
+                await sendEmail(
+                    researcherEmail,
+                    `Report Assigned: ${report.title}`,
+                    threadNotificationTemplate(
+                        researcherName,
+                        triagerName,
+                        'Assignment',
+                        report.title,
+                        `Your report has been assigned to ${triagerName} for review.`,
+                        `${process.env.CLIENT_URL}/researcher/reports/${report._id}`
+                    )
+                );
+            } catch (error) {
+                console.error('Failed to send assignment email:', error);
+            }
+        }
+    })();
 });
 
 // Get Report Details
 export const getReportDetails = catchAsync(async (req: Request, res: Response, next: NextFunction) => {
     const { id } = req.params;
     const report = await Report.findById(id)
-        .populate('researcherId', 'name email')
-        .populate('comments.sender', 'name role avatar');
+        .populate('researcherId', 'username name email avatar')
+        .populate('comments.sender', 'username name role avatar');
 
     if (!report) {
         return next(new AppError('Report not found', 404));
@@ -270,15 +306,58 @@ export const postComment = catchAsync(async (req: Request, res: Response, next: 
 
     await report.save();
 
+    await report.populate('comments.sender', 'name username role avatar');
+    const newComment = report.comments[report.comments.length - 1];
+
+    try {
+        const io = getIO();
+        io.to(id).emit('new_activity', {
+            id: newComment._id,
+            type: 'comment',
+            author: (newComment.sender as any)?.role !== 'company' ? ((newComment.sender as any)?.username || (newComment.sender as any)?.name || 'Unknown User') : ((newComment.sender as any)?.name || 'Unknown Company'),
+            role: 'Triager',
+            content: newComment.content,
+            timestamp: newComment.createdAt,
+            authorAvatar: (newComment.sender as any)?.avatar
+        });
+    } catch (socketError) {
+        console.error("Socket emit failed:", socketError);
+    }
+
     res.status(200).json({
         status: 'success',
         data: {
             report
         }
     });
+
+    // Populate to get researcher details for email in background
+    (async () => {
+        try {
+            await report.populate('researcherId', 'name email avatar');
+            const researcher = report.researcherId as any;
+
+            if (researcher?.email) {
+                 const senderName = req.user.name || 'Triager';
+                 await sendEmail(
+                    researcher.email,
+                    `New Comment on ${report.title}`,
+                    threadNotificationTemplate(
+                        researcher.name,
+                        senderName,
+                        'Comment',
+                        report.title,
+                        content,
+                        `${process.env.CLIENT_URL}/researcher/reports/${report._id}`
+                    )
+                );
+            }
+        } catch (error) {
+            console.error("Failed to send comment email:", error);
+        }
+    })();
 });
 
-// Update Report Details (Severity, Vectors) - "Calculator"
 // Update Report Details (Severity, Vectors) - "Calculator"
 export const updateReportSeverity = catchAsync(async (req: Request, res: Response, next: NextFunction) => {
     const { id } = req.params;
@@ -299,10 +378,36 @@ export const updateReportSeverity = catchAsync(async (req: Request, res: Respons
     report.comments.push({
         sender: req.user.id,
         content: `Updated severity to ${severity} (${cvssScore}).`,
+        type: 'severity_update',
+        metadata: { severity, cvssScore, cvssVector },
         createdAt: new Date()
     });
 
     await report.save();
+
+    try {
+        const io = getIO();
+        const newSystemComment = report.comments[report.comments.length - 1];
+        
+        io.to(id).emit('new_activity', {
+            id: newSystemComment._id,
+            type: 'status_change', // Treat as status change for timeline UI display logic
+            author: 'System',
+            role: 'System',
+            content: newSystemComment.content,
+            timestamp: newSystemComment.createdAt
+        });
+        
+        // Also emit report_updated event so the UI can update the actual severity badges
+        io.to(id).emit('report_updated', {
+             severity,
+             cvssScore,
+             cvssVector,
+             impact
+        });
+    } catch (socketError) {
+        console.error("Socket emit failed on severity update:", socketError);
+    }
 
     res.status(200).json({
         status: 'success',
@@ -310,6 +415,31 @@ export const updateReportSeverity = catchAsync(async (req: Request, res: Respons
             report
         }
     });
+
+    // Notify Researcher in background
+    (async () => {
+        await report.populate('researcherId', 'name email avatar');
+        const researcher = report.researcherId as any;
+        if (researcher?.email) {
+             try {
+                 const senderName = req.user.name || 'Triager';
+                 await sendEmail(
+                    researcher.email,
+                    `Severity Updated: ${report.title}`,
+                    threadNotificationTemplate(
+                        researcher.name,
+                        senderName,
+                        'Severity Update',
+                        report.title,
+                        `Severity updated to ${severity} (CVSS: ${cvssScore})`,
+                        `${process.env.CLIENT_URL}/researcher/reports/${report._id}`
+                    )
+                );
+            } catch (error) {
+                console.error("Failed to send severity email:", error);
+            }
+        }
+    })();
 });
 
 // Submit Triage Decision
@@ -324,21 +454,46 @@ export const submitDecision = catchAsync(async (req: Request, res: Response, nex
     }
 
     report.status = status;
-    if (note) report.triagerNote = note;
+    if (note && status === 'Triaged') report.triagerNote = note;
     
     // If status is "Triaged", notify Company
     // If status is "Spam", "Duplicate", "NA", notify Researcher
 
+    report.comments.push({
+        sender: req.user.id,
+        content: `Changed status to ${status}`,
+        type: 'status_change',
+        metadata: { 
+            oldStatus: report.status, 
+            newStatus: status,
+            reason: note 
+        },
+        createdAt: new Date()
+    });
+
     await report.save();
 
-    // Create In-App Notification for Researcher
-    await Notification.create({
-        recipient: report.researcherId,
-        title: `Report Status Updated: ${report.title}`,
-        message: `Your report has been marked as ${status}.`,
-        type: 'report_status',
-        link: `/researcher/reports/${report._id}`
-    });
+    try {
+        const io = getIO();
+        const newSystemComment = report.comments[report.comments.length - 1];
+        
+        io.to(id).emit('new_activity', {
+            id: newSystemComment._id,
+            type: 'status_change', 
+            author: req.user.username || req.user.name || 'Unknown Triager',
+            authorAvatar: req.user.avatar,
+            role: 'Triager',
+            content: newSystemComment.content,
+            timestamp: newSystemComment.createdAt,
+            metadata: newSystemComment.metadata
+        });
+        
+        io.to(id).emit('status_updated', {
+             status
+        });
+    } catch (socketError) {
+        console.error("Socket emit failed on submit decision:", socketError);
+    }
 
     res.status(200).json({
         status: 'success',
@@ -346,6 +501,40 @@ export const submitDecision = catchAsync(async (req: Request, res: Response, nex
             report
         }
     });
+
+    // Create Notification and Email in background
+    (async () => {
+        try {
+            // Create In-App Notification for Researcher
+            await Notification.create({
+                recipient: report.researcherId,
+                title: `Report Status Updated: ${report.title}`,
+                message: `Your report has been marked as ${status}.`,
+                type: 'report_status',
+                link: `/researcher/reports/${report._id}`
+            });
+
+            // Send Email
+            const researcher = report.researcherId as any;
+            if (researcher?.email) {
+                 const senderName = req.user.name || 'Triager';
+                 await sendEmail(
+                    researcher.email,
+                    `Status Updated: ${report.title}`,
+                    threadNotificationTemplate(
+                        researcher.name,
+                        senderName,
+                        'Status Change',
+                        report.title,
+                        `Status changed to ${status}.\n\nNote: ${note || 'No additional note.'}`,
+                        `${process.env.CLIENT_URL}/researcher/reports/${report._id}`
+                    )
+                );
+            }
+        } catch (error) {
+            console.error("Failed to send decision email or notification:", error);
+        }
+    })();
 });
 
 // Update Report Status
@@ -358,21 +547,73 @@ export const updateReportStatus = catchAsync(async (req: Request, res: Response,
 
     // Persist changes
     report.status = status;
-    if (note) report.triagerNote = note; // Optional note
 
     // Add to specific timeline/activity logic if needed
     report.comments.push({
         sender: req.user.id,
         content: `Changed status to ${status}`,
+        type: 'status_change',
+        metadata: { 
+            oldStatus: report.status,
+            newStatus: status,
+            reason: note 
+        },
         createdAt: new Date()
     });
 
     await report.save();
 
+    try {
+        const io = getIO();
+        const newSystemComment = report.comments[report.comments.length - 1];
+        
+        io.to(id).emit('new_activity', {
+            id: newSystemComment._id,
+            type: 'status_change', 
+            author: req.user.username || req.user.name || 'Unknown Triager',
+            authorAvatar: req.user.avatar,
+            role: 'Triager',
+            content: newSystemComment.content,
+            timestamp: newSystemComment.createdAt,
+            metadata: newSystemComment.metadata
+        });
+        
+        io.to(id).emit('status_updated', {
+             status
+        });
+    } catch (socketError) {
+        console.error("Socket emit failed on status update:", socketError);
+    }
+
     res.status(200).json({
         status: 'success',
         data: { report }
     });
+
+    // Send Email to Researcher in background
+    (async () => {
+        await report.populate('researcherId', 'name email avatar');
+        const researcher = report.researcherId as any;
+        if (researcher?.email) {
+             try {
+                 const senderName = req.user.name || 'Triager';
+                 await sendEmail(
+                    researcher.email,
+                    `Status Updated: ${report.title}`,
+                    threadNotificationTemplate(
+                        researcher.name,
+                        senderName,
+                        'Status Change',
+                        report.title,
+                        `Status changed to ${status}.\n\nNote: ${note || 'No additional note.'}`,
+                        `${process.env.CLIENT_URL}/researcher/reports/${report._id}`
+                    )
+                );
+            } catch (error) {
+                 console.error("Failed to send status email:", error);
+            }
+        }
+    })();
 });
 
 // Reopen Report
@@ -416,5 +657,26 @@ export const updateReportValidation = catchAsync(async (req: Request, res: Respo
     res.status(200).json({
         status: 'success',
         data: { report }
+    });
+});
+
+// Generate AI Summary for Report
+export const generateSummary = catchAsync(async (req: Request, res: Response, next: NextFunction) => {
+    const { id } = req.params;
+
+    const report = await Report.findById(id)
+        .populate('comments.sender', 'username name role');
+
+    if (!report) {
+         return next(new AppError('Report not found', 404));
+    }
+
+    const summaryData = await generateReportSummary(report, report.comments);
+
+    res.status(200).json({
+        status: 'success',
+        data: {
+            summary: summaryData
+        }
     });
 });

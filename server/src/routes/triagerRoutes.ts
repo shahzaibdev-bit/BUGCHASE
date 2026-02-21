@@ -2,8 +2,6 @@ import express from 'express';
 import { protect, restrictTo } from '../middlewares/authMiddleware';
 import {
     getDashboardStats,
-    getMyQueue,
-    getDashboardStats,
     getTriagerProfile,
     updateTriagerPreferences,
     getMyQueue,
@@ -16,7 +14,8 @@ import {
     postComment,
     updateReportStatus,
     updateReportValidation,
-    reopenReport
+    reopenReport,
+    generateSummary
 } from '../controllers/triagerController';
 
 const router = express.Router();
@@ -39,5 +38,6 @@ router.patch('/reports/:id/status', updateReportStatus);
 router.patch('/reports/:id/validation', updateReportValidation);
 router.post('/reports/:id/decision', submitDecision);
 router.post('/reports/:id/reopen', reopenReport);
+router.post('/reports/:id/generate-summary', generateSummary);
 
 export default router;

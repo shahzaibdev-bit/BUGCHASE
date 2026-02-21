@@ -120,6 +120,7 @@ export default function CompanySettings() {
           if (res.ok) {
               toast({ title: 'Profile Updated', description: 'Your company details have been saved.' });
               setIsEditing(false);
+              await refreshUser(); // Update the local user context
           } else {
               toast({ title: 'Update Failed', description: data.message || 'Could not save profile.', variant: 'destructive' });
           }

@@ -26,7 +26,6 @@ export const CyberLock = ({ className = "" }: { className?: string }) => {
                  {[0, 1, 2].map((i) => (
                     <motion.div
                         key={i}
-                        className="absolute inset-0 border border-zinc-900/40 dark:border-white/40 bg-zinc-900/5 dark:bg-white/5" // Reduced bg opacity, removed blur
                         style={{ 
                             clipPath: "polygon(30% 0%, 70% 0%, 100% 30%, 100% 70%, 70% 100%, 30% 100%, 0% 70%, 0% 30%)",
                             translateZ: i * 30 // Increased spacing for 3D depth
