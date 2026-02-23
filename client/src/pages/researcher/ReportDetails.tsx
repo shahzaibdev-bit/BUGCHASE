@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { io as socketIO } from 'socket.io-client';
 import { useParams, Link } from 'react-router-dom';
 import { CheckCircle, Clock, Users, Link as LinkIcon, ExternalLink, ChevronRight, MessageSquare, History, Shield, AlertTriangle, UploadCloud, Activity } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -99,6 +100,52 @@ export default function ReportDetails() {
 
   useEffect(() => {
     fetchReport();
+  }, [id]);
+
+  // Real-time socket — receive live updates from triager/company actions
+  useEffect(() => {
+    if (!id) return;
+    const socketUrl = (import.meta.env.VITE_API_URL || 'http://localhost:5000').replace(/\/api\/?$/, '');
+    const socket = socketIO(socketUrl, { withCredentials: true });
+    socket.on('connect', () => socket.emit('join_report', id));
+
+    socket.on('new_activity', (activity: any) => {
+      setReport((prev: any) => {
+        if (!prev) return prev;
+        const alreadyExists = (prev.comments || []).some((c: any) => String(c._id) === String(activity.id));
+        if (alreadyExists) return prev;
+        return {
+          ...prev,
+          comments: [
+            ...(prev.comments || []),
+            {
+              _id: activity.id,
+              content: activity.content,
+              type: activity.type,
+              createdAt: activity.timestamp,
+              sender: { name: activity.author, role: activity.role?.toLowerCase() || 'triager', avatar: activity.authorAvatar },
+              metadata: activity.metadata,
+            },
+          ],
+        };
+      });
+    });
+
+    socket.on('report_updated', (data: any) => {
+      setReport((prev: any) => {
+        if (!prev) return prev;
+        return { ...prev, severity: data.severity ?? prev.severity, cvssScore: data.cvssScore ?? prev.cvssScore, cvssVector: data.cvssVector ?? prev.cvssVector };
+      });
+    });
+
+    socket.on('status_updated', (data: any) => {
+      if (data.status) setReport((prev: any) => prev ? { ...prev, status: data.status } : prev);
+    });
+
+    return () => {
+      socket.emit('leave_report', id);
+      socket.disconnect();
+    };
   }, [id]);
 
   const handlePostComment = async () => {

@@ -629,6 +629,29 @@ export const updateReportSeverity = catchAsync(async (req: Request, res: Respons
 
     await report.save();
 
+    // Push real-time update to everyone in the room
+    try {
+        const io = getIO();
+        const newComment = report.comments[report.comments.length - 1];
+        io.to(id).emit('new_activity', {
+            id: newComment._id,
+            type: 'severity_update',
+            author: req.user!.name || req.user!.username || 'Company',
+            authorAvatar: (req.user as any).avatar,
+            role: 'Company',
+            content: newComment.content,
+            timestamp: newComment.createdAt || new Date().toISOString(),
+            metadata: newComment.metadata
+        });
+        io.to(id).emit('report_updated', {
+            severity: report.severity,
+            cvssScore: finalScore,
+            cvssVector: finalVector
+        });
+    } catch (socketError) {
+        console.error('Socket emit failed on company severity update:', socketError);
+    }
+
     res.status(200).json({
         status: 'success',
         data: {

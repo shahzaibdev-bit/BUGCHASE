@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { io as socketIO } from 'socket.io-client';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { useParams, useNavigate } from 'react-router-dom';
@@ -300,6 +301,59 @@ export default function CompanyReportDetails() {
     }
   }, [reportState.timeline]);
 
+  // Real-time socket — join report room, receive live updates from other actors
+  useEffect(() => {
+    if (!id) return;
+    const socket = socketIO(import.meta.env.VITE_API_URL || 'http://localhost:5000', {
+      withCredentials: true,
+      transports: ['websocket'],
+    });
+    socket.emit('join_report', id);
+
+    socket.on('new_activity', (event: any) => {
+      setReportState(prev => {
+        // Avoid duplicates (company already sees its own event via fetchReport below)
+        const exists = prev.timeline.some(t => t.id === String(event.id));
+        if (exists) return prev;
+        return {
+          ...prev,
+          timeline: [
+            ...prev.timeline,
+            {
+              id: String(event.id || Date.now()),
+              type: event.type || 'comment',
+              author: event.author || 'Unknown',
+              authorAvatar: event.authorAvatar,
+              role: event.role || 'Researcher',
+              content: event.content || '',
+              timestamp: event.timestamp || new Date().toISOString(),
+              metadata: event.metadata,
+            } as any,
+          ],
+        };
+      });
+    });
+
+    socket.on('report_updated', (data: any) => {
+      if (data.severity) {
+        setReportState(prev => ({
+          ...prev,
+          severity: {
+            ...prev.severity,
+            level: data.severity as any,
+            score: data.cvssScore ?? prev.severity.score,
+            vector: data.cvssVector ?? prev.severity.vector,
+          },
+        }));
+      }
+    });
+
+    return () => {
+      socket.emit('leave_report', id);
+      socket.disconnect();
+    };
+  }, [id]);
+
   // --- Post Comment ---
   const handlePostReply = async () => {
     if (!replyContent.trim()) return;
@@ -340,43 +394,26 @@ export default function CompanyReportDetails() {
   const handleSeverityUpdate = async (vector: string, score: number) => {
       try {
           const token = localStorage.getItem('token');
+          const severity = score >= 9 ? 'Critical' : score >= 7 ? 'High' : score >= 4 ? 'Medium' : 'Low';
           const res = await fetch(`${API_URL}/company/reports/${id}/severity`, {
               method: 'PATCH',
               headers: { 
                   'Content-Type': 'application/json',
                   'Authorization': `Bearer ${token}`
               },
-              body: JSON.stringify({ 
-                  cvssVector: vector,
-                  cvssScore: score,
-                  severity: score >= 9 ? 'Critical' : score >= 7 ? 'High' : score >= 4 ? 'Medium' : 'Low'
-              })
+              body: JSON.stringify({ cvssVector: vector, cvssScore: score, severity })
           });
           if (res.ok) {
-              const newSystemEvent: TimelineEvent = {
-                  id: Date.now().toString(),
-                  type: 'severity_update', 
-                  author: 'Company Team', 
-                  role: 'Company', 
-                  content: `Updated severity to ${score >= 9 ? 'Critical' : score >= 7 ? 'High' : score >= 4 ? 'Medium' : 'Low'} (${score}).`,
-                  timestamp: new Date().toISOString()
-              };
-
-              setReportState(p => ({
-                  ...p, 
-                  severity: { 
-                      ...p.severity, 
-                      score: score, 
-                      vector: vector,
-                      level: score >= 9 ? 'Critical' : score >= 7 ? 'High' : score >= 4 ? 'Medium' : 'Low'
-                  },
-                  timeline: [...p.timeline, newSystemEvent]
-              }));
-              toast({ title: "Updated", description: "Severity score updated." });
+              // Refresh from server — gets real author name + full content from DB
+              await fetchReport();
+              toast({ title: 'Severity Updated', description: `New severity: ${severity} (${score})` });
+          } else {
+              const errData = await res.json().catch(() => ({}));
+              throw new Error(errData.message || 'Failed to update severity');
           }
-      } catch (error) {
-           console.error("Severity update error:", error);
-           toast({ title: "Error", description: "Failed to update severity", variant: "destructive" });
+      } catch (error: any) {
+           console.error('Severity update error:', error);
+           toast({ title: 'Error', description: error.message || 'Failed to update severity', variant: 'destructive' });
       }
   };
 
