@@ -635,6 +635,65 @@ export const updateReportSeverity = catchAsync(async (req: Request, res: Respons
             report
         }
     });
+
+    // Notify researcher and triager in background
+    (async () => {
+        try {
+            await report.populate('researcherId', 'name email');
+            await report.populate('triagerId', 'name email');
+
+            const researcher = report.researcherId as any;
+            const triager = report.triagerId as any;
+            const companyName = req.user!.name || 'Security Program';
+            const reason = `Severity updated from ${oldSeverity} (CVSS: ${oldScore ?? 'N/A'}) to ${report.severity} (CVSS: ${finalScore ?? 'N/A'}).${finalVector ? `\nNew CVSS Vector: ${finalVector}` : ''}`;
+
+            if (researcher?.email) {
+                await sendEmail(
+                    researcher.email,
+                    `Severity Updated: ${report.title}`,
+                    reportEmailTemplate({
+                        recipientName: researcher.name || 'Researcher',
+                        recipientRole: 'researcher',
+                        actorName: companyName,
+                        actorRole: 'company',
+                        actionType: 'status_change',
+                        reportTitle: report.title,
+                        reportId: String(report._id),
+                        severity: report.severity,
+                        vulnerabilityCategory: report.vulnerabilityCategory,
+                        cvssScore: finalScore,
+                        newStatus: `Severity: ${report.severity}`,
+                        reason,
+                        link: `${process.env.CLIENT_URL}/researcher/reports/${report._id}`
+                    })
+                );
+            }
+
+            if (triager?.email) {
+                await sendEmail(
+                    triager.email,
+                    `Severity Updated by Company: ${report.title}`,
+                    reportEmailTemplate({
+                        recipientName: triager.name || 'Triager',
+                        recipientRole: 'triager',
+                        actorName: companyName,
+                        actorRole: 'company',
+                        actionType: 'status_change',
+                        reportTitle: report.title,
+                        reportId: String(report._id),
+                        severity: report.severity,
+                        vulnerabilityCategory: report.vulnerabilityCategory,
+                        cvssScore: finalScore,
+                        newStatus: `Severity: ${report.severity}`,
+                        reason,
+                        link: `${process.env.CLIENT_URL}/triager/app/reports/${report._id}`
+                    })
+                );
+            }
+        } catch (err) {
+            console.error('Failed to send company severity-change emails:', err);
+        }
+    })();
 });
 
 export const suggestBounty = catchAsync(async (req: Request, res: Response, next: NextFunction) => {
