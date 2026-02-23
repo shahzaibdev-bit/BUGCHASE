@@ -4,7 +4,7 @@ import User from '../models/User';
 import AppError from '../utils/AppError';
 import catchAsync from '../utils/catchAsync';
 import mongoose from 'mongoose';
-import { sendEmail, threadNotificationTemplate } from '../services/emailService';
+import { sendEmail, reportEmailTemplate } from '../services/emailService';
 import { getIO } from '../services/socketService';
 
 // Create a new report
@@ -46,6 +46,33 @@ export const createReport = catchAsync(async (req: Request, res: Response, next:
     status: 'success',
     data: newReport
   });
+
+  // Send submission confirmation to researcher in background
+  (async () => {
+    try {
+      const researcher = await User.findById(req.user!.id).select('name email');
+      if (researcher?.email) {
+        await sendEmail(
+          researcher.email,
+          `Report Received: ${title}`,
+          reportEmailTemplate({
+            recipientName: researcher.name || 'Researcher',
+            recipientRole: 'researcher',
+            actorName: 'BugChase',
+            actorRole: 'triager',
+            actionType: 'submitted',
+            reportTitle: title,
+            reportId: String(newReport._id),
+            severity,
+            newStatus: 'Submitted',
+            link: `${process.env.CLIENT_URL}/researcher/reports/${newReport._id}`
+          })
+        );
+      }
+    } catch (e) {
+      console.error('Failed to send submission confirmation email:', e);
+    }
+  })();
 });
 
 // Get reports for logged-in researcher
@@ -154,52 +181,106 @@ export const addComment = catchAsync(async (req: Request, res: Response, next: N
 
   // Trigger Email Notification in background
   (async () => {
-      try {
-          const senderId = req.user!.id;
-          const isResearcher = report.researcherId.toString() === senderId;
+    try {
+        const senderId = req.user!.id;
+        const senderRole = req.user!.role as string;
+        const isResearcher = report.researcherId.toString() === senderId;
+        const isCompany = senderRole === 'company';
 
-          if (isResearcher) {
-              // Notify Triager if assigned
-              if (report.triagerId) {
-                  await report.populate('triagerId', 'email name');
-                  const triager = report.triagerId as any;
-                  if (triager?.email) {
-                      await sendEmail(
-                          triager.email,
-                          `New Comment on Report #${report._id}`,
-                          threadNotificationTemplate(
-                              triager.name || 'Triager',
-                              req.user!.name || 'Researcher',
-                              'Comment',
-                              report.title,
-                              content,
-                              `${process.env.CLIENT_URL}/triager/app/reports/${report._id}`
-                          )
-                      );
-                  }
-              }
-          } else {
-               // Notify Researcher (if sender is Triager/Admin)
-               await report.populate('researcherId', 'email name');
-               const researcher = report.researcherId as any;
-               if (researcher?.email) {
+        if (isResearcher) {
+            // Researcher commented → notify triager
+            if (report.triagerId) {
+                await report.populate('triagerId', 'email name');
+                const triager = report.triagerId as any;
+                if (triager?.email) {
                     await sendEmail(
-                          researcher.email,
-                          `New Comment on ${report.title}`,
-                          threadNotificationTemplate(
-                              researcher.name || 'Researcher',
-                              req.user!.name || 'Triager',
-                              'Comment',
-                              report.title,
-                              content,
-                              `${process.env.CLIENT_URL}/researcher/reports/${report._id}`
-                          )
-                      );
-               }
-          }
-      } catch (emailError) {
-          console.error("Failed to send comment notification email:", emailError);
-      }
+                        triager.email,
+                        `New Comment on: ${report.title}`,
+                        reportEmailTemplate({
+                            recipientName: triager.name || 'Triager',
+                            recipientRole: 'triager',
+                            actorName: req.user!.name || req.user!.username || 'Researcher',
+                            actorRole: 'researcher',
+                            actionType: 'comment',
+                            reportTitle: report.title,
+                            reportId: String(report._id),
+                            severity: report.severity,
+                            message: content,
+                            link: `${process.env.CLIENT_URL}/triager/app/reports/${report._id}`
+                        })
+                    );
+                }
+            }
+        } else if (isCompany) {
+            // Company commented → notify BOTH researcher and triager
+            await report.populate('researcherId', 'email name');
+            const researcher = report.researcherId as any;
+            if (researcher?.email) {
+                await sendEmail(
+                    researcher.email,
+                    `New Comment on: ${report.title}`,
+                    reportEmailTemplate({
+                        recipientName: researcher.name || 'Researcher',
+                        recipientRole: 'researcher',
+                        actorName: req.user!.name || 'Company',
+                        actorRole: 'company',
+                        actionType: 'comment',
+                        reportTitle: report.title,
+                        reportId: String(report._id),
+                        severity: report.severity,
+                        message: content,
+                        link: `${process.env.CLIENT_URL}/researcher/reports/${report._id}`
+                    })
+                );
+            }
+            if (report.triagerId) {
+                await report.populate('triagerId', 'email name');
+                const triager = report.triagerId as any;
+                if (triager?.email) {
+                    await sendEmail(
+                        triager.email,
+                        `New Comment on: ${report.title}`,
+                        reportEmailTemplate({
+                            recipientName: triager.name || 'Triager',
+                            recipientRole: 'triager',
+                            actorName: req.user!.name || 'Company',
+                            actorRole: 'company',
+                            actionType: 'comment',
+                            reportTitle: report.title,
+                            reportId: String(report._id),
+                            severity: report.severity,
+                            message: content,
+                            link: `${process.env.CLIENT_URL}/triager/app/reports/${report._id}`
+                        })
+                    );
+                }
+            }
+        } else {
+            // Triager/Admin commented → notify researcher
+            await report.populate('researcherId', 'email name');
+            const researcher = report.researcherId as any;
+            if (researcher?.email) {
+                await sendEmail(
+                    researcher.email,
+                    `New Comment on: ${report.title}`,
+                    reportEmailTemplate({
+                        recipientName: researcher.name || 'Researcher',
+                        recipientRole: 'researcher',
+                        actorName: req.user!.name || req.user!.username || 'Triager',
+                        actorRole: 'triager',
+                        actionType: 'comment',
+                        reportTitle: report.title,
+                        reportId: String(report._id),
+                        severity: report.severity,
+                        message: content,
+                        link: `${process.env.CLIENT_URL}/researcher/reports/${report._id}`
+                    })
+                );
+            }
+        }
+    } catch (emailError) {
+        console.error('Failed to send comment notification email:', emailError);
+    }
   })();
 });
 

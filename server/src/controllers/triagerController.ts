@@ -5,7 +5,7 @@ import Report from '../models/Report';
 import User from '../models/User';
 import Program from '../models/Program';
 import Notification from '../models/Notification';
-import { sendEmail, threadNotificationTemplate } from '../services/emailService';
+import { sendEmail, reportEmailTemplate } from '../services/emailService';
 import { generateReportSummary } from '../services/geminiService';
 import { getIO } from '../services/socketService';
 
@@ -254,15 +254,19 @@ Best regards,
             try {
                 await sendEmail(
                     researcherEmail,
-                    `Report Assigned: ${report.title}`,
-                    threadNotificationTemplate(
-                        researcherName,
-                        triagerName,
-                        'Assignment',
-                        report.title,
-                        `Your report has been assigned to ${triagerName} for review.`,
-                        `${process.env.CLIENT_URL}/researcher/reports/${report._id}`
-                    )
+                    `Your report is being reviewed: ${report.title}`,
+                    reportEmailTemplate({
+                        recipientName: researcherName,
+                        recipientRole: 'researcher',
+                        actorName: triagerName,
+                        actorRole: 'triager',
+                        actionType: 'claimed',
+                        reportTitle: report.title,
+                        reportId: String(report._id),
+                        severity: report.severity,
+                        newStatus: 'Triaging',
+                        link: `${process.env.CLIENT_URL}/researcher/reports/${report._id}`
+                    })
                 );
             } catch (error) {
                 console.error('Failed to send assignment email:', error);
@@ -338,22 +342,26 @@ export const postComment = catchAsync(async (req: Request, res: Response, next: 
             const researcher = report.researcherId as any;
 
             if (researcher?.email) {
-                 const senderName = req.user.name || 'Triager';
-                 await sendEmail(
+                const senderName = req.user.name || req.user.username || 'Triager';
+                await sendEmail(
                     researcher.email,
-                    `New Comment on ${report.title}`,
-                    threadNotificationTemplate(
-                        researcher.name,
-                        senderName,
-                        'Comment',
-                        report.title,
-                        content,
-                        `${process.env.CLIENT_URL}/researcher/reports/${report._id}`
-                    )
+                    `New Comment on: ${report.title}`,
+                    reportEmailTemplate({
+                        recipientName: researcher.name || 'Researcher',
+                        recipientRole: 'researcher',
+                        actorName: senderName,
+                        actorRole: 'triager',
+                        actionType: 'comment',
+                        reportTitle: report.title,
+                        reportId: String(report._id),
+                        severity: report.severity,
+                        message: content,
+                        link: `${process.env.CLIENT_URL}/researcher/reports/${report._id}`
+                    })
                 );
             }
         } catch (error) {
-            console.error("Failed to send comment email:", error);
+            console.error('Failed to send comment email:', error);
         }
     })();
 });
@@ -418,26 +426,31 @@ export const updateReportSeverity = catchAsync(async (req: Request, res: Respons
 
     // Notify Researcher in background
     (async () => {
-        await report.populate('researcherId', 'name email avatar');
-        const researcher = report.researcherId as any;
-        if (researcher?.email) {
-             try {
-                 const senderName = req.user.name || 'Triager';
-                 await sendEmail(
+        try {
+            await report.populate('researcherId', 'name email avatar');
+            const researcher = report.researcherId as any;
+            if (researcher?.email) {
+                const senderName = req.user.name || req.user.username || 'Triager';
+                await sendEmail(
                     researcher.email,
                     `Severity Updated: ${report.title}`,
-                    threadNotificationTemplate(
-                        researcher.name,
-                        senderName,
-                        'Severity Update',
-                        report.title,
-                        `Severity updated to ${severity} (CVSS: ${cvssScore})`,
-                        `${process.env.CLIENT_URL}/researcher/reports/${report._id}`
-                    )
+                    reportEmailTemplate({
+                        recipientName: researcher.name || 'Researcher',
+                        recipientRole: 'researcher',
+                        actorName: senderName,
+                        actorRole: 'triager',
+                        actionType: 'status_change',
+                        reportTitle: report.title,
+                        reportId: String(report._id),
+                        severity,
+                        newStatus: `Severity updated to ${severity}`,
+                        reason: `CVSS Score: ${cvssScore} | Vector: ${cvssVector}`,
+                        link: `${process.env.CLIENT_URL}/researcher/reports/${report._id}`
+                    })
                 );
-            } catch (error) {
-                console.error("Failed to send severity email:", error);
             }
+        } catch (error) {
+            console.error('Failed to send severity email:', error);
         }
     })();
 });
@@ -505,7 +518,10 @@ export const submitDecision = catchAsync(async (req: Request, res: Response, nex
     // Create Notification and Email in background
     (async () => {
         try {
-            // Create In-App Notification for Researcher
+            await report.populate('researcherId', 'name email');
+            const researcher = report.researcherId as any;
+
+            // In-App Notification for Researcher
             await Notification.create({
                 recipient: report.researcherId,
                 title: `Report Status Updated: ${report.title}`,
@@ -514,25 +530,53 @@ export const submitDecision = catchAsync(async (req: Request, res: Response, nex
                 link: `/researcher/reports/${report._id}`
             });
 
-            // Send Email
-            const researcher = report.researcherId as any;
+            // Email Researcher
             if (researcher?.email) {
-                 const senderName = req.user.name || 'Triager';
-                 await sendEmail(
+                const senderName = req.user.name || req.user.username || 'Triager';
+                await sendEmail(
                     researcher.email,
                     `Status Updated: ${report.title}`,
-                    threadNotificationTemplate(
-                        researcher.name,
-                        senderName,
-                        'Status Change',
-                        report.title,
-                        `Status changed to ${status}.\n\nNote: ${note || 'No additional note.'}`,
-                        `${process.env.CLIENT_URL}/researcher/reports/${report._id}`
-                    )
+                    reportEmailTemplate({
+                        recipientName: researcher.name || 'Researcher',
+                        recipientRole: 'researcher',
+                        actorName: senderName,
+                        actorRole: 'triager',
+                        actionType: 'status_change',
+                        reportTitle: report.title,
+                        reportId: String(report._id),
+                        severity: report.severity,
+                        newStatus: status,
+                        reason: note || undefined,
+                        link: `${process.env.CLIENT_URL}/researcher/reports/${report._id}`
+                    })
                 );
             }
+
+            // If promoted to Triaged — notify Company
+            if (status === 'Triaged') {
+                const prog = await Program.findById(report.programId).populate('companyId', 'name email');
+                const company = prog?.companyId as any;
+                if (company?.email) {
+                    await sendEmail(
+                        company.email,
+                        `New Report Forwarded to Your Program: ${report.title}`,
+                        reportEmailTemplate({
+                            recipientName: company.name || 'Security Team',
+                            recipientRole: 'company',
+                            actorName: req.user.name || 'BugChase Triage',
+                            actorRole: 'triager',
+                            actionType: 'promoted',
+                            reportTitle: report.title,
+                            reportId: String(report._id),
+                            severity: report.severity,
+                            newStatus: 'Triaged',
+                            link: `${process.env.CLIENT_URL}/company/reports/${report._id}`
+                        })
+                    );
+                }
+            }
         } catch (error) {
-            console.error("Failed to send decision email or notification:", error);
+            console.error('Failed to send decision email or notification:', error);
         }
     })();
 });
@@ -592,26 +636,31 @@ export const updateReportStatus = catchAsync(async (req: Request, res: Response,
 
     // Send Email to Researcher in background
     (async () => {
-        await report.populate('researcherId', 'name email avatar');
-        const researcher = report.researcherId as any;
-        if (researcher?.email) {
-             try {
-                 const senderName = req.user.name || 'Triager';
-                 await sendEmail(
+        try {
+            await report.populate('researcherId', 'name email avatar');
+            const researcher = report.researcherId as any;
+            if (researcher?.email) {
+                const senderName = req.user.name || req.user.username || 'Triager';
+                await sendEmail(
                     researcher.email,
                     `Status Updated: ${report.title}`,
-                    threadNotificationTemplate(
-                        researcher.name,
-                        senderName,
-                        'Status Change',
-                        report.title,
-                        `Status changed to ${status}.\n\nNote: ${note || 'No additional note.'}`,
-                        `${process.env.CLIENT_URL}/researcher/reports/${report._id}`
-                    )
+                    reportEmailTemplate({
+                        recipientName: researcher.name || 'Researcher',
+                        recipientRole: 'researcher',
+                        actorName: senderName,
+                        actorRole: 'triager',
+                        actionType: 'status_change',
+                        reportTitle: report.title,
+                        reportId: String(report._id),
+                        severity: report.severity,
+                        newStatus: status,
+                        reason: note || undefined,
+                        link: `${process.env.CLIENT_URL}/researcher/reports/${report._id}`
+                    })
                 );
-            } catch (error) {
-                 console.error("Failed to send status email:", error);
             }
+        } catch (error) {
+            console.error('Failed to send status email:', error);
         }
     })();
 });

@@ -5,7 +5,7 @@ import User from '../models/User';
 import Program from '../models/Program';
 import AppError from '../utils/AppError';
 import catchAsync from '../utils/catchAsync';
-import { sendEmail, inviteMemberTemplate, threadNotificationTemplate } from '../services/emailService';
+import { sendEmail, inviteMemberTemplate, reportEmailTemplate } from '../services/emailService';
 import { suggestBountyAmount } from '../services/geminiService';
 import { getIO } from '../services/socketService';
 
@@ -539,15 +539,19 @@ export const addCompanyComment = catchAsync(async (req: Request, res: Response, 
             if (researcher?.email) {
                 await sendEmail(
                     researcher.email,
-                    `New Comment on ${report.title}`,
-                    threadNotificationTemplate(
-                        researcher.name || 'Researcher',
-                        companyName,
-                        'Comment',
-                        report.title,
-                        content,
-                        `${process.env.CLIENT_URL}/researcher/reports/${report._id}`
-                    )
+                    `New Comment on: ${report.title}`,
+                    reportEmailTemplate({
+                        recipientName: researcher.name || 'Researcher',
+                        recipientRole: 'researcher',
+                        actorName: companyName,
+                        actorRole: 'company',
+                        actionType: 'comment',
+                        reportTitle: report.title,
+                        reportId: String(report._id),
+                        severity: report.severity,
+                        message: content,
+                        link: `${process.env.CLIENT_URL}/researcher/reports/${report._id}`
+                    })
                 );
             }
 
@@ -558,20 +562,24 @@ export const addCompanyComment = catchAsync(async (req: Request, res: Response, 
                 if (triager?.email) {
                     await sendEmail(
                         triager.email,
-                        `New Comment on Report #${report._id}`,
-                        threadNotificationTemplate(
-                            triager.name || 'Triager',
-                            companyName,
-                            'Comment',
-                            report.title,
-                            content,
-                            `${process.env.CLIENT_URL}/triager/app/reports/${report._id}`
-                        )
+                        `New Comment on: ${report.title}`,
+                        reportEmailTemplate({
+                            recipientName: triager.name || 'Triager',
+                            recipientRole: 'triager',
+                            actorName: companyName,
+                            actorRole: 'company',
+                            actionType: 'comment',
+                            reportTitle: report.title,
+                            reportId: String(report._id),
+                            severity: report.severity,
+                            message: content,
+                            link: `${process.env.CLIENT_URL}/triager/app/reports/${report._id}`
+                        })
                     );
                 }
             }
         } catch (emailError) {
-            console.error("Failed to send comment notification email (Company):", emailError);
+            console.error('Failed to send comment notification email (Company):', emailError);
         }
     })();
 });
@@ -725,4 +733,64 @@ export const updateReportStatus = catchAsync(async (req: Request, res: Response,
             report
         }
     });
+
+    // Send role-specific emails to researcher and triager in background
+    (async () => {
+        try {
+            await report.populate('researcherId', 'name email');
+            await report.populate('triagerId', 'name email');
+
+            const researcher = report.researcherId as any;
+            const triager = report.triagerId as any;
+            const companyName = req.user.name || 'Security Program';
+            const newStatus = report.status;
+            const reason = (req.body.note || req.body.reason) as string | undefined;
+            const bountyValue = (report as any).bounty as number | undefined;
+
+            // Email Researcher
+            if (researcher?.email) {
+                await sendEmail(
+                    researcher.email,
+                    `Report ${newStatus}: ${report.title}`,
+                    reportEmailTemplate({
+                        recipientName: researcher.name || 'Researcher',
+                        recipientRole: 'researcher',
+                        actorName: companyName,
+                        actorRole: 'company',
+                        actionType: 'status_change',
+                        reportTitle: report.title,
+                        reportId: String(report._id),
+                        severity: report.severity,
+                        newStatus,
+                        reason: reason || undefined,
+                        bounty: newStatus === 'Resolved' ? bountyValue : undefined,
+                        link: `${process.env.CLIENT_URL}/researcher/reports/${report._id}`
+                    })
+                );
+            }
+
+            // Email Triager
+            if (triager?.email) {
+                await sendEmail(
+                    triager.email,
+                    `Report ${newStatus} by Company: ${report.title}`,
+                    reportEmailTemplate({
+                        recipientName: triager.name || 'Triager',
+                        recipientRole: 'triager',
+                        actorName: companyName,
+                        actorRole: 'company',
+                        actionType: 'status_change',
+                        reportTitle: report.title,
+                        reportId: String(report._id),
+                        severity: report.severity,
+                        newStatus,
+                        reason: reason || undefined,
+                        link: `${process.env.CLIENT_URL}/triager/app/reports/${report._id}`
+                    })
+                );
+            }
+        } catch (err) {
+            console.error('Failed to send company status-change emails:', err);
+        }
+    })();
 });

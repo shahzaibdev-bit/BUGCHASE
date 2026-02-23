@@ -114,37 +114,60 @@ export const CvssInteractiveModal = ({
     currentVector: string;
     onSave: (vector: string, score: number) => void;
 }) => {
-    const [localVector, setLocalVector] = useState(currentVector || aiVector || researcherVector);
+    // CVSS canonical metric order
+    const METRIC_ORDER = ['AV', 'AC', 'PR', 'UI', 'S', 'C', 'I', 'A'];
+
+    // Parse a CVSS vector string into a metrics map
+    const parseVector = (vec: string): Record<string, string> => {
+        if (!vec || !vec.startsWith('CVSS:3.1/')) return {};
+        const result: Record<string, string> = {};
+        vec.replace('CVSS:3.1/', '').split('/').forEach(part => {
+            const [k, v] = part.split(':');
+            if (k && v) result[k] = v;
+        });
+        return result;
+    };
+
+    // Reconstruct a properly-ordered CVSS vector from a metrics map
+    const buildVector = (metrics: Record<string, string>): string => {
+        const parts = METRIC_ORDER.map(k => metrics[k] ? `${k}:${metrics[k]}` : null).filter(Boolean);
+        if (parts.length === 0) return '';
+        return `CVSS:3.1/${parts.join('/')}`;
+    };
+
+    const [metrics, setMetrics] = useState<Record<string, string>>(
+        parseVector(currentVector || aiVector || researcherVector || '')
+    );
+
+    const localVector = buildVector(metrics);
     
     // Scores
     const aiScore = aiVector ? calculateCvssVersion31(aiVector) : 0;
     const researcherScore = calculateCvssVersion31(researcherVector);
     const triagerScore = triagerVector ? calculateCvssVersion31(triagerVector) : 0;
-    const localScore = calculateCvssVersion31(localVector || '');
+    const localScore = calculateCvssVersion31(localVector);
 
+    // Apply a specific metric card from a source vector
+    const applyVector = (vec: string) => setMetrics(parseVector(vec));
+
+    // Toggle a single metric value — exact key lookup, no substring issues
     const updateMetric = (metric: string, value: string) => {
-        let newVec = localVector || '';
-        const regex = new RegExp(`${metric}:[A-Z]`);
-        if (newVec.match(regex)) {
-            newVec = newVec.replace(regex, `${metric}:${value}`);
-        } else {
-            // Append if not present (simple implementation, ideally follows CVSS order)
-             if (!newVec) newVec = `CVSS:3.1/${metric}:${value}`;
-             else newVec += `/${metric}:${value}`;
-        }
-        setLocalVector(newVec);
+        setMetrics(prev => ({ ...prev, [metric]: value }));
     };
 
     const MetricBtn = ({ code, val }: { code: string, val: string }) => {
-        const fullVector = `${code}:${val}`;
-        const label = CVSS_LABELS[fullVector] || val;
-        // Check if fullVector is in localVector string
-        const isActive = localVector && localVector.includes(fullVector);
+        const label = CVSS_LABELS[`${code}:${val}`] || val;
+        // Exact key lookup — zero substring matching bugs
+        const isActive = metrics[code] === val;
         
         return (
             <button 
                onClick={() => updateMetric(code, val)}
-               className={`px-3 py-2 text-xs font-mono font-medium border rounded transition-all active:scale-95 flex-1 text-center ${isActive ? 'bg-black text-white dark:bg-white dark:text-black border-black dark:border-white shadow-sm' : 'bg-transparent text-zinc-500 border-zinc-200 dark:border-zinc-800 hover:border-zinc-400 dark:hover:border-zinc-600'}`}
+               className={`px-3 py-2 text-xs font-mono font-medium border rounded transition-all active:scale-95 flex-1 text-center ${
+                   isActive 
+                       ? 'bg-black text-white dark:bg-white dark:text-black border-black dark:border-white shadow-sm' 
+                       : 'bg-transparent text-zinc-500 border-zinc-200 dark:border-zinc-800 hover:border-zinc-400 dark:hover:border-zinc-600'
+               }`}
             >
                 {label}
             </button>
@@ -210,7 +233,7 @@ export const CvssInteractiveModal = ({
                                 icon={Brain} 
                                 colorClass="text-cyan-600 dark:text-cyan-400" 
                                 borderClass="border-cyan-100 dark:border-cyan-900/30 hover:border-cyan-300"
-                                onClick={() => setLocalVector(aiVector)}
+                                onClick={() => applyVector(aiVector)}
                              />
                          )}
 
@@ -221,7 +244,7 @@ export const CvssInteractiveModal = ({
                             icon={Bug} 
                             colorClass="text-indigo-600 dark:text-indigo-400" 
                             borderClass="border-indigo-100 dark:border-indigo-900/30 hover:border-indigo-300"
-                            onClick={() => setLocalVector(researcherVector)}
+                            onClick={() => applyVector(researcherVector)}
                          />
 
                          {triagerVector && (
@@ -232,7 +255,7 @@ export const CvssInteractiveModal = ({
                                 icon={User} 
                                 colorClass="text-purple-600 dark:text-purple-400" 
                                 borderClass="border-purple-100 dark:border-purple-900/30 hover:border-purple-300"
-                                onClick={() => setLocalVector(triagerVector)}
+                                onClick={() => applyVector(triagerVector)}
                              />
                          )}
 
