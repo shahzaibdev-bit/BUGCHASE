@@ -764,12 +764,13 @@ export const updateReportStatus = catchAsync(async (req: Request, res: Response,
         (report as any).bounty = Number(bounty);
         if ((report as any).bounty > 0) {
             const User = (await import('../models/User')).default;
-            const researcher = await User.findById(report.researcherId);
-            if (researcher) {
-                // Award the bounty (this is simplified, ideally there's a transaction model)
-                researcher.reputationScore = (researcher.reputationScore || 0) + Math.floor((report as any).bounty / 10);
-                await researcher.save();
-            }
+            // Credit wallet balance AND reputation atomically
+            await User.findByIdAndUpdate(report.researcherId, {
+                $inc: {
+                    walletBalance: (report as any).bounty,
+                    reputationScore: Math.floor((report as any).bounty / 10)
+                }
+            });
         }
     }
 

@@ -1,7 +1,7 @@
 import express from 'express';
 import multer from 'multer';
 import { protect } from '../middlewares/authMiddleware';
-import { getPublicProfile, updateKYCStatus, updateMe, uploadAvatar } from '../controllers/userController';
+import { getPublicProfile, updateKYCStatus, updateMe, uploadAvatar, getMe, getWalletData } from '../controllers/userController';
 import { rateLimiter } from '../middlewares/rateLimit';
 
 const router = express.Router();
@@ -30,5 +30,7 @@ router.get('/p/:username', publicProfileLimiter, getPublicProfile);
 router.patch('/verify-kyc-status', protect, updateKYCStatus);
 router.patch('/updateMe', protect, updateMe);
 router.post('/upload-avatar', protect, uploadLimiter, upload.single('avatar'), uploadAvatar);
+router.get('/me', protect, getMe);
+router.get('/wallet', protect, getWalletData);
 
 export default router;

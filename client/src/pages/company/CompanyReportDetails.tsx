@@ -230,7 +230,11 @@ export default function CompanyReportDetails() {
                   'Content-Type': 'application/json',
                   'Authorization': `Bearer ${token}`
               },
-              body: JSON.stringify({ status, note: reason })
+              body: JSON.stringify({
+                  status,
+                  note: reason,
+                  ...(bounty !== undefined && bounty > 0 ? { bounty } : {})
+              })
           });
 
           if (!res.ok) {
@@ -239,15 +243,19 @@ export default function CompanyReportDetails() {
           }
 
           setRejectModalOpen(false);
+          setResolveModalOpen(false);
           setSelectedReason('');
           setCustomReason('');
-          toast({ title: "Status Updated", description: `Report status changed to ${status}` });
+          setBountyAmount('');
+
+          const actionLabel = status === 'Resolved' ? `✅ Report Resolved${bounty ? ` – $${bounty} bounty sent to researcher` : ''}` : `Report marked as ${status}`;
+          toast({ title: 'Action Complete', description: actionLabel });
           
           // Re-fetch report to populate new socket/timeline events from server
           fetchReport();
       } catch (error: any) {
-          console.error("Action error:", error);
-          toast({ title: "Error", description: error.message || "Failed to update report", variant: "destructive" });
+          console.error('Action error:', error);
+          toast({ title: 'Error', description: error.message || 'Failed to update report', variant: 'destructive' });
       }
   };
 

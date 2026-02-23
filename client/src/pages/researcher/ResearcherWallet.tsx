@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
     CreditCard, 
     Wallet, 
@@ -8,24 +8,57 @@ import {
     Landmark,
     ArrowUpRight,
     X,
-    Bitcoin
+    Bitcoin,
+    Loader2
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import { InvertedTiltCard } from '@/components/InvertedTiltCard';
 import { InverseSpotlightCard } from '@/components/InverseSpotlightCard';
 
+const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
+
+interface Transaction {
+    id: string;
+    date: string;
+    desc: string;
+    amount: string;
+    status: string;
+    reportId?: string;
+}
+
 export default function ResearcherWallet() {
   const [isWithdrawModalOpen, setIsWithdrawModalOpen] = useState(false);
   const [withdrawAmount, setWithdrawAmount] = useState('');
   const [selectedMethod, setSelectedMethod] = useState('bank');
 
-  const transactions = [
-    { id: 'TXN-9982', date: '2023-10-24 14:20', desc: 'Security Reward: Bank Alfalah (SQLi)', amount: '+150,000', status: 'CLEARED' },
-    { id: 'TXN-9941', date: '2023-10-20 09:15', desc: 'Withdrawal to IBAN PK88 ...', amount: '-50,000', status: 'CLEARED' },
-    { id: 'TXN-9822', date: '2023-10-15 18:30', desc: 'Security Reward: Daraz (XSS)', amount: '+25,000', status: 'CLEARED' },
-    { id: 'TXN-9100', date: '2023-10-10 11:00', desc: 'Platform Fee Deduction', amount: '-2,500', status: 'PROCESSING' },
-  ];
+  const [walletBalance, setWalletBalance] = useState<number>(0);
+  const [transactions, setTransactions] = useState<Transaction[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+
+  useEffect(() => {
+      const fetchWalletData = async () => {
+          try {
+              const token = localStorage.getItem('token');
+              const res = await fetch(`${API_URL}/users/wallet`, {
+                  headers: {
+                      'Authorization': `Bearer ${token}`
+                  }
+              });
+              if (res.ok) {
+                  const data = await res.json();
+                  setWalletBalance(data.data.walletBalance || 0);
+                  setTransactions(data.data.transactions || []);
+              }
+          } catch (error) {
+              console.error('Failed to fetch wallet data:', error);
+          } finally {
+              setIsLoading(false);
+          }
+      };
+
+      fetchWalletData();
+  }, []);
 
   return (
     <div className="min-h-screen font-sans text-zinc-900 dark:text-zinc-100 p-6 space-y-8 transition-colors duration-300">
@@ -68,14 +101,14 @@ export default function ResearcherWallet() {
                 </div>
                 
                 <div className="space-y-2">
-                    <div className="text-5xl font-bold tracking-tighter text-white">
-                    15,000.00 <span className="text-2xl text-zinc-500 font-normal">PKR</span>
-                    </div>
-                    <div className="flex items-center gap-2">
-                        <span className="inline-flex items-center px-2.5 py-0.5 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-xs font-bold">
-                        +12.4%
-                        </span>
-                        <span className="text-xs text-zinc-500">since last month</span>
+                    <div className="text-5xl font-bold tracking-tighter text-white flex items-center gap-3">
+                        {isLoading ? (
+                            <Loader2 className="w-8 h-8 animate-spin text-zinc-500" />
+                        ) : (
+                            <>
+                                {walletBalance.toLocaleString()} <span className="text-2xl text-zinc-500 font-normal">USD</span>
+                            </>
+                        )}
                     </div>
                 </div>
               </div>
@@ -234,7 +267,7 @@ export default function ResearcherWallet() {
                     {/* Balance Display */}
                     <div className="bg-zinc-50 dark:bg-zinc-900/50 rounded-2xl p-4 border border-zinc-200 dark:border-zinc-800 flex items-center justify-between">
                       <span className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider">Available for Withdrawal</span>
-                      <span className="text-lg font-bold font-mono text-zinc-900 dark:text-white">PKR 15,000</span>
+                      <span className="text-lg font-bold font-mono text-zinc-900 dark:text-white">USD {walletBalance.toLocaleString()}</span>
                     </div>
 
                     {/* Amount Input */}
@@ -249,7 +282,7 @@ export default function ResearcherWallet() {
                           className="w-full bg-transparent border-b border-zinc-300 dark:border-zinc-800 py-2 text-3xl font-bold text-zinc-900 dark:text-white focus:outline-none focus:border-zinc-900 dark:focus:border-white transition-colors placeholder:text-zinc-300 dark:placeholder:text-zinc-700"
                         />
                         <button 
-                          onClick={() => setWithdrawAmount('15000')}
+                          onClick={() => setWithdrawAmount(String(walletBalance))}
                           className="absolute right-0 top-1/2 -translate-y-1/2 text-xs font-bold text-zinc-900 dark:text-white hover:underline"
                         >
                           MAX
@@ -349,11 +382,11 @@ export default function ResearcherWallet() {
                   <div className="p-6 bg-zinc-50 dark:bg-zinc-900 border-t border-zinc-200 dark:border-zinc-800 space-y-4">
                      <div className="flex items-center justify-between text-xs">
                         <span className="text-zinc-500">Transaction Fee</span>
-                        <span className="font-mono text-zinc-900 dark:text-white">PKR 0.00 (Free)</span>
+                        <span className="font-mono text-zinc-900 dark:text-white">USD 0.00 (Free)</span>
                      </div>
                      <div className="flex items-center justify-between text-sm">
                         <span className="font-bold text-zinc-700 dark:text-zinc-300">Total Receive</span>
-                        <span className="font-bold font-mono text-xl text-zinc-900 dark:text-white">PKR {Number(withdrawAmount) || 0}</span>
+                        <span className="font-bold font-mono text-xl text-zinc-900 dark:text-white">USD {Number(withdrawAmount) || 0}</span>
                      </div>
                      
                      <Button className="w-full bg-zinc-900 dark:bg-white text-white dark:text-zinc-900 hover:bg-zinc-800 dark:hover:bg-zinc-200 font-bold h-12 rounded-xl shadow-lg shadow-zinc-900/20 dark:shadow-white/10">

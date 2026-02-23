@@ -6,7 +6,6 @@ import catchAsync from '../utils/catchAsync';
 export const getPublicProfile = catchAsync(async (req: Request, res: Response, next: NextFunction) => {
   const { username } = req.params;
 
-  // Use case-insensitive regex to find the user
   const user = await User.findOne({ 
       username: { $regex: new RegExp(`^${(username as string || '').trim()}$`, 'i') },
       isPrivate: false 
@@ -20,10 +19,55 @@ export const getPublicProfile = catchAsync(async (req: Request, res: Response, n
     status: 'success',
     data: {
       ...user.toObject(),
-      nickname: user.username // Ensure frontend compatibility if it expects nickname
+      nickname: user.username
     },
   });
 });
+
+/** Return the current authenticated user's own profile */
+export const getMe = catchAsync(async (req: Request, res: Response, next: NextFunction) => {
+  const user = await User.findById(req.user!._id).select('-password');
+  if (!user) return next(new AppError('User not found', 404));
+  res.status(200).json({ status: 'success', data: { user } });
+});
+
+/** Return researcher's wallet balance + bounty transaction history */
+export const getWalletData = catchAsync(async (req: Request, res: Response, next: NextFunction) => {
+  // Get fresh wallet balance
+  const user = await User.findById(req.user!._id).select('walletBalance reputationScore');
+  if (!user) return next(new AppError('User not found', 404));
+
+  // Fetch resolved reports for this researcher as transactions
+  const ReportModel = (await import('../models/Report')).default;
+
+  const resolvedReports = await ReportModel.find({
+      researcherId: req.user!._id,
+      status: 'Resolved',
+      bounty: { $gt: 0 }
+  })
+  .select('title bounty updatedAt severity _id')
+  .sort({ updatedAt: -1 })
+  .limit(50);
+
+  const transactions = resolvedReports.map((r: any) => ({
+      id: `BNT-${String(r._id).slice(-6).toUpperCase()}`,
+      date: new Date(r.updatedAt).toLocaleString(),
+      desc: `Security Reward: ${r.title}`,
+      amount: `+${r.bounty.toLocaleString()}`,
+      status: 'CLEARED',
+      reportId: r._id
+  }));
+
+  res.status(200).json({
+      status: 'success',
+      data: {
+          walletBalance: user.walletBalance,
+          reputationScore: user.reputationScore,
+          transactions
+      }
+  });
+});
+
 
 export const updateKYCStatus = catchAsync(async (req: Request, res: Response, next: NextFunction) => {
     const { verified, confidence } = req.body;
