@@ -13,6 +13,15 @@
     <meta property="og:title" content="BugChase" />
     <meta property="og:description" content="BugChase Application" />
     <meta property="og:type" content="website" />
+
+    <!-- Disable browser scroll restoration BEFORE any JS loads.
+         This is the only reliable way to prevent Edge/Opera/Firefox from
+         jumping to top on reload before React can restore the position. -->
+    <script>
+      if ('scrollRestoration' in history) {
+        history.scrollRestoration = 'manual';
+      }
+    </script>
   </head>
 
   <body>
