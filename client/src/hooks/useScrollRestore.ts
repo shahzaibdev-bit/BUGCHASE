@@ -23,8 +23,8 @@ const setScrollY = (y: number) => {
 };
 
 /** Custom smooth scroll using rAF — works in every browser */
-function smoothScrollTo(targetY: number, duration = 650) {
-  const startY = getScrollY();
+function smoothScrollTo(targetY: number, duration = 650, element?: HTMLElement) {
+  const startY = element ? element.scrollTop : getScrollY();
   const dist = targetY - startY;
   if (Math.abs(dist) < 1) return;
 
@@ -34,7 +34,14 @@ function smoothScrollTo(targetY: number, duration = 650) {
 
   const tick = (now: number) => {
     const t = Math.min((now - startTime) / duration, 1);
-    setScrollY(Math.round(startY + dist * ease(t)));
+    const newY = Math.round(startY + dist * ease(t));
+
+    if (element) {
+        element.scrollTop = newY;
+    } else {
+        setScrollY(newY);
+    }
+    
     if (t < 1) requestAnimationFrame(tick);
   };
 
@@ -158,12 +165,13 @@ export function useScrollRestore() {
           try {
               const el = document.querySelector(selector) as HTMLElement;
               if (el) {
-                  el.scrollTop = scrollTop as number;
+                  // Only animate once we know everything is ready (handled below)
+                  // For the readiness check, we just verify the node exists
               } else {
-                  allElementsReady = false; // still waiting for this element to render
+                  allElementsReady = false; 
               }
           } catch(e) {
-              // Invalid selector — ignore and don't let it block readiness
+              // Invalid selector
           }
       }
 
@@ -172,6 +180,16 @@ export function useScrollRestore() {
             smoothScrollTo(targetMainY);
         } else {
             setScrollY(0);
+        }
+
+        // Animate all inner scrollbar positions too
+        for (const [selector, scrollTop] of Object.entries(targetElements)) {
+             try {
+                 const el = document.querySelector(selector) as HTMLElement;
+                 if (el && Number(scrollTop) > 0) {
+                     smoothScrollTo(Number(scrollTop), 650, el);
+                 }
+             } catch { /* ignore */ }
         }
         return;
       }
