@@ -328,7 +328,7 @@ body { margin: 0; padding: 0; background-color: #000000; }
   return juice(html);
 };
 
-export type EmailActionType = 'comment' | 'status_change' | 'claimed' | 'submitted' | 'promoted';
+export type EmailActionType = 'comment' | 'status_change' | 'claimed' | 'submitted' | 'promoted' | 'bounty_awarded';
 export type EmailRole = 'researcher' | 'triager' | 'company';
 
 export interface ReportEmailOptions {
@@ -356,6 +356,7 @@ const ACTION_HEADLINES: Record<EmailActionType, (opts: ReportEmailOptions) => st
   comment:   (o) => `New comment on: ${o.reportTitle}`,
   status_change: (o) => `Report status changed to ${o.newStatus}`,
   promoted:  (o) => `You are now a participant on: ${o.reportTitle}`,
+  bounty_awarded: (o) => `Bounty Awarded: $${o.bounty?.toLocaleString()}`,
 };
 
 const getSeverityColor = (severity?: string) => {
@@ -419,12 +420,17 @@ const getRoleIntro = (opts: ReportEmailOptions): string => {
   if (actionType === 'status_change') {
     if (recipientRole === 'researcher') {
       if (newStatus === 'Resolved') {
-        return `Great news! ${actorName} has reviewed and resolved your report.${bounty ? ` You have been awarded a bounty of <strong>$${bounty}</strong> for this finding.` : ''} Thank you for your valuable contribution to improving security.`;
+        return `Great news! ${actorName} has reviewed and resolved your report. Thank you for your valuable contribution to improving security.`;
       }
       return `${actorName} has reviewed your report and updated its status. Please review the decision below.`;
     }
     if (recipientRole === 'triager') {
       return `The company has reviewed the report you assessed and has made a decision. This is for your awareness as part of the review trail.`;
+    }
+  }
+  if (actionType === 'bounty_awarded') {
+    if (recipientRole === 'researcher') {
+      return `Congratulations! ${actorName} has rewarded you with a bounty of <strong>$${bounty?.toLocaleString()}</strong> for your finding. The funds have been credited to your wallet.`;
     }
   }
   return `There has been an activity update on a report you are associated with.`;

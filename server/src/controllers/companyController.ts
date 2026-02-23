@@ -750,7 +750,7 @@ export const suggestBounty = catchAsync(async (req: Request, res: Response, next
 
 export const updateReportStatus = catchAsync(async (req: Request, res: Response, next: NextFunction) => {
     const { id } = req.params;
-    const { status, note, bounty } = req.body;
+    const { status, note } = req.body;
 
     const Report = (await import('../models/Report')).default;
     const report = await Report.findById(id);
@@ -760,31 +760,12 @@ export const updateReportStatus = catchAsync(async (req: Request, res: Response,
     const oldStatus = report.status;
     report.status = status;
 
-    if (bounty !== undefined && !isNaN(Number(bounty))) {
-        (report as any).bounty = Number(bounty);
-        if ((report as any).bounty > 0) {
-            const User = (await import('../models/User')).default;
-            // Credit wallet balance AND reputation atomically
-            await User.findByIdAndUpdate(report.researcherId, {
-                $inc: {
-                    walletBalance: (report as any).bounty,
-                    reputationScore: Math.floor((report as any).bounty / 10)
-                }
-            });
-        }
-    }
-
-    let commentMetadata: any = {};
-    if (status === 'Resolved' && bounty !== undefined) {
-        commentMetadata = { bountyAwarded: (report as any).bounty };
-    }
-
     // Add Timeline Event
     const newComment = {
         sender: req.user!._id,
-        content: note ? note : `Changed status from **${oldStatus}** to **${status}**.` + (bounty ? `\n\nAwarded Bounty: $${bounty}` : ''),
+        content: note ? note : `Changed status from **${oldStatus}** to **${status}**.`,
         type: 'status_change',
-        metadata: commentMetadata,
+        metadata: { newStatus: status, reason: note },
         createdAt: new Date()
     };
     report.comments.push(newComment as any);
@@ -805,8 +786,7 @@ export const updateReportStatus = catchAsync(async (req: Request, res: Response,
             timestamp: populatedComment.createdAt,
             authorAvatar: (populatedComment.sender as any)?.avatar,
             metadata: populatedComment.metadata,
-            status: report.status, // Notify frontend of the new status
-            bounty: (report as any).bounty
+            status: report.status // Notify frontend of the new status
         });
         
         io.to(id).emit('status_change', report.status);
@@ -832,7 +812,6 @@ export const updateReportStatus = catchAsync(async (req: Request, res: Response,
             const companyName = req.user.name || 'Security Program';
             const newStatus = report.status;
             const reason = (req.body.note || req.body.reason) as string | undefined;
-            const bountyValue = (report as any).bounty as number | undefined;
 
             // Email Researcher
             if (researcher?.email) {
@@ -850,7 +829,6 @@ export const updateReportStatus = catchAsync(async (req: Request, res: Response,
                         severity: report.severity,
                         newStatus,
                         reason: reason || undefined,
-                        bounty: newStatus === 'Resolved' ? bountyValue : undefined,
                         link: `${process.env.CLIENT_URL}/researcher/reports/${report._id}`
                     })
                 );
@@ -878,6 +856,106 @@ export const updateReportStatus = catchAsync(async (req: Request, res: Response,
             }
         } catch (err) {
             console.error('Failed to send company status-change emails:', err);
+        }
+    })();
+});
+
+export const awardBounty = catchAsync(async (req: Request, res: Response, next: NextFunction) => {
+    const { id } = req.params;
+    const { bounty, message } = req.body;
+
+    const Report = (await import('../models/Report')).default;
+    const report = await Report.findById(id);
+
+    if (!report) return next(new AppError('Report not found', 404));
+
+    if (report.status !== 'Resolved') {
+        return next(new AppError('Bounty can only be awarded for Resolved reports', 400));
+    }
+
+    if (bounty === undefined || isNaN(Number(bounty)) || Number(bounty) <= 0) {
+        return next(new AppError('Invalid bounty amount', 400));
+    }
+
+    if ((report as any).bounty && (report as any).bounty > 0) {
+        return next(new AppError('Bounty has already been awarded for this report', 400));
+    }
+
+    (report as any).bounty = Number(bounty);
+
+    // Credit wallet
+    const User = (await import('../models/User')).default;
+    await User.findByIdAndUpdate(report.researcherId, {
+        $inc: {
+            walletBalance: (report as any).bounty,
+            reputationScore: Math.floor((report as any).bounty / 10)
+        }
+    });
+
+    // Add Timeline Event
+    const newComment = {
+        sender: req.user!._id,
+        content: message || 'Thank you for your submission!',
+        type: 'bounty_awarded',
+        metadata: { bountyAwarded: (report as any).bounty },
+        createdAt: new Date()
+    };
+    report.comments.push(newComment as any);
+
+    await report.save();
+    await report.populate('comments.sender', 'name username role avatar');
+    
+    const populatedComment = report.comments[report.comments.length - 1];
+
+    try {
+        const io = getIO();
+        io.to(id).emit('new_activity', {
+            id: populatedComment._id,
+            type: 'bounty_awarded',
+            author: (populatedComment.sender as any)?.name || 'Company',
+            role: 'Company',
+            content: populatedComment.content,
+            timestamp: populatedComment.createdAt,
+            authorAvatar: (populatedComment.sender as any)?.avatar,
+            metadata: populatedComment.metadata,
+            bounty: (report as any).bounty
+        });
+    } catch (socketError) {
+        console.error("Socket emit failed:", socketError);
+    }
+
+    res.status(200).json({
+        status: 'success',
+        data: { report }
+    });
+
+    // Send email to researcher
+    (async () => {
+        try {
+            await report.populate('researcherId', 'name email');
+            const researcher = report.researcherId as any;
+            const companyName = req.user.name || 'Security Program';
+
+            if (researcher?.email) {
+                await sendEmail(
+                    researcher.email,
+                    `Bounty Awarded: ${report.title}`,
+                    reportEmailTemplate({
+                        recipientName: researcher.name || 'Researcher',
+                        recipientRole: 'researcher',
+                        actorName: companyName,
+                        actorRole: 'company',
+                        actionType: 'bounty_awarded',
+                        reportTitle: report.title,
+                        reportId: String(report._id),
+                        bounty: (report as any).bounty,
+                        reason: message,
+                        link: `${process.env.CLIENT_URL}/researcher/reports/${report._id}`
+                    })
+                );
+            }
+        } catch (err) {
+            console.error('Failed to send bounty email:', err);
         }
     })();
 });

@@ -1,6 +1,6 @@
 import express from 'express';
 import { protect, restrictTo } from '../middlewares/auth';
-import { inviteMember, getTeamMembers, generateVerificationToken, verifyDomain, getVerifiedAssets, updateAssetStatus, deleteVerifiedAsset, createProgram, getCompanyPrograms, getProgramById, deleteProgram, getReportDetails, getCompanyReports, updateReportSeverity, addCompanyComment, suggestBounty, updateReportStatus } from '../controllers/companyController';
+import { inviteMember, getTeamMembers, generateVerificationToken, verifyDomain, getVerifiedAssets, updateAssetStatus, deleteVerifiedAsset, createProgram, getCompanyPrograms, getProgramById, deleteProgram, getReportDetails, getCompanyReports, updateReportSeverity, addCompanyComment, suggestBounty, updateReportStatus, awardBounty } from '../controllers/companyController';
 
 const router = express.Router();
 
@@ -26,6 +26,7 @@ router.get('/reports/:id', getReportDetails);
 router.patch('/reports/:id/severity', updateReportSeverity);
 router.post('/reports/:id/comments', addCompanyComment);
 router.patch('/reports/:id/status', updateReportStatus);
+router.post('/reports/:id/bounty', awardBounty);
 router.post('/reports/:id/suggest-bounty', suggestBounty);
 
 export default router;

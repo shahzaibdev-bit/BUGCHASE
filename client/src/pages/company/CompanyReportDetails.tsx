@@ -99,7 +99,7 @@ type ReportStatus = 'Submitted' | 'Under Review' | 'Needs Info' | 'Triaged' | 'S
 
 interface TimelineEvent {
   id: string;
-  type: 'comment' | 'status_change' | 'action' | 'severity_update';
+  type: 'comment' | 'status_change' | 'action' | 'severity_update' | 'bounty_awarded';
   author: string;
   authorAvatar?: string;
   role: 'Triager' | 'Researcher' | 'Company';
@@ -142,6 +142,7 @@ const mapComment = (c: any): TimelineEvent => {
   return {
     id: c._id?.toString() || Date.now().toString(),
     type: c.type === 'status_change' ? 'status_change'
+        : c.type === 'bounty_awarded' ? 'bounty_awarded'
         : c.type === 'severity_update' ? 'severity_update'
         : 'comment',
     author: role === 'Researcher'
@@ -183,6 +184,10 @@ export default function CompanyReportDetails() {
   
   // Resolve Modal State
   const [resolveModalOpen, setResolveModalOpen] = useState(false);
+  const [resolveMessage, setResolveMessage] = useState('');
+
+  // Bounty Modal State
+  const [bountyModalOpen, setBountyModalOpen] = useState(false);
   const [bountyAmount, setBountyAmount] = useState<number | ''>('');
   const [aiSuggestionLoading, setAiSuggestionLoading] = useState(false);
   const [aiReasoning, setAiReasoning] = useState('');
@@ -221,7 +226,7 @@ export default function CompanyReportDetails() {
   };
 
   // Replace old `handleStatusChange` with real API call
-  const handleCompanyAction = async (status: ReportStatus, reason?: string, bounty?: number) => {
+  const handleCompanyAction = async (status: ReportStatus, reason?: string) => {
       try {
           const token = localStorage.getItem('token');
           const res = await fetch(`${API_URL}/company/reports/${id}/status`, {
@@ -232,8 +237,7 @@ export default function CompanyReportDetails() {
               },
               body: JSON.stringify({
                   status,
-                  note: reason,
-                  ...(bounty !== undefined && bounty > 0 ? { bounty } : {})
+                  note: reason
               })
           });
 
@@ -246,16 +250,50 @@ export default function CompanyReportDetails() {
           setResolveModalOpen(false);
           setSelectedReason('');
           setCustomReason('');
-          setBountyAmount('');
+          setResolveMessage('');
 
-          const actionLabel = status === 'Resolved' ? `✅ Report Resolved${bounty ? ` – $${bounty} bounty sent to researcher` : ''}` : `Report marked as ${status}`;
+          const actionLabel = status === 'Resolved' ? `✅ Report Resolved` : `Report marked as ${status}`;
           toast({ title: 'Action Complete', description: actionLabel });
           
-          // Re-fetch report to populate new socket/timeline events from server
           fetchReport();
       } catch (error: any) {
           console.error('Action error:', error);
           toast({ title: 'Error', description: error.message || 'Failed to update report', variant: 'destructive' });
+      }
+  };
+
+  const handleAwardBounty = async () => {
+      try {
+          if (!bountyAmount || Number(bountyAmount) <= 0) throw new Error("Please enter a valid bounty amount");
+          setIsSubmitting(true);
+          const token = localStorage.getItem('token');
+          const res = await fetch(`${API_URL}/company/reports/${id}/bounty`, {
+              method: 'POST',
+              headers: { 
+                  'Content-Type': 'application/json',
+                  'Authorization': `Bearer ${token}`
+              },
+              body: JSON.stringify({
+                  bounty: Number(bountyAmount),
+                  message: replyContent
+              })
+          });
+
+          if (!res.ok) {
+              const errData = await res.json().catch(() => ({}));
+              throw new Error(errData.message || 'Failed to award bounty');
+          }
+
+          setBountyModalOpen(false);
+          setBountyAmount('');
+          setReplyContent('');
+          toast({ title: 'Bounty Awarded', description: `$${bountyAmount} has been sent to the researcher.` });
+          fetchReport();
+      } catch (error: any) {
+          console.error('Bounty error:', error);
+          toast({ title: 'Error', description: error.message || 'Failed to award bounty', variant: 'destructive' });
+      } finally {
+          setIsSubmitting(false);
       }
   };
 
@@ -527,19 +565,31 @@ export default function CompanyReportDetails() {
                                 <h1 className="text-xl md:text-2xl font-bold tracking-tight text-foreground break-words">{report.title}</h1>
                             </div>
                             <div className="flex gap-2 shrink-0">
-                                <Button 
-                                    variant="outline" 
-                                    className="border-zinc-300 dark:border-zinc-700 text-zinc-900 dark:text-zinc-100 hover:bg-zinc-100 dark:hover:bg-zinc-800"
-                                    onClick={() => setRejectModalOpen(true)}
-                                >
-                                    <XCircle className="w-4 h-4 mr-2" /> Reject Report
-                                </Button>
-                                <Button 
-                                    className="bg-zinc-900 text-white dark:bg-white dark:text-black hover:bg-zinc-800 dark:hover:bg-zinc-200"
-                                    onClick={() => setResolveModalOpen(true)}
-                                >
-                                    <CheckCircle className="w-4 h-4 mr-2" /> Mark Resolved
-                                </Button>
+                                {reportState.status !== 'Resolved' && (
+                                    <>
+                                        <Button 
+                                            variant="outline" 
+                                            className="border-zinc-300 dark:border-zinc-700 text-zinc-900 dark:text-zinc-100 hover:bg-zinc-100 dark:hover:bg-zinc-800"
+                                            onClick={() => setRejectModalOpen(true)}
+                                        >
+                                            <XCircle className="w-4 h-4 mr-2" /> Reject Report
+                                        </Button>
+                                        <Button 
+                                            className="bg-zinc-900 text-white dark:bg-white dark:text-black hover:bg-zinc-800 dark:hover:bg-zinc-200"
+                                            onClick={() => setResolveModalOpen(true)}
+                                        >
+                                            <CheckCircle className="w-4 h-4 mr-2" /> Mark Resolved
+                                        </Button>
+                                    </>
+                                )}
+                                {reportState.status === 'Resolved' && (!reportState.bounty || reportState.bounty === 0) && (
+                                    <Button 
+                                        className="bg-emerald-600 text-white hover:bg-emerald-700"
+                                        onClick={() => setBountyModalOpen(true)}
+                                    >
+                                        <DollarSign className="w-4 h-4 mr-2" /> Initiate Bounty
+                                    </Button>
+                                )}
                             </div>
                         </div>
                     </GlassCard>
@@ -672,11 +722,13 @@ export default function CompanyReportDetails() {
                                                 </div>
                                             )}
                                             {event.type === 'status_change' && (
-                                                <span className="text-zinc-500 text-sm flex flex-wrap items-center gap-1">
-                                                     changed the status to 
-                                                     <Badge variant="outline" className="font-bold border-zinc-200 dark:border-zinc-700 bg-zinc-100 dark:bg-zinc-800 text-zinc-800 dark:text-zinc-200 text-xs px-2 py-0">
-                                                         {event.metadata?.newStatus || event.content.replace('Changed status to ', '').replace('System changed status to ', '').split('.')[0]}
-                                                     </Badge>
+                                                <span className="text-zinc-800 dark:text-zinc-200 text-[14px] flex flex-wrap items-center gap-1 font-medium tracking-tight">
+                                                     changed the status to {event.metadata?.newStatus?.toLowerCase() || event.content.replace('Changed status to ', '').replace('System changed status to ', '').split('.')[0].toLowerCase()}
+                                                </span>
+                                            )}
+                                            {event.type === 'bounty_awarded' && (
+                                                <span className="text-zinc-800 dark:text-zinc-200 text-[14px] flex flex-wrap items-center gap-1 font-medium tracking-tight">
+                                                     rewarded {researcher?.username || researcher?.name || 'researcher'} with a ${event.metadata?.bountyAwarded?.toLocaleString()} bounty.
                                                 </span>
                                             )}
                                             <span className="text-zinc-400 text-[10px] ml-2 opacity-0 group-hover:opacity-100 transition-opacity">
@@ -689,17 +741,20 @@ export default function CompanyReportDetails() {
 
                                         {event.type === 'status_change' ? (
                                             <div className="mt-1 flex flex-col items-start w-full gap-2">
-                                                {event.metadata?.bounty > 0 && (
-                                                    <div className="flex items-center gap-2 mt-2 px-3 py-2 bg-emerald-50 dark:bg-emerald-500/10 border border-emerald-200 dark:border-emerald-500/20 rounded-lg text-emerald-700 dark:text-emerald-400 text-sm font-medium w-full max-w-md">
-                                                        <DollarSign className="w-4 h-4" />
-                                                        Bounty Awarded: ${event.metadata.bounty.toLocaleString()}
-                                                    </div>
-                                                )}
                                                 {event.metadata?.reason && (
-                                                    <div className="mt-1 bg-white dark:bg-zinc-900/50 rounded-xl p-3 px-4 text-sm text-zinc-800 dark:text-zinc-200 border border-zinc-200 dark:border-zinc-800 shadow-sm inline-block max-w-[85%] font-inter leading-relaxed relative">
-                                                        <div className="absolute -top-2 left-4 w-3 h-3 bg-white dark:bg-zinc-900 border-t border-l border-zinc-200 dark:border-zinc-800 rotate-45 transform z-0"></div>
+                                                    <div className="mt-1 bg-white dark:bg-zinc-900/50 rounded-lg p-3 px-4 text-sm text-zinc-800 dark:text-zinc-200 border border-zinc-300 dark:border-zinc-700 w-full max-w-[85%] font-inter leading-relaxed relative text-left">
                                                         <div className="relative z-10 prose prose-sm prose-zinc dark:prose-invert max-w-none">
                                                             <ReactMarkdown remarkPlugins={[remarkGfm]}>{event.metadata.reason}</ReactMarkdown>
+                                                        </div>
+                                                    </div>
+                                                )}
+                                            </div>
+                                        ) : event.type === 'bounty_awarded' ? (
+                                            <div className="mt-1 flex flex-col items-start w-full gap-2">
+                                                {event.content && (
+                                                    <div className="mt-1 bg-white dark:bg-zinc-900/50 rounded-lg p-3 px-4 text-sm text-zinc-800 dark:text-zinc-200 border border-zinc-300 dark:border-zinc-700 w-full max-w-[85%] font-inter leading-relaxed relative text-left">
+                                                        <div className="relative z-10 prose prose-sm prose-zinc dark:prose-invert max-w-none">
+                                                            <ReactMarkdown remarkPlugins={[remarkGfm]}>{event.content}</ReactMarkdown>
                                                         </div>
                                                     </div>
                                                 )}
@@ -918,14 +973,52 @@ export default function CompanyReportDetails() {
 
             {/* RESOLVE REPORT MODAL */}
             <Dialog open={resolveModalOpen} onOpenChange={setResolveModalOpen}>
-                <DialogContent className="max-w-2xl bg-white dark:bg-zinc-950 border-zinc-200 dark:border-zinc-800 flex flex-col">
+                <DialogContent className="max-w-xl bg-white dark:bg-zinc-950 border-zinc-200 dark:border-zinc-800 flex flex-col">
                     <DialogHeader className="shrink-0">
                         <DialogTitle className="font-mono text-lg flex items-center gap-2">
                             <CheckCircle className="w-5 h-5 text-green-500" />
-                            Resolve & Award Bounty
+                            Mark Report as Resolved
                         </DialogTitle>
                         <DialogDescription>
-                            Mark this report as resolved and assign a bounty to the researcher.
+                            Confirm that the reported vulnerability has been fully remediated. You will have the option to reward a bounty after resolving.
+                        </DialogDescription>
+                    </DialogHeader>
+                    
+                    <div className="space-y-4 py-4 flex-1">
+                        <div className="space-y-2">
+                            <label className="text-xs font-bold text-zinc-500 uppercase">Closing Message to Researcher</label>
+                            <div className="rounded-lg bg-white dark:bg-zinc-950 shadow-sm border border-zinc-200 dark:border-zinc-800 focus-within:ring-1 focus-within:ring-zinc-400 dark:focus-within:ring-white/20 transition-all overflow-hidden">
+                                 <CyberpunkEditor 
+                                     content={resolveMessage}
+                                     onChange={setResolveMessage}
+                                     placeholder="We have released a patch! Thank you for the submission..."
+                                 />
+                            </div>
+                        </div>
+                    </div>
+
+                    <DialogFooter className="shrink-0 mt-4">
+                        <Button variant="ghost" onClick={() => setResolveModalOpen(false)} className="text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-100">CANCEL</Button>
+                        <Button 
+                            onClick={() => handleCompanyAction('Resolved', resolveMessage || 'Issue has been successfully resolved by the team.')}
+                            className="bg-green-600 hover:bg-green-700 text-white font-bold"
+                        >
+                            RESOLVE REPORT
+                        </Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
+
+            {/* BOUNTY MODAL */}
+            <Dialog open={bountyModalOpen} onOpenChange={setBountyModalOpen}>
+                <DialogContent className="max-w-2xl bg-white dark:bg-zinc-950 border-zinc-200 dark:border-zinc-800 flex flex-col md:max-h-[90vh] overflow-y-auto">
+                    <DialogHeader className="shrink-0">
+                        <DialogTitle className="font-mono text-lg flex items-center gap-2">
+                            <DollarSign className="w-6 h-6 text-green-500" />
+                            Initiate Bounty
+                        </DialogTitle>
+                        <DialogDescription>
+                            Assign a monetary reward to {researcher?.username || 'the researcher'} for this resolved report.
                         </DialogDescription>
                     </DialogHeader>
                     
@@ -986,18 +1079,28 @@ export default function CompanyReportDetails() {
                                 </div>
                             )}
                         </div>
+
+                        {/* Thank you note */}
+                        <div className="space-y-2">
+                            <label className="text-xs font-bold text-zinc-500 uppercase">Message to Researcher</label>
+                            <div className="rounded-lg bg-white dark:bg-zinc-950 shadow-sm border border-zinc-200 dark:border-zinc-800 focus-within:ring-1 focus-within:ring-zinc-400 dark:focus-within:ring-white/20 transition-all overflow-hidden">
+                                 <CyberpunkEditor 
+                                     content={replyContent}
+                                     onChange={setReplyContent}
+                                     placeholder={`A thank you message to ${researcher?.name || researcher?.username || 'the researcher'}`}
+                                 />
+                            </div>
+                        </div>
                     </div>
 
                     <DialogFooter className="shrink-0 mt-4">
-                        <Button variant="ghost" onClick={() => setResolveModalOpen(false)} className="text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-100">CANCEL</Button>
+                        <Button variant="ghost" onClick={() => setBountyModalOpen(false)} className="text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-100">CANCEL</Button>
                         <Button 
-                            onClick={async () => {
-                                await handleCompanyAction('Resolved', 'Issue has been successfully resolved by the team.', Number(bountyAmount) || 0);
-                                setResolveModalOpen(false);
-                            }}
-                            className="bg-green-600 hover:bg-green-700 text-white font-bold"
+                            onClick={handleAwardBounty}
+                            disabled={isSubmitting || !bountyAmount || Number(bountyAmount) <= 0}
+                            className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold"
                         >
-                            AWARD & RESOLVE
+                            {isSubmitting ? 'AWARDING...' : 'AWARD BOUNTY'}
                         </Button>
                     </DialogFooter>
                 </DialogContent>
