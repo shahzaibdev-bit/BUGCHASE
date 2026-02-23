@@ -672,12 +672,11 @@ export default function CompanyReportDetails() {
                                                 </div>
                                             )}
                                             {event.type === 'status_change' && (
-                                                <span className="text-zinc-500 text-sm flex items-center gap-1">
+                                                <span className="text-zinc-500 text-sm flex flex-wrap items-center gap-1">
                                                      changed the status to 
-                                                     <span className="font-bold text-zinc-800 dark:text-zinc-200">
-                                                         {event.metadata?.newStatus || event.content.replace('Changed status to ', '').replace('System changed status to ', '')}
-                                                     </span>
-                                                     <span>.</span>
+                                                     <Badge variant="outline" className="font-bold border-zinc-200 dark:border-zinc-700 bg-zinc-100 dark:bg-zinc-800 text-zinc-800 dark:text-zinc-200 text-xs px-2 py-0">
+                                                         {event.metadata?.newStatus || event.content.replace('Changed status to ', '').replace('System changed status to ', '').split('.')[0]}
+                                                     </Badge>
                                                 </span>
                                             )}
                                             <span className="text-zinc-400 text-[10px] ml-2 opacity-0 group-hover:opacity-100 transition-opacity">
@@ -689,12 +688,19 @@ export default function CompanyReportDetails() {
                                         </div>
 
                                         {event.type === 'status_change' ? (
-                                            <div className="mt-1 flex flex-col items-start w-full">
+                                            <div className="mt-1 flex flex-col items-start w-full gap-2">
+                                                {event.metadata?.bounty > 0 && (
+                                                    <div className="flex items-center gap-2 mt-2 px-3 py-2 bg-emerald-50 dark:bg-emerald-500/10 border border-emerald-200 dark:border-emerald-500/20 rounded-lg text-emerald-700 dark:text-emerald-400 text-sm font-medium w-full max-w-md">
+                                                        <DollarSign className="w-4 h-4" />
+                                                        Bounty Awarded: ${event.metadata.bounty.toLocaleString()}
+                                                    </div>
+                                                )}
                                                 {event.metadata?.reason && (
-                                                    <div className="mt-2 p-3 bg-zinc-50 dark:bg-zinc-900/60 border border-zinc-200 dark:border-zinc-800 rounded-lg text-sm text-zinc-700 dark:text-zinc-300 w-full">
-                                                         <div className="prose prose-sm prose-zinc dark:prose-invert max-w-none">
-                                                             <ReactMarkdown remarkPlugins={[remarkGfm]}>{event.metadata.reason}</ReactMarkdown>
-                                                         </div>
+                                                    <div className="mt-1 bg-white dark:bg-zinc-900/50 rounded-xl p-3 px-4 text-sm text-zinc-800 dark:text-zinc-200 border border-zinc-200 dark:border-zinc-800 shadow-sm inline-block max-w-[85%] font-inter leading-relaxed relative">
+                                                        <div className="absolute -top-2 left-4 w-3 h-3 bg-white dark:bg-zinc-900 border-t border-l border-zinc-200 dark:border-zinc-800 rotate-45 transform z-0"></div>
+                                                        <div className="relative z-10 prose prose-sm prose-zinc dark:prose-invert max-w-none">
+                                                            <ReactMarkdown remarkPlugins={[remarkGfm]}>{event.metadata.reason}</ReactMarkdown>
+                                                        </div>
                                                     </div>
                                                 )}
                                             </div>
