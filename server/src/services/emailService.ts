@@ -340,6 +340,8 @@ export interface ReportEmailOptions {
   reportTitle: string;
   reportId: string;
   severity?: string;
+  vulnerabilityCategory?: string;
+  cvssScore?: number;
   oldStatus?: string;
   newStatus?: string;
   reason?: string;
@@ -391,14 +393,27 @@ const getRoleIntro = (opts: ReportEmailOptions): string => {
     return `A security report that was triaged by our team has been forwarded to your program for review. As a company participant, you will now receive updates on this report thread.`;
   }
   if (actionType === 'comment') {
+    const actorLabel = actorRole === 'researcher' ? 'Security Researcher'
+      : actorRole === 'triager' ? 'Triage Team'
+      : actorRole === 'company' ? 'Security Program' : 'Participant';
+
     if (recipientRole === 'researcher') {
-      return `${actorName} from our ${actorRole} team has left a new comment on your submission. Please review their message and respond if needed.`;
+      return `<strong>${actorName}</strong> (${actorLabel}) has left a new comment on your submission. Please review their message and respond if needed.`;
     }
     if (recipientRole === 'triager') {
-      return `The researcher has replied to the report thread. Please review their response at your earliest convenience.`;
+      if (actorRole === 'researcher') {
+        return `The security researcher has replied to the report thread. Please review their response at your earliest convenience.`;
+      }
+      if (actorRole === 'company') {
+        return `<strong>${actorName}</strong> (Security Program) has posted a new comment on the report thread. Please review their message and follow up as needed.`;
+      }
+      return `A new comment has been posted on the report thread. Please review it at your earliest convenience.`;
     }
     if (recipientRole === 'company') {
-      return `There is new activity on a report in your program. A participant has posted a comment in the thread.`;
+      if (actorRole === 'researcher') {
+        return `The security researcher has replied to the report thread in your program. Please review their message.`;
+      }
+      return `There is new activity on a report in your security program. <strong>${actorName}</strong> has posted a comment in the report thread.`;
     }
   }
   if (actionType === 'status_change') {
@@ -424,7 +439,9 @@ export const reportEmailTemplate = (opts: ReportEmailOptions): string => {
 
   const detailRows = [
     opts.reportId ? `<tr><td class="detail-label">Report ID</td><td class="detail-value" style="font-family: monospace; font-size: 12px;">${opts.reportId}</td></tr>` : '',
+    opts.vulnerabilityCategory ? `<tr><td class="detail-label">Vulnerability Type</td><td class="detail-value">${opts.vulnerabilityCategory}</td></tr>` : '',
     opts.severity ? `<tr><td class="detail-label">Severity</td><td class="detail-value"><span style="background:${severityColor}22; color:${severityColor}; padding: 2px 8px; border-radius: 4px; font-size: 12px; font-weight: bold; text-transform: uppercase;">${opts.severity}</span></td></tr>` : '',
+    opts.cvssScore !== undefined ? `<tr><td class="detail-label">CVSS Score</td><td class="detail-value" style="font-weight: bold;">${opts.cvssScore.toFixed(1)}</td></tr>` : '',
     opts.newStatus ? `<tr><td class="detail-label">Status</td><td class="detail-value"><span style="background:${statusColor}22; color:${statusColor}; padding: 2px 8px; border-radius: 4px; font-size: 12px; font-weight: bold; text-transform: uppercase;">${opts.newStatus}</span></td></tr>` : '',
     opts.bounty ? `<tr><td class="detail-label">Bounty Awarded</td><td class="detail-value" style="color: #22c55e; font-weight: bold; font-size: 18px;">$${opts.bounty.toLocaleString()}</td></tr>` : '',
   ].filter(Boolean).join('\n');

@@ -549,6 +549,8 @@ export const addCompanyComment = catchAsync(async (req: Request, res: Response, 
                         reportTitle: report.title,
                         reportId: String(report._id),
                         severity: report.severity,
+                        vulnerabilityCategory: report.vulnerabilityCategory,
+                        cvssScore: report.cvssScore,
                         message: content,
                         link: `${process.env.CLIENT_URL}/researcher/reports/${report._id}`
                     })
@@ -572,6 +574,8 @@ export const addCompanyComment = catchAsync(async (req: Request, res: Response, 
                             reportTitle: report.title,
                             reportId: String(report._id),
                             severity: report.severity,
+                            vulnerabilityCategory: report.vulnerabilityCategory,
+                            cvssScore: report.cvssScore,
                             message: content,
                             link: `${process.env.CLIENT_URL}/triager/app/reports/${report._id}`
                         })
