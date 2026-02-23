@@ -5,6 +5,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { AuthProvider } from "@/contexts/AuthContext";
 import { ThemeProvider } from "@/components/theme-provider";
+import { useScrollRestore } from "@/hooks/useScrollRestore";
 
 // Pages
 import LandingPage from "./pages/LandingPage";
@@ -80,6 +81,12 @@ import AdminTriagers from "./pages/admin/AdminTriagers";
 
 const queryClient = new QueryClient();
 
+// Must live inside BrowserRouter so useLocation() works
+const ScrollRestoreWrapper = () => {
+  useScrollRestore();
+  return null;
+};
+
 const App = () => (
   <QueryClientProvider client={queryClient}>
     <ThemeProvider attribute="class" defaultTheme="dark" enableSystem disableTransitionOnChange>
@@ -88,6 +95,7 @@ const App = () => (
           <Toaster />
           <Sonner />
           <BrowserRouter>
+            <ScrollRestoreWrapper />
             <Routes>
               {/* Public Routes */}
               {/* Public Routes with Global Background */}
