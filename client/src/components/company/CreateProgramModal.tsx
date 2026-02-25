@@ -126,9 +126,13 @@ export const CreateProgramModal = ({ isOpen, onClose, companyName, verifiedAsset
               rewards: formData.rewards
           };
 
+          const token = localStorage.getItem('token');
           const res = await fetch(`${API_URL}/company/programs`, {
               method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
+              headers: { 
+                  'Content-Type': 'application/json',
+                  'Authorization': `Bearer ${token}`
+              },
               body: JSON.stringify(payload)
           });
 
