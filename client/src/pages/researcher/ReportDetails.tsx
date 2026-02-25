@@ -14,6 +14,7 @@ import { toast } from '@/hooks/use-toast';
 import { API_URL } from '@/config';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
+import rehypeRaw from 'rehype-raw';
 const Timeline = ({ currentStep }: { currentStep: number }) => {
   const steps = ['Submitted', 'Triaging', 'Triaged', 'Paid', 'Resolved']; // Updated to match backend roughly
 
@@ -414,12 +415,13 @@ export default function ReportDetails() {
                                      </div>
                                  )}
                                  {comment.type === 'status_change' && (
-                                     <span className="text-zinc-500 text-sm flex items-center gap-1">
-                                          changed the status to 
-                                          <span className="font-bold text-zinc-800 dark:text-zinc-200">
-                                              {comment.metadata?.newStatus || comment.content.replace('Changed status to ', '').replace('System changed status to ', '')}
-                                          </span>
-                                          <span>.</span>
+                                     <span className="text-zinc-800 dark:text-zinc-200 text-[14px] flex flex-wrap items-center gap-1 font-medium tracking-tight">
+                                          changed the status to {comment.metadata?.newStatus?.toLowerCase() || comment.content.replace('Changed status to ', '').replace('System changed status to ', '').split('.')[0].toLowerCase()}
+                                     </span>
+                                 )}
+                                 {comment.type === 'bounty_awarded' && (
+                                     <span className="text-zinc-800 dark:text-zinc-200 text-[14px] flex flex-wrap items-center gap-1 font-medium tracking-tight">
+                                          awarded a ${comment.metadata?.bountyAwarded?.toLocaleString() || comment.content.match(/\$(\d+)/)?.[1] || 0} bounty.
                                      </span>
                                  )}
                                  <span className="text-zinc-400 text-[10px] ml-2 opacity-0 group-hover:opacity-100 transition-opacity">
@@ -430,12 +432,22 @@ export default function ReportDetails() {
                                  </span>
                              </div>
                              {comment.type === 'status_change' ? (
-                                <div className="mt-1 flex flex-col items-start w-full">
+                                <div className="mt-1 flex flex-col items-start w-full gap-2">
                                     {comment.metadata?.reason && (
-                                        <div className="mt-2 p-3 bg-zinc-50 dark:bg-zinc-900/60 border border-zinc-200 dark:border-zinc-800 rounded-lg text-sm text-zinc-700 dark:text-zinc-300 w-full">
-                                             <div className="prose prose-sm prose-zinc dark:prose-invert max-w-none">
-                                                 <ReactMarkdown remarkPlugins={[remarkGfm]}>{comment.metadata.reason}</ReactMarkdown>
-                                             </div>
+                                        <div className="mt-1 bg-white dark:bg-zinc-900/50 rounded-lg p-3 px-4 text-sm text-zinc-800 dark:text-zinc-200 border border-zinc-300 dark:border-zinc-700 w-full max-w-[85%] font-inter leading-relaxed relative text-left">
+                                            <div className="relative z-10 prose prose-sm prose-zinc dark:prose-invert max-w-none">
+                                                <ReactMarkdown rehypePlugins={[rehypeRaw]} remarkPlugins={[remarkGfm]}>{comment.metadata.reason}</ReactMarkdown>
+                                            </div>
+                                        </div>
+                                    )}
+                                </div>
+                             ) : comment.type === 'bounty_awarded' ? (
+                                <div className="mt-1 flex flex-col items-start w-full gap-2">
+                                    {comment.content && (
+                                        <div className="mt-1 bg-white dark:bg-zinc-900/50 rounded-lg p-3 px-4 text-sm text-zinc-800 dark:text-zinc-200 border border-zinc-300 dark:border-zinc-700 w-full max-w-[85%] font-inter leading-relaxed relative text-left">
+                                            <div className="relative z-10 prose prose-sm prose-zinc dark:prose-invert max-w-none">
+                                                <ReactMarkdown rehypePlugins={[rehypeRaw]} remarkPlugins={[remarkGfm]}>{comment.content}</ReactMarkdown>
+                                            </div>
                                         </div>
                                     )}
                                 </div>

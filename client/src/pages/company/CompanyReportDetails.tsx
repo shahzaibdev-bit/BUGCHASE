@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { io as socketIO } from 'socket.io-client';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
+import rehypeRaw from 'rehype-raw';
 import { useParams, useNavigate } from 'react-router-dom';
 import { 
   Lock, 
@@ -809,7 +810,7 @@ export default function CompanyReportDetails() {
                                                 {event.metadata?.reason && (
                                                     <div className="mt-1 bg-white dark:bg-zinc-900/50 rounded-lg p-3 px-4 text-sm text-zinc-800 dark:text-zinc-200 border border-zinc-300 dark:border-zinc-700 w-full max-w-[85%] font-inter leading-relaxed relative text-left">
                                                         <div className="relative z-10 prose prose-sm prose-zinc dark:prose-invert max-w-none">
-                                                            <div dangerouslySetInnerHTML={{ __html: event.metadata.reason }} />
+                                                            <ReactMarkdown rehypePlugins={[rehypeRaw]} remarkPlugins={[remarkGfm]}>{event.metadata.reason}</ReactMarkdown>
                                                         </div>
                                                     </div>
                                                 )}
@@ -819,7 +820,7 @@ export default function CompanyReportDetails() {
                                                 {event.content && (
                                                     <div className="mt-1 bg-white dark:bg-zinc-900/50 rounded-lg p-3 px-4 text-sm text-zinc-800 dark:text-zinc-200 border border-zinc-300 dark:border-zinc-700 w-full max-w-[85%] font-inter leading-relaxed relative text-left">
                                                         <div className="relative z-10 prose prose-sm prose-zinc dark:prose-invert max-w-none">
-                                                            <div dangerouslySetInnerHTML={{ __html: event.content }} />
+                                                            <ReactMarkdown rehypePlugins={[rehypeRaw]} remarkPlugins={[remarkGfm]}>{event.content}</ReactMarkdown>
                                                         </div>
                                                     </div>
                                                 )}

@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
+import rehypeRaw from 'rehype-raw';
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import { 
   Lock, 
@@ -77,7 +78,7 @@ type ReportStatus = 'Submitted' | 'Triaging' | 'Under Review' | 'Needs Info' | '
 
 interface TimelineEvent {
   id: string;
-  type: 'comment' | 'status_change' | 'action' | 'assignment' | 'severity_update';
+  type: 'comment' | 'status_change' | 'action' | 'assignment' | 'severity_update' | 'bounty_awarded';
   author: string;
   authorAvatar?: string; // Added field
   role: 'Triager' | 'Researcher' | 'Company' | 'System';
@@ -335,12 +336,13 @@ const TimelineNode = ({ event, isConsecutive }: { event: TimelineEvent, isConsec
                             </div>
                         )}
                         {event.type === 'status_change' && (
-                            <span className="text-zinc-500 text-sm flex items-center gap-1">
-                                 changed the status to 
-                                 <span className="font-bold text-zinc-800 dark:text-zinc-200">
-                                     {event.metadata?.newStatus || event.content.replace('Changed status to ', '')}
-                                 </span>
-                                 <span>.</span>
+                            <span className="text-zinc-800 dark:text-zinc-200 text-[14px] flex flex-wrap items-center gap-1 font-medium tracking-tight">
+                                 changed the status to {event.metadata?.newStatus?.toLowerCase() || event.content.replace('Changed status to ', '').replace('System changed status to ', '').split('.')[0].toLowerCase()}
+                            </span>
+                        )}
+                        {event.type === 'bounty_awarded' && (
+                            <span className="text-zinc-800 dark:text-zinc-200 text-[14px] flex flex-wrap items-center gap-1 font-medium tracking-tight">
+                                 rewarded the researcher with a ${event.metadata?.bountyAwarded?.toLocaleString() || event.content.match(/\$(\d+)/)?.[1] || 0} bounty.
                             </span>
                         )}
                         <span className="text-zinc-400 text-[10px] ml-2 opacity-0 group-hover:opacity-100 transition-opacity">
@@ -351,7 +353,33 @@ const TimelineNode = ({ event, isConsecutive }: { event: TimelineEvent, isConsec
                         </span>
                     </div>
                  </div>
-                 {(event.type === 'comment' || event.type === 'assignment') && (() => {
+
+                                        {event.type === 'status_change' ? (
+                                            <div className="mt-1 flex flex-col items-start w-full gap-2">
+                                                {event.metadata?.reason && (
+                                                    <div className="mt-1 bg-white dark:bg-zinc-900/50 rounded-lg p-3 px-4 text-sm text-zinc-800 dark:text-zinc-200 border border-zinc-300 dark:border-zinc-700 w-full max-w-[85%] font-inter leading-relaxed relative text-left">
+                                                        <div className="relative z-10 prose prose-sm prose-zinc dark:prose-invert max-w-none">
+                                                            <ReactMarkdown rehypePlugins={[rehypeRaw]} remarkPlugins={[remarkGfm]}>{event.metadata.reason}</ReactMarkdown>
+                                                        </div>
+                                                    </div>
+                                                )}
+                                            </div>
+                                        ) : event.type === 'bounty_awarded' ? (
+                                            <div className="mt-1 flex flex-col items-start w-full gap-2">
+                                                {event.content && (
+                                                    <div className="mt-1 bg-white dark:bg-zinc-900/50 rounded-lg p-3 px-4 text-sm text-zinc-800 dark:text-zinc-200 border border-zinc-300 dark:border-zinc-700 w-full max-w-[85%] font-inter leading-relaxed relative text-left">
+                                                        <div className="relative z-10 prose prose-sm prose-zinc dark:prose-invert max-w-none">
+                                                            <ReactMarkdown rehypePlugins={[rehypeRaw]} remarkPlugins={[remarkGfm]}>{event.content}</ReactMarkdown>
+                                                        </div>
+                                                    </div>
+                                                )}
+                                            </div>
+                 ) : event.type === 'severity_update' ? (
+                     <div className="flex items-center gap-1 mt-1 text-sm text-zinc-500 dark:text-zinc-400">
+                         <span>updated severity —</span>
+                         <span className="font-bold" dangerouslySetInnerHTML={{ __html: event.content }} />
+                     </div>
+                 ) : (event.type === 'comment' || event.type === 'assignment') ? (() => {
                      // TipTap (CyberpunkEditor) stores HTML; triager notes/assignment messages are plain markdown.
                      // Detect by checking if content starts with an HTML tag.
                      const isHtml = /^\s*<[a-z]/i.test(event.content);
@@ -366,14 +394,7 @@ const TimelineNode = ({ event, isConsecutive }: { event: TimelineEvent, isConsec
                              )}
                          </div>
                      );
-                 })()}
-                 {event.metadata?.reason && (
-                     <div className="mt-2 p-3 bg-zinc-50 dark:bg-zinc-900/60 border border-zinc-200 dark:border-zinc-800 rounded-lg text-sm text-zinc-700 dark:text-zinc-300">
-                         <div className="prose prose-sm prose-zinc dark:prose-invert max-w-none">
-                             <ReactMarkdown remarkPlugins={[remarkGfm]}>{event.metadata.reason}</ReactMarkdown>
-                         </div>
-                     </div>
-                 )}
+                 })() : null}
             </div>
         </div>
     );
@@ -655,9 +676,9 @@ export default function TriagerReportDetails() {
                 // Add local timeline event for immediate feedback
                 const newSystemEvent: TimelineEvent = {
                     id: Date.now().toString(),
-                    type: 'comment', 
-                    author: user?.username || user?.name || 'Unknown User', 
-                    authorAvatar: user?.avatar,
+                    type: 'severity_update', 
+                    author: (user as any)?.username || user?.name || 'Unknown User', 
+                    authorAvatar: (user as any)?.avatar || user?.avatar,
                     role: 'Triager', 
                     content: `Updated severity to ${score >= 9 ? 'Critical' : score >= 7 ? 'High' : score >= 4 ? 'Medium' : 'Low'} (${score}).`,
                     timestamp: new Date().toISOString()

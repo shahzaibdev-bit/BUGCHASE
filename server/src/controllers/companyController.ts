@@ -241,7 +241,19 @@ export const deleteVerifiedAsset = catchAsync(async (req: Request, res: Response
 export const createProgram = catchAsync(async (req: Request, res: Response, next: NextFunction) => {
     try {
         console.log("Creating Program. Body:", req.body);
-        const { title, type, description, selectedAssets = [], rewards } = req.body; 
+        const { 
+            title, 
+            type, 
+            description, 
+            selectedAssets = [], 
+            rewards,
+            rulesOfEngagement = '',
+            safeHarbor = '',
+            submissionGuidelines = '',
+            outOfScope = [],
+            slas = { firstResponse: 24, triage: 48, bounty: 168, resolution: 360 },
+            isPrivate = false
+        } = req.body; 
         
         const user = await User.findById(req.user!.id);
         if (!user) return next(new AppError('User not found', 404));
@@ -250,10 +262,16 @@ export const createProgram = catchAsync(async (req: Request, res: Response, next
             const asset = user.verifiedAssets?.find(a => a.id === assetId);
             return {
                 asset: asset ? asset.domain : assetId,
-                type: 'Web/API',
-                instruction: 'Testing permitted'
+                type: 'Web',
+                instruction: 'Testing permitted',
+                tier: 'Primary'
             };
         });
+
+        const formattedOutOfScope = outOfScope.map((item: any) => ({
+            asset: item.asset || '',
+            reason: item.reason || 'Out of bounds'
+        }));
 
         // Calculate Bounty Range 
         let bountyRange = "Varies";
@@ -290,7 +308,13 @@ export const createProgram = catchAsync(async (req: Request, res: Response, next
             title,
             type,
             description: description || '',
+            rulesOfEngagement,
+            safeHarbor,
+            submissionGuidelines,
             scope,
+            outOfScope: formattedOutOfScope,
+            slas,
+            isPrivate,
             rewards: sanitizedRewards,
             bountyRange,
             status: 'Pending'

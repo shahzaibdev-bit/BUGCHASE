@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { 
   X, Check, ChevronRight, ChevronLeft, Shield, DollarSign, 
-  Globe, Smartphone, Server, Plus, ChevronDown, CheckCircle 
+  Globe, Smartphone, Server, Plus, ChevronDown, CheckCircle, Trash2
 } from 'lucide-react';
 import { Dialog, DialogContent } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
@@ -20,7 +20,7 @@ interface CreateProgramModalProps {
   isOpen: boolean;
   onClose: () => void;
   companyName: string;
-  verifiedAssets: any[];
+  verifiedAssets: { id: string; domain: string; type?: string }[];
   onSuccess?: () => void;
 }
 
@@ -31,16 +31,29 @@ export const CreateProgramModal = ({ isOpen, onClose, companyName, verifiedAsset
     title: '',
     type: 'VDP', 
     description: '',
+    isPrivate: false,
     selectedAssets: [] as string[],
+    outOfScope: [] as { asset: string; reason: string }[],
+    rulesOfEngagement: '',
+    safeHarbor: '',
+    submissionGuidelines: '',
+    slas: {
+        firstResponse: 24,
+        triage: 48,
+        bounty: 168,
+        resolution: 360
+    },
     rewards: {
         critical: { min: '', max: '' },
         high: { min: '', max: '' },
         medium: { min: '', max: '' },
         low: { min: '', max: '' }
-    } as any
+    } as Record<string, { min: string; max: string }>
   });
 
   const [assetDropdownOpen, setAssetDropdownOpen] = useState(false);
+  const [newOosAsset, setNewOosAsset] = useState('');
+  const [newOosReason, setNewOosReason] = useState('');
 
   // Helper to toggle asset
   const toggleAsset = (assetId: string) => {
@@ -61,6 +74,23 @@ export const CreateProgramModal = ({ isOpen, onClose, companyName, verifiedAsset
           id: a.id,
           name: a.domain,
           tier: 'Web'
+      }));
+  };
+
+  const addOutOfScopeAsset = () => {
+      if (!newOosAsset) return;
+      setFormData(prev => ({
+          ...prev,
+          outOfScope: [...prev.outOfScope, { asset: newOosAsset, reason: newOosReason || 'Out of bounds' }]
+      }));
+      setNewOosAsset('');
+      setNewOosReason('');
+  };
+
+  const removeOutOfScopeAsset = (index: number) => {
+      setFormData(prev => ({
+          ...prev,
+          outOfScope: prev.outOfScope.filter((_, i) => i !== index)
       }));
   };
 
@@ -86,7 +116,13 @@ export const CreateProgramModal = ({ isOpen, onClose, companyName, verifiedAsset
               title: formData.title,
               type: formData.type,
               description: formData.description,
+              isPrivate: formData.isPrivate,
               selectedAssets: formData.selectedAssets,
+              outOfScope: formData.outOfScope,
+              rulesOfEngagement: formData.rulesOfEngagement,
+              safeHarbor: formData.safeHarbor,
+              submissionGuidelines: formData.submissionGuidelines,
+              slas: formData.slas,
               rewards: formData.rewards
           };
 
@@ -110,7 +146,7 @@ export const CreateProgramModal = ({ isOpen, onClose, companyName, verifiedAsset
       }
   };
 
-  const nextStep = () => setStep(s => Math.min(s + 1, 4));
+  const nextStep = () => setStep(s => Math.min(s + 1, 5));
   const prevStep = () => setStep(s => Math.max(s - 1, 1));
 
   return (
@@ -125,12 +161,13 @@ export const CreateProgramModal = ({ isOpen, onClose, companyName, verifiedAsset
              </div>
              <div>
                <h2 className="text-lg font-bold font-mono tracking-tight uppercase text-foreground">
-                 {step === 1 && "PROGRAM IDENTITY"}
-                 {step === 2 && "ASSET SCOPE DEFINITION"}
-                 {step === 3 && "BOUNTY TABLE"}
-                 {step === 4 && "PROGRAM READY"}
+                 {step === 1 && "PROGRAM BASICS"}
+                 {step === 2 && "SCOPE DEFINITION"}
+                 {step === 3 && "RULES & GUIDELINES"}
+                 {step === 4 && "OPERATIONS & SLA"}
+                 {step === 5 && "PROGRAM READY"}
                </h2>
-               <p className="text-xs text-muted-foreground font-mono">STEP {step} OF 4</p>
+               <p className="text-xs text-muted-foreground font-mono">STEP {step} OF 5</p>
              </div>
           </div>
           <Button variant="ghost" size="icon" onClick={onClose} className="text-muted-foreground hover:text-foreground">
@@ -225,6 +262,22 @@ export const CreateProgramModal = ({ isOpen, onClose, companyName, verifiedAsset
                            />
                         </div>
                      </div>
+
+                     <div className="space-y-2 pt-4 border-t border-border">
+                        <div className="flex items-center justify-between">
+                            <label className="text-xs font-mono text-foreground uppercase">Program Visibility</label>
+                            <div className="flex items-center gap-2">
+                                <span className={cn("text-xs font-mono", !formData.isPrivate ? "text-foreground font-bold" : "text-muted-foreground")}>Public</span>
+                                <Switch 
+                                    checked={formData.isPrivate} 
+                                    onCheckedChange={(c) => setFormData({...formData, isPrivate: c})} 
+                                    className="data-[state=checked]:bg-foreground" 
+                                />
+                                <span className={cn("text-xs font-mono", formData.isPrivate ? "text-foreground font-bold" : "text-muted-foreground")}>Private</span>
+                            </div>
+                        </div>
+                        <p className="text-xs text-muted-foreground">Private programs are invitation-only. Public programs are visible to all registered researchers.</p>
+                     </div>
                   </>
                 )}
 
@@ -297,7 +350,7 @@ export const CreateProgramModal = ({ isOpen, onClose, companyName, verifiedAsset
                             </div>
                         ) : (
                            <div className="space-y-2">
-                              {getSelectedAssetDetails().map((asset: any) => (
+                              {getSelectedAssetDetails().map((asset: { id: string; name: string; tier: string }) => (
                                  <div key={asset.id} className="flex items-center justify-between p-3 bg-background border border-border rounded group">
                                      <div className="flex items-center gap-3">
                                         <div className="h-2 w-2 rounded-full bg-foreground shadow-sm"></div>
@@ -322,14 +375,135 @@ export const CreateProgramModal = ({ isOpen, onClose, companyName, verifiedAsset
                            </div>
                         )}
                      </ScrollArea>
+
+                     {/* Out of Scope Section */}
+                     <div className="space-y-4 pt-4 border-t border-border">
+                         <label className="text-xs font-mono text-foreground uppercase">Out of Scope Definitions</label>
+                         
+                         <div className="flex gap-2">
+                             <Input 
+                                 placeholder="e.g. staging.example.com" 
+                                 value={newOosAsset} 
+                                 onChange={(e) => setNewOosAsset(e.target.value)}
+                                 className="bg-background border-border text-sm font-mono"
+                             />
+                             <Input 
+                                 placeholder="Reason (optional)" 
+                                 value={newOosReason} 
+                                 onChange={(e) => setNewOosReason(e.target.value)}
+                                 className="bg-background border-border text-sm font-mono"
+                             />
+                             <Button type="button" onClick={addOutOfScopeAsset} variant="outline" className="shrink-0 bg-muted/50 border-border">
+                                 <Plus className="h-4 w-4" /> Add
+                             </Button>
+                         </div>
+
+                         {formData.outOfScope.length > 0 && (
+                             <div className="space-y-2 mt-4">
+                                {formData.outOfScope.map((oos, idx) => (
+                                    <div key={idx} className="flex flex-col sm:flex-row sm:items-center justify-between p-3 bg-muted/5 border border-dashed border-border rounded text-sm group">
+                                         <div className="flex items-center gap-3">
+                                            <Shield className="h-4 w-4 text-muted-foreground/50" />
+                                            <span className="font-mono font-bold text-foreground">{oos.asset}</span>
+                                            {oos.reason && <span className="text-muted-foreground text-xs">— {oos.reason}</span>}
+                                         </div>
+                                         <Button 
+                                            variant="ghost" 
+                                            size="icon" 
+                                            className="h-6 w-6 opacity-0 group-hover:opacity-100 transition-opacity text-destructive"
+                                            onClick={() => removeOutOfScopeAsset(idx)}
+                                         >
+                                            <Trash2 className="h-4 w-4" />
+                                         </Button>
+                                    </div>
+                                ))}
+                             </div>
+                         )}
+                     </div>
                   </div>
                 )}
 
-                {/* STEP 3: REWARDS */}
+                {/* STEP 3: RULES & GUIDELINES */}
                 {step === 3 && (
                   <div className="space-y-6">
+                     <div className="space-y-2">
+                        <label className="text-xs font-mono text-foreground uppercase flex items-center gap-2">
+                            <Shield className="h-4 w-4" /> Rules of Engagement
+                        </label>
+                        <p className="text-xs text-muted-foreground mb-2">Define what researchers are allowed to do and what is strictly prohibited.</p>
+                        <div className="border border-border rounded-md overflow-hidden h-40">
+                           <CyberpunkEditor 
+                               content={formData.rulesOfEngagement}
+                               onChange={(html) => setFormData({...formData, rulesOfEngagement: html})}
+                           />
+                        </div>
+                     </div>
+
+                     <div className="space-y-2">
+                        <label className="text-xs font-mono text-foreground uppercase flex items-center gap-2">
+                            <Globe className="h-4 w-4" /> Safe Harbor Policy
+                        </label>
+                        <p className="text-xs text-muted-foreground mb-2">Provide legal protection for researchers acting in good faith.</p>
+                        <div className="border border-border rounded-md overflow-hidden h-40">
+                           <CyberpunkEditor 
+                               content={formData.safeHarbor}
+                               onChange={(html) => setFormData({...formData, safeHarbor: html})}
+                           />
+                        </div>
+                     </div>
+
+                     <div className="space-y-2">
+                        <label className="text-xs font-mono text-foreground uppercase flex items-center gap-2">
+                            <CheckCircle className="h-4 w-4" /> Submission Guidelines
+                        </label>
+                        <p className="text-xs text-muted-foreground mb-2">Instructions on how to write a good report (e.g., PoC, steps to reproduce).</p>
+                        <div className="border border-border rounded-md overflow-hidden h-40">
+                           <CyberpunkEditor 
+                               content={formData.submissionGuidelines}
+                               onChange={(html) => setFormData({...formData, submissionGuidelines: html})}
+                           />
+                        </div>
+                     </div>
+                  </div>
+                )}
+
+                {/* STEP 4: OPERATIONS & SLA */}
+                {step === 4 && (
+                  <div className="space-y-8">
+                     {/* SLAs Section */}
+                     <div className="space-y-4">
+                        <div className="flex items-center justify-between">
+                           <h3 className="text-sm font-bold font-mono text-foreground flex items-center gap-2">
+                              <Smartphone className="h-4 w-4" /> RESPONSE SLAs (HOURS)
+                           </h3>
+                        </div>
+                        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                           {[
+                              { label: 'First Response', key: 'firstResponse', default: 24 },
+                              { label: 'Triage Time', key: 'triage', default: 48 },
+                              { label: 'Bounty Paid', key: 'bounty', default: 168 },
+                              { label: 'Resolution', key: 'resolution', default: 360 }
+                           ].map((sla) => (
+                              <div key={sla.key} className="p-4 bg-muted/10 border border-border rounded-lg space-y-2">
+                                 <label className="text-[10px] font-mono text-muted-foreground uppercase">{sla.label}</label>
+                                 <div className="relative">
+                                    <Input 
+                                       type="number" 
+                                       className="h-9 bg-background border-border font-mono text-sm"
+                                       value={formData.slas[sla.key as keyof typeof formData.slas]}
+                                       onChange={(e) => setFormData({...formData, slas: {...formData.slas, [sla.key]: Number(e.target.value)}})}
+                                    />
+                                    <span className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground text-xs font-mono">hrs</span>
+                                 </div>
+                              </div>
+                           ))}
+                        </div>
+                     </div>
+
+                     {/* Rewards Section */}
+                     <div className="pt-6 border-t border-border">
                     {formData.type === 'VDP' ? (
-                       <div className="flex flex-col items-center justify-center py-20 text-center gap-4 bg-muted/10 border border-dashed border-border rounded-xl">
+                       <div className="flex flex-col items-center justify-center py-10 text-center gap-4 bg-muted/10 border border-dashed border-border rounded-xl">
                           <div className="h-16 w-16 rounded-full bg-muted flex items-center justify-center">
                              <Shield className="h-8 w-8 text-muted-foreground" />
                           </div>
@@ -392,11 +566,12 @@ export const CreateProgramModal = ({ isOpen, onClose, companyName, verifiedAsset
                           </div>
                        </div>
                     )}
+                     </div>
                   </div>
                 )}
 
-                {/* STEP 4: REVIEW */}
-                {step === 4 && (
+                {/* STEP 5: REVIEW */}
+                {step === 5 && (
                    <div className="flex flex-col items-center justify-center space-y-8 py-4">
                       <div className="relative">
                          <div className="absolute inset-0 bg-foreground blur-3xl opacity-10 rounded-full"></div>
@@ -427,44 +602,44 @@ export const CreateProgramModal = ({ isOpen, onClose, companyName, verifiedAsset
                          )}
                       </div>
                    </div>
-                )}
-             </motion.div>
-          </AnimatePresence>
-        </div>
+                 )}
+              </motion.div>
+           </AnimatePresence>
+         </div>
 
-        {/* Modal Footer */}
-        <div className="p-6 border-t border-border bg-background flex justify-between items-center z-10">
-           {step > 1 ? (
-             <Button 
-               variant="outline" 
-               onClick={prevStep}
-               className="border-border text-muted-foreground hover:text-foreground hover:bg-muted"
-             >
-               <ChevronLeft className="h-4 w-4 mr-2" /> BACK
-             </Button>
-           ) : (
-             <div></div> 
-           )}
+         {/* Modal Footer */}
+         <div className="p-6 border-t border-border bg-background flex justify-between items-center z-10">
+            {step > 1 ? (
+              <Button 
+                variant="outline" 
+                onClick={prevStep}
+                className="border-border text-muted-foreground hover:text-foreground hover:bg-muted"
+              >
+                <ChevronLeft className="h-4 w-4 mr-2" /> BACK
+              </Button>
+            ) : (
+              <div></div> 
+            )}
 
-           {step < 4 ? (
-             <Button 
-               onClick={nextStep}
-               className="bg-foreground hover:bg-foreground/90 text-background font-mono font-bold tracking-wide"
-             >
-               NEXT_STEP <ChevronRight className="h-4 w-4 ml-2" />
-             </Button>
-           ) : (
-             <Button 
-               onClick={handlePublish}
-               disabled={isSubmitting}
-               className="bg-foreground hover:bg-foreground/90 text-background font-mono font-bold tracking-wide px-8"
-             >
-               {isSubmitting ? 'PUBLISHING...' : 'PUBLISH_PROGRAM'}
-             </Button>
-           )}
-        </div>
+            {step < 5 ? (
+              <Button 
+                onClick={nextStep}
+                className="bg-foreground hover:bg-foreground/90 text-background font-mono font-bold tracking-wide"
+              >
+                NEXT_STEP <ChevronRight className="h-4 w-4 ml-2" />
+              </Button>
+            ) : (
+              <Button 
+                onClick={handlePublish}
+                disabled={isSubmitting}
+                className="bg-foreground hover:bg-foreground/90 text-background font-mono font-bold tracking-wide px-8"
+              >
+                {isSubmitting ? 'PUBLISHING...' : 'PUBLISH_PROGRAM'}
+              </Button>
+            )}
+         </div>
 
-      </DialogContent>
-    </Dialog>
-  );
-};
+       </DialogContent>
+     </Dialog>
+   );
+ };
