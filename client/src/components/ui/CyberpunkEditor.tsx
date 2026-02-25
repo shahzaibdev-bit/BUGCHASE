@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useEditor, EditorContent } from '@tiptap/react';
 import StarterKit from '@tiptap/starter-kit';
 import Placeholder from '@tiptap/extension-placeholder';
@@ -78,6 +78,12 @@ export default function CyberpunkEditor({ content, onChange, placeholder }: Edit
         setRevision(r => r + 1);
     }
   });
+
+  useEffect(() => {
+     if (editor && content !== editor.getHTML()) {
+         editor.commands.setContent(content);
+     }
+  }, [editor, content]);
 
   if (!editor) return null;
 

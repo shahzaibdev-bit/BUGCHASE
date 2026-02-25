@@ -6,7 +6,7 @@ import Program from '../models/Program';
 import AppError from '../utils/AppError';
 import catchAsync from '../utils/catchAsync';
 import { sendEmail, inviteMemberTemplate, reportEmailTemplate } from '../services/emailService';
-import { suggestBountyAmount } from '../services/geminiService';
+import { suggestBountyAmount, generateReportMessage as geminiGenerateMessage } from '../services/geminiService';
 import { getIO } from '../services/socketService';
 
 // ... (inviteMember logic remains unchanged) ...
@@ -748,6 +748,29 @@ export const suggestBounty = catchAsync(async (req: Request, res: Response, next
     });
 });
 
+export const generateReportMessage = catchAsync(async (req: Request, res: Response, next: NextFunction) => {
+    const { id } = req.params;
+    const { type, bountyAmount } = req.body;
+
+    if (!type || !['resolve', 'bounty'].includes(type)) {
+        return next(new AppError('Valid message type (resolve or bounty) is required', 400));
+    }
+
+    const Report = (await import('../models/Report')).default;
+    const report = await Report.findById(id).populate('comments.sender', 'name role username');
+    
+    if (!report) return next(new AppError('Report not found', 404));
+
+    const generatedResult = await geminiGenerateMessage(report, report.comments, type, bountyAmount);
+
+    res.status(200).json({
+        status: 'success',
+        data: {
+            message: generatedResult.message
+        }
+    });
+});
+
 export const updateReportStatus = catchAsync(async (req: Request, res: Response, next: NextFunction) => {
     const { id } = req.params;
     const { status, note } = req.body;
@@ -849,7 +872,7 @@ export const updateReportStatus = catchAsync(async (req: Request, res: Response,
                         reportId: String(report._id),
                         severity: report.severity,
                         newStatus,
-                        reason: reason || undefined,
+                        reason: reason,
                         link: `${process.env.CLIENT_URL}/triager/app/reports/${report._id}`
                     })
                 );
@@ -875,10 +898,6 @@ export const awardBounty = catchAsync(async (req: Request, res: Response, next: 
 
     if (bounty === undefined || isNaN(Number(bounty)) || Number(bounty) <= 0) {
         return next(new AppError('Invalid bounty amount', 400));
-    }
-
-    if ((report as any).bounty && (report as any).bounty > 0) {
-        return next(new AppError('Bounty has already been awarded for this report', 400));
     }
 
     (report as any).bounty = Number(bounty);

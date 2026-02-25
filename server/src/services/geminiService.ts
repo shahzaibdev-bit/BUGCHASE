@@ -123,3 +123,66 @@ export const suggestBountyAmount = async (report: any, timeline: any[], rewardRa
         throw new Error(`Failed to suggest bounty: ${error.message}`);
     }
 };
+
+export const generateReportMessage = async (report: any, timeline: any[], type: 'resolve' | 'bounty', bountyAmount?: number) => {
+    try {
+        const model = genAI.getGenerativeModel({ 
+            model: "gemini-flash-latest",
+            generationConfig: {
+                responseMimeType: "application/json"
+            }
+        });
+
+        const relevantEvents = timeline.map(e => ({
+            author: e.sender?.name || e.author || 'System',
+            role: e.sender?.role || e.role,
+            content: e.content,
+            type: e.type,
+            timestamp: e.createdAt || e.timestamp
+        })).slice(-10); // Last 10 events for context
+
+        const BasePrompt = `
+        You are a Bug Bounty Program Manager communicating directly with a security researcher who submitted a vulnerability.
+        
+        **Report Details:**
+        - Title: ${report.title}
+        - Asset: ${report.asset}
+        - Type: ${report.type}
+        - Severity/CVSS: ${report.severity} (${report.cvssScore})
+
+        **Recent Communication Context:**
+        ${JSON.stringify(relevantEvents, null, 2)}
+        `;
+
+        const TypePrompt = type === 'resolve' 
+            ? `
+            **Task:** Write a friendly, professional closing message acknowledging the researcher's report. Inform them that the engineering team has reviewed and successfully patched the issue. Thank them for their contribution to the program's security. Keep it concise (2-3 short paragraphs).
+            `
+            : `
+            **Task:** Write a friendly, professional message informing the researcher that they are being awarded a bounty of $${bountyAmount}. Acknowledge their specific finding by name and thank them for their responsible disclosure. Keep it concise (2-3 short paragraphs).
+            `;
+
+        const finalPrompt = `
+        ${BasePrompt}
+        ${TypePrompt}
+
+        **Crucial Formatting Requirement:**
+        The message MUST be formatted strictly as **HTML string** (e.g., using <p>, <strong>, <ul>, <li>, <br/>). Do NOT use any Markdown symbols (no **asterisks**, no ## hashtags). Please add good spacing.
+
+        **Output Format (JSON):**
+        {
+            "message": "The written message formatted purely in basic HTML, addressing the researcher directly."
+        }
+        `;
+
+        const result = await model.generateContent(finalPrompt);
+        const response = await result.response;
+        const text = response.text();
+
+        return JSON.parse(text);
+
+    } catch (error: any) {
+        console.error("Gemini Message Generation Error:", error);
+        throw new Error(`Failed to generate message: ${error.message}`);
+    }
+};

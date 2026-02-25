@@ -23,7 +23,8 @@ import {
   Activity,
   Bug,
   DollarSign,
-  Award
+  Award,
+  Sparkles
 } from 'lucide-react';
 import { Skeleton } from "@/components/ui/skeleton";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -93,6 +94,20 @@ const STATUS_REASONS: Record<string, string[]> = {
         "Other"
     ]
 };
+
+const RESOLVE_REASONS = [
+    "Thank you for the report! We have successfully applied a patch.",
+    "Issue resolved. The fix will be rolled out in the next deployment.",
+    "Confirmed and fixed. We appreciate your contribution to our security.",
+    "Other"
+];
+
+const BOUNTY_MESSAGES = [
+    "Thank you for your valuable report. We are pleased to award this bounty.",
+    "Excellent findings! This bounty reflects the severe impact of your discovery.",
+    "We appreciate your responsible disclosure. Here is your well-deserved reward.",
+    "Other"
+];
 
 // --- Types ---
 type ReportStatus = 'Submitted' | 'Under Review' | 'Needs Info' | 'Triaged' | 'Spam' | 'Duplicate' | 'Out-of-Scope' | 'Resolved' | 'NA';
@@ -180,11 +195,13 @@ export default function CompanyReportDetails() {
   const [selectedReason, setSelectedReason] = useState('');
   const [customReason, setCustomReason] = useState('');
   const [replyContent, setReplyContent] = useState('');
+  const [selectedBountyMessage, setSelectedBountyMessage] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   
   // Resolve Modal State
   const [resolveModalOpen, setResolveModalOpen] = useState(false);
   const [resolveMessage, setResolveMessage] = useState('');
+  const [selectedResolveReason, setSelectedResolveReason] = useState('');
 
   // Bounty Modal State
   const [bountyModalOpen, setBountyModalOpen] = useState(false);
@@ -192,6 +209,8 @@ export default function CompanyReportDetails() {
   const [aiSuggestionLoading, setAiSuggestionLoading] = useState(false);
   const [aiReasoning, setAiReasoning] = useState('');
   const [rewardRange, setRewardRange] = useState<{min: number, max: number} | null>(null);
+
+  const [isGeneratingContent, setIsGeneratingContent] = useState(false);
 
   const scrollRef = useRef<HTMLDivElement>(null);
 
@@ -217,11 +236,48 @@ export default function CompanyReportDetails() {
           setBountyAmount(data.data.suggestedAmount);
           setAiReasoning(data.data.reasoning);
           setRewardRange(data.data.rewardRange);
+          setSelectedBountyMessage('AI');
+          setReplyContent(`Thank you for submitting this report regarding **${report.title}**.\n\nBased on our severity assessment, we are pleased to award you a bounty of **$${data.data.suggestedAmount?.toLocaleString()}**.\n\nWe greatly appreciate your efforts in helping secure BugChase!`);
       } catch (error: any) {
           console.error("AI Suggestion error:", error);
           toast({ title: "Error", description: error.message || "Failed to get AI suggestion", variant: "destructive" });
       } finally {
           setAiSuggestionLoading(false);
+      }
+  };
+
+  const handleGenerateMessage = async (type: 'resolve' | 'bounty') => {
+      try {
+          setIsGeneratingContent(true);
+          const token = localStorage.getItem('token');
+          const res = await fetch(`${API_URL}/company/reports/${id}/generate-message`, {
+              method: 'POST',
+              headers: { 
+                  'Content-Type': 'application/json',
+                  'Authorization': `Bearer ${token}`
+              },
+              body: JSON.stringify({
+                  type,
+                  bountyAmount: type === 'bounty' ? bountyAmount : undefined
+              })
+          });
+
+          if (!res.ok) {
+              const err = await res.json().catch(() => ({}));
+              throw new Error(err.message || 'Failed to generate message');
+          }
+
+          const data = await res.json();
+          if (type === 'resolve') {
+              setResolveMessage(data.data.message);
+          } else {
+              setReplyContent(data.data.message);
+          }
+      } catch (error: any) {
+          console.error("Generate message error:", error);
+          toast({ title: "Generation Failed", description: error.message, variant: "destructive" });
+      } finally {
+          setIsGeneratingContent(false);
       }
   };
 
@@ -251,10 +307,15 @@ export default function CompanyReportDetails() {
           setSelectedReason('');
           setCustomReason('');
           setResolveMessage('');
+          setSelectedResolveReason('');
 
           const actionLabel = status === 'Resolved' ? `✅ Report Resolved` : `Report marked as ${status}`;
           toast({ title: 'Action Complete', description: actionLabel });
           
+          setReportState(prev => ({
+              ...prev,
+              status: status
+          }));
           fetchReport();
       } catch (error: any) {
           console.error('Action error:', error);
@@ -262,9 +323,11 @@ export default function CompanyReportDetails() {
       }
   };
 
-  const handleAwardBounty = async () => {
+  const handleAwardBounty = async (customMessagePayload?: string | any) => {
       try {
           if (!bountyAmount || Number(bountyAmount) <= 0) throw new Error("Please enter a valid bounty amount");
+          const payloadMessage = typeof customMessagePayload === 'string' ? customMessagePayload : replyContent;
+          
           setIsSubmitting(true);
           const token = localStorage.getItem('token');
           const res = await fetch(`${API_URL}/company/reports/${id}/bounty`, {
@@ -275,7 +338,7 @@ export default function CompanyReportDetails() {
               },
               body: JSON.stringify({
                   bounty: Number(bountyAmount),
-                  message: replyContent
+                  message: payloadMessage
               })
           });
 
@@ -553,8 +616,8 @@ export default function CompanyReportDetails() {
                 )}>
                     {/* Header Card */}
                     <GlassCard className="p-6">
-                        <div className="flex flex-col md:flex-row md:items-start justify-between gap-4">
-                            <div className="space-y-1">
+                        <div className="flex flex-col lg:flex-row lg:items-start xl:items-center justify-between gap-6">
+                            <div className="space-y-1 flex-1 min-w-0 pr-4">
                                 <div className="flex items-center gap-2 text-sm text-muted-foreground mb-2">
                                     <Button variant="ghost" size="sm" className="h-6 px-1 -ml-2" onClick={() => navigate('/company/reports')}>
                                         <ArrowLeft className="w-4 h-4 mr-1" /> Back
@@ -562,33 +625,35 @@ export default function CompanyReportDetails() {
                                     <Separator orientation="vertical" className="h-4" />
                                     <span className="font-mono">{report.programId || 'Report'}</span>
                                 </div>
-                                <h1 className="text-xl md:text-2xl font-bold tracking-tight text-foreground break-words">{report.title}</h1>
+                                <h1 className="text-[20px] md:text-2xl font-bold tracking-tight text-foreground break-words leading-tight">{report.title}</h1>
                             </div>
-                            <div className="flex gap-2 shrink-0">
-                                {reportState.status !== 'Resolved' && (
-                                    <>
+                            <div className="flex gap-2 shrink-0 flex-wrap justify-start lg:justify-end max-w-sm">
+                                <Button 
+                                    variant="outline" 
+                                    size="sm"
+                                    className="border-zinc-300 dark:border-zinc-700 text-zinc-900 dark:text-zinc-100 hover:bg-zinc-100 dark:hover:bg-zinc-800"
+                                    onClick={() => setRejectModalOpen(true)}
+                                >
+                                    <XCircle className="w-4 h-4 mr-2" /> Reject Report
+                                </Button>
+                                <Button 
+                                    size="sm"
+                                    className="bg-zinc-900 text-white dark:bg-white dark:text-black hover:bg-zinc-800 dark:hover:bg-zinc-200"
+                                    onClick={() => setResolveModalOpen(true)}
+                                >
+                                    <CheckCircle className="w-4 h-4 mr-2" /> Mark Resolved
+                                </Button>
+                                {String(reportState.status).trim().toLowerCase() === 'resolved' && (
+                                    <div className="w-full flex justify-start lg:justify-end mt-1">
                                         <Button 
-                                            variant="outline" 
-                                            className="border-zinc-300 dark:border-zinc-700 text-zinc-900 dark:text-zinc-100 hover:bg-zinc-100 dark:hover:bg-zinc-800"
-                                            onClick={() => setRejectModalOpen(true)}
+                                            size="sm"
+                                            className="bg-purple-600 text-white hover:bg-purple-700 font-bold w-full sm:w-auto"
+                                            onClick={() => setBountyModalOpen(true)}
                                         >
-                                            <XCircle className="w-4 h-4 mr-2" /> Reject Report
+                                            <DollarSign className="w-4 h-4 mr-2" /> 
+                                            {Number(reportState.bounty) > 0 ? 'Bounty Awarded' : 'Initiate Bounty'}
                                         </Button>
-                                        <Button 
-                                            className="bg-zinc-900 text-white dark:bg-white dark:text-black hover:bg-zinc-800 dark:hover:bg-zinc-200"
-                                            onClick={() => setResolveModalOpen(true)}
-                                        >
-                                            <CheckCircle className="w-4 h-4 mr-2" /> Mark Resolved
-                                        </Button>
-                                    </>
-                                )}
-                                {reportState.status === 'Resolved' && (!reportState.bounty || reportState.bounty === 0) && (
-                                    <Button 
-                                        className="bg-emerald-600 text-white hover:bg-emerald-700"
-                                        onClick={() => setBountyModalOpen(true)}
-                                    >
-                                        <DollarSign className="w-4 h-4 mr-2" /> Initiate Bounty
-                                    </Button>
+                                    </div>
                                 )}
                             </div>
                         </div>
@@ -744,7 +809,7 @@ export default function CompanyReportDetails() {
                                                 {event.metadata?.reason && (
                                                     <div className="mt-1 bg-white dark:bg-zinc-900/50 rounded-lg p-3 px-4 text-sm text-zinc-800 dark:text-zinc-200 border border-zinc-300 dark:border-zinc-700 w-full max-w-[85%] font-inter leading-relaxed relative text-left">
                                                         <div className="relative z-10 prose prose-sm prose-zinc dark:prose-invert max-w-none">
-                                                            <ReactMarkdown remarkPlugins={[remarkGfm]}>{event.metadata.reason}</ReactMarkdown>
+                                                            <div dangerouslySetInnerHTML={{ __html: event.metadata.reason }} />
                                                         </div>
                                                     </div>
                                                 )}
@@ -754,7 +819,7 @@ export default function CompanyReportDetails() {
                                                 {event.content && (
                                                     <div className="mt-1 bg-white dark:bg-zinc-900/50 rounded-lg p-3 px-4 text-sm text-zinc-800 dark:text-zinc-200 border border-zinc-300 dark:border-zinc-700 w-full max-w-[85%] font-inter leading-relaxed relative text-left">
                                                         <div className="relative z-10 prose prose-sm prose-zinc dark:prose-invert max-w-none">
-                                                            <ReactMarkdown remarkPlugins={[remarkGfm]}>{event.content}</ReactMarkdown>
+                                                            <div dangerouslySetInnerHTML={{ __html: event.content }} />
                                                         </div>
                                                     </div>
                                                 )}
@@ -790,19 +855,6 @@ export default function CompanyReportDetails() {
                                             {/* Placeholders for bold/italic/etc if needed later */}
                                         </div>
                                         <div className="flex gap-2 w-full sm:w-auto">
-                                            <Select onValueChange={(v) => handleStatusChange(v as ReportStatus)} value={reportState.status}>
-                                                <SelectTrigger className="h-7 text-xs w-full sm:w-[140px] bg-background border-zinc-200 dark:border-white/10">
-                                                    <SelectValue placeholder="Change Status" />
-                                                </SelectTrigger>
-                                                <SelectContent>
-                                                    <SelectItem value="Triaged">Triaged</SelectItem>
-                                                    <SelectItem value="Needs Info">Needs Info</SelectItem>
-                                                    <SelectItem value="Spam">Spam</SelectItem>
-                                                    <SelectItem value="Resolved">Resolved</SelectItem>
-                                                    <SelectItem value="Duplicate">Duplicate</SelectItem>
-                                                    <SelectItem value="Out-of-Scope">Out-of-Scope</SelectItem>
-                                                </SelectContent>
-                                            </Select>
                                             <Button 
                                                 size="sm" 
                                                 className="h-7 bg-foreground text-background hover:bg-foreground/90 font-bold text-xs px-4" 
@@ -986,21 +1038,62 @@ export default function CompanyReportDetails() {
                     
                     <div className="space-y-4 py-4 flex-1">
                         <div className="space-y-2">
-                            <label className="text-xs font-bold text-zinc-500 uppercase">Closing Message to Researcher</label>
-                            <div className="rounded-lg bg-white dark:bg-zinc-950 shadow-sm border border-zinc-200 dark:border-zinc-800 focus-within:ring-1 focus-within:ring-zinc-400 dark:focus-within:ring-white/20 transition-all overflow-hidden">
-                                 <CyberpunkEditor 
-                                     content={resolveMessage}
-                                     onChange={setResolveMessage}
-                                     placeholder="We have released a patch! Thank you for the submission..."
-                                 />
-                            </div>
+                            <label className="text-xs font-bold text-zinc-500 uppercase">Closing Reason</label>
+                            <Select value={selectedResolveReason} onValueChange={setSelectedResolveReason}>
+                                <SelectTrigger className="bg-white dark:bg-zinc-900 border-zinc-200 dark:border-zinc-800">
+                                    <SelectValue placeholder="Select a closing message..." />
+                                </SelectTrigger>
+                                <SelectContent className="bg-white dark:bg-zinc-900 border-zinc-200 dark:border-zinc-800">
+                                    <SelectItem value="AI">✨ Generate with AI</SelectItem>
+                                    {RESOLVE_REASONS.map((r) => (
+                                        <SelectItem key={r} value={r}>{r}</SelectItem>
+                                    ))}
+                                </SelectContent>
+                            </Select>
                         </div>
+
+                        {(selectedResolveReason === "Other" || selectedResolveReason === "AI" || selectedResolveReason === "") && (
+                            <div className="space-y-2 animate-in fade-in slide-in-from-top-2">
+                                <div className="flex items-center justify-between">
+                                    <label className="text-xs font-bold text-zinc-500 uppercase">Custom Message to Researcher</label>
+                                    {selectedResolveReason === "AI" && (
+                                        <Button 
+                                            variant="ghost" 
+                                            size="sm" 
+                                            className="h-6 text-xs text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300"
+                                            onClick={() => handleGenerateMessage('resolve')}
+                                            disabled={isGeneratingContent}
+                                        >
+                                            {isGeneratingContent ? (
+                                                <span className="flex items-center gap-2">
+                                                    <div className="w-3 h-3 rounded-full border-2 border-blue-500 border-t-transparent animate-spin" />
+                                                    Generating...
+                                                </span>
+                                            ) : (
+                                                <><Sparkles className="w-3 h-3 mr-1" /> Generate Output</>
+                                            )}
+                                        </Button>
+                                    )}
+                                </div>
+                                <div className="rounded-lg bg-white dark:bg-zinc-950 shadow-sm border border-zinc-200 dark:border-zinc-800 focus-within:ring-1 focus-within:ring-zinc-400 dark:focus-within:ring-white/20 transition-all overflow-hidden">
+                                     <CyberpunkEditor 
+                                         content={resolveMessage}
+                                         onChange={setResolveMessage}
+                                         placeholder="We have released a patch! Thank you for the submission..."
+                                     />
+                                </div>
+                            </div>
+                        )}
                     </div>
 
                     <DialogFooter className="shrink-0 mt-4">
                         <Button variant="ghost" onClick={() => setResolveModalOpen(false)} className="text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-100">CANCEL</Button>
                         <Button 
-                            onClick={() => handleCompanyAction('Resolved', resolveMessage || 'Issue has been successfully resolved by the team.')}
+                            onClick={async () => {
+                                const msg = selectedResolveReason === 'Other' || selectedResolveReason === 'AI' || selectedResolveReason === '' ? resolveMessage : selectedResolveReason;
+                                await handleCompanyAction('Resolved', msg || 'Issue has been successfully resolved by the team.');
+                            }}
+                            disabled={!selectedResolveReason || ((selectedResolveReason === "Other" || selectedResolveReason === "AI" || selectedResolveReason === "") && !resolveMessage.trim())}
                             className="bg-green-600 hover:bg-green-700 text-white font-bold"
                         >
                             RESOLVE REPORT
@@ -1081,23 +1174,72 @@ export default function CompanyReportDetails() {
                         </div>
 
                         {/* Thank you note */}
-                        <div className="space-y-2">
-                            <label className="text-xs font-bold text-zinc-500 uppercase">Message to Researcher</label>
-                            <div className="rounded-lg bg-white dark:bg-zinc-950 shadow-sm border border-zinc-200 dark:border-zinc-800 focus-within:ring-1 focus-within:ring-zinc-400 dark:focus-within:ring-white/20 transition-all overflow-hidden">
-                                 <CyberpunkEditor 
-                                     content={replyContent}
-                                     onChange={setReplyContent}
-                                     placeholder={`A thank you message to ${researcher?.name || researcher?.username || 'the researcher'}`}
-                                 />
+                        <div className="space-y-4">
+                            <div className="space-y-2">
+                                <label className="text-xs font-bold text-zinc-500 uppercase">Message to Researcher</label>
+                                <Select value={selectedBountyMessage} onValueChange={setSelectedBountyMessage}>
+                                    <SelectTrigger className="bg-white dark:bg-zinc-900 border-zinc-200 dark:border-zinc-800">
+                                        <SelectValue placeholder="Select a message..." />
+                                    </SelectTrigger>
+                                    <SelectContent className="bg-white dark:bg-zinc-900 border-zinc-200 dark:border-zinc-800">
+                                        <SelectItem value="AI">✨ Generate with AI</SelectItem>
+                                        {BOUNTY_MESSAGES.map((r) => (
+                                            <SelectItem key={r} value={r}>{r}</SelectItem>
+                                        ))}
+                                    </SelectContent>
+                                </Select>
                             </div>
+
+                            {(selectedBountyMessage === "Other" || selectedBountyMessage === "AI" || selectedBountyMessage === "") && (
+                                <div className="space-y-2 animate-in fade-in slide-in-from-top-2">
+                                    <div className="flex items-center justify-between">
+                                        <label className="text-xs font-bold text-zinc-500 uppercase">Custom Message</label>
+                                        {selectedBountyMessage === "AI" && (
+                                        <Button 
+                                                variant="ghost" 
+                                                size="sm" 
+                                                className="h-6 text-xs text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300"
+                                                onClick={() => handleGenerateMessage('bounty')}
+                                                disabled={isGeneratingContent}
+                                            >
+                                                {isGeneratingContent ? (
+                                                    <span className="flex items-center gap-2">
+                                                        <div className="w-3 h-3 rounded-full border-2 border-blue-500 border-t-transparent animate-spin" />
+                                                        Generating...
+                                                    </span>
+                                                ) : (
+                                                    <><Sparkles className="w-3 h-3 mr-1" /> Generate Output</>
+                                                )}
+                                            </Button>
+                                        )}
+                                    </div>
+                                    <div className="rounded-lg bg-white dark:bg-zinc-950 shadow-sm border border-zinc-200 dark:border-zinc-800 focus-within:ring-1 focus-within:ring-zinc-400 dark:focus-within:ring-white/20 transition-all overflow-hidden">
+                                         <CyberpunkEditor 
+                                             content={replyContent}
+                                             onChange={setReplyContent}
+                                             placeholder={`A thank you message to ${researcher?.name || researcher?.username || 'the researcher'}`}
+                                         />
+                                    </div>
+                                </div>
+                            )}
                         </div>
                     </div>
 
                     <DialogFooter className="shrink-0 mt-4">
                         <Button variant="ghost" onClick={() => setBountyModalOpen(false)} className="text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-100">CANCEL</Button>
                         <Button 
-                            onClick={handleAwardBounty}
-                            disabled={isSubmitting || !bountyAmount || Number(bountyAmount) <= 0}
+                            onClick={async () => {
+                                const payloadContent = selectedBountyMessage === 'Other' || selectedBountyMessage === 'AI' || selectedBountyMessage === '' ? replyContent : selectedBountyMessage;
+                                // Need to modify handleAwardBounty to accept argument? 
+                                // Actually handleAwardBounty reads replyContent.
+                                // I will intercept it here to make sure it includes the right payload.
+                                // Instead of rewriting handleAwardBounty, let's just make handleAwardBounty use this value. 
+                                // Actually, handleAwardBounty already uses replyContent. Let's make sure it's updated. Wait, I will fix handleAwardBounty directly next. Let's just keep this as is and we'll apply a quick `setReplyContent` inside the `handleAwardBounty` or just let `handleAwardBounty` read a separate variable. Let's just manually call handleAwardBounty() but we must ensure replyContent is updated. 
+                                // Ah! If they just select a pre-defined message, `replyContent` won't be updated automatically.
+                                // Let's pass the payload directly or just call `handleAwardBounty(selectedBountyMessage === ... ? replyContent : selectedBountyMessage)`
+                                await handleAwardBounty(selectedBountyMessage === 'Other' || selectedBountyMessage === 'AI' || selectedBountyMessage === '' ? replyContent : selectedBountyMessage);
+                            }}
+                            disabled={isSubmitting || !bountyAmount || Number(bountyAmount) <= 0 || ((selectedBountyMessage === "Other" || selectedBountyMessage === "AI" || selectedBountyMessage === "") && !replyContent.trim())}
                             className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold"
                         >
                             {isSubmitting ? 'AWARDING...' : 'AWARD BOUNTY'}

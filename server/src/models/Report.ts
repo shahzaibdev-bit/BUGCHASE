@@ -51,7 +51,7 @@ const reportSchema = new mongoose.Schema({
       content: { type: String, required: true },
       type: { 
           type: String, 
-          enum: ['comment', 'status_change', 'severity_update', 'assignment'], 
+          enum: ['comment', 'status_change', 'severity_update', 'assignment', 'bounty_awarded', 'promoted'], 
           default: 'comment' 
       },
       metadata: { type: mongoose.Schema.Types.Mixed }, // Flexible for reason, oldStatus, newStatus
