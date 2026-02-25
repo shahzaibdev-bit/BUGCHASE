@@ -11,3 +11,4 @@ We take security seriously. If you find a vulnerability, please report it to us.
 
 # Verification
 bc-verification=792a43ed56bbfd6ad08fa201153905bf
+bc-verification=655eda0695bd3494430930aaf7f20243
