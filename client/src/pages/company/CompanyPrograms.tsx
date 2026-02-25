@@ -58,6 +58,34 @@ export default function CompanyPrograms() {
     program.title.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
+  const handleDeleteProgram = async (programId: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (!window.confirm('Are you sure you want to delete this program? This action cannot be undone.')) {
+      return;
+    }
+
+    try {
+      const token = localStorage.getItem('token');
+      const response = await fetch(`${API_URL}/company/programs/${programId}`, {
+        method: 'DELETE',
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      });
+
+      if (response.ok) {
+        toast({ title: 'Success', description: 'Program deleted successfully.' });
+        fetchData(); // Refresh the list
+      } else {
+        const errorData = await response.json();
+        toast({ title: 'Error', description: errorData.message || 'Failed to delete program.', variant: 'destructive' });
+      }
+    } catch (error) {
+      console.error('Delete program error:', error);
+      toast({ title: 'Error', description: 'An unexpected error occurred.', variant: 'destructive' });
+    }
+  };
+
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -128,7 +156,7 @@ export default function CompanyPrograms() {
                         <Edit className="h-4 w-4 mr-2" />
                         Edit
                       </DropdownMenuItem>
-                      <DropdownMenuItem className="text-destructive" onClick={(e) => e.stopPropagation()}>
+                      <DropdownMenuItem className="text-destructive" onClick={(e) => handleDeleteProgram(program._id, e)}>
                         <Trash2 className="h-4 w-4 mr-2" />
                         Delete
                       </DropdownMenuItem>
