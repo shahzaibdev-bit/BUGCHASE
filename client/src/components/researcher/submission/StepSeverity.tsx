@@ -4,6 +4,7 @@ import { cn } from '@/lib/utils';
 import { Label } from '@/components/ui/label';
 import { Button } from '@/components/ui/button';
 import { Calculator, MousePointer2 } from 'lucide-react';
+import cvss from 'cvss';
 
 interface StepSeverityProps {
     data: SubmissionData;
@@ -26,25 +27,25 @@ const cvssMetrics = {
 
 export const StepSeverity = ({ data, updateData }: StepSeverityProps) => {
     
-    // Very Basic Calculator Logic
     const calculateScore = (vector: Record<string, string>) => {
-        // This is a mock calculation. In real app, import 'cvss' library.
-        let base = 0;
-        if (vector.C === 'H') base += 3;
-        if (vector.I === 'H') base += 3;
-        if (vector.A === 'H') base += 3;
-        if (vector.AV === 'N') base += 1;
-        
-        const score = Math.min(10, Math.max(0, base));
-        return score;
+        try {
+            // The cvss npm package expects a "CVSS:3.0" prefix for its internal parser, the base score math is identical to 3.1
+            const vectorString = `CVSS:3.0/AV:${vector.AV}/AC:${vector.AC}/PR:${vector.PR}/UI:${vector.UI}/S:${vector.S}/C:${vector.C}/I:${vector.I}/A:${vector.A}`;
+            const rating = cvss.getScore(vectorString);
+            return typeof rating === 'number' ? rating : parseFloat(rating);
+        } catch (e) {
+            console.error("CVSS Calculation Error:", e);
+            return 0;
+        }
     };
 
     const handleMetricChange = (metric: string, value: string) => {
         const newVector = { ...data.cvssVector, [metric]: value };
         const score = calculateScore(newVector);
         
+        // Official CVSS 3.1 Qualitative Severities
         let severity: SubmissionData['severity'] = 'None';
-        if (score > 0) severity = 'Low';
+        if (score >= 0.1) severity = 'Low';
         if (score >= 4.0) severity = 'Medium';
         if (score >= 7.0) severity = 'High';
         if (score >= 9.0) severity = 'Critical';

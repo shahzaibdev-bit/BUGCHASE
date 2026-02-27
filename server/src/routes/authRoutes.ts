@@ -7,8 +7,8 @@ import { signupSchema, verifySchema, loginSchema } from '../schemas/zodAuth';
 
 const router = express.Router();
 
-// Rate Limit: 5 requests per 10 minutes for auth routes
-const authLimiter = rateLimiter(5, 600);
+// Rate Limit: 10 requests per 10 minutes for auth routes
+const authLimiter = rateLimiter(10, 600, 'auth');
 
 router.post('/signup', authLimiter, validate(signupSchema), signup);
 router.post('/verify-email', authLimiter, validate(verifySchema), verifyEmail);

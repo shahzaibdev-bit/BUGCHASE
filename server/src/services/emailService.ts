@@ -355,7 +355,9 @@ const ACTION_HEADLINES: Record<EmailActionType, (opts: ReportEmailOptions) => st
   claimed:   (o) => `${o.actorName} has started reviewing your report`,
   comment:   (o) => `New comment on: ${o.reportTitle}`,
   status_change: (o) => `Report status changed to ${o.newStatus}`,
-  promoted:  (o) => `You are now a participant on: ${o.reportTitle}`,
+  promoted:  (o) => o.recipientRole === 'researcher'
+    ? `Your Report Has Been Accepted: ${o.reportTitle}`
+    : `New Security Report Assigned to Your Program: ${o.reportTitle}`,
   bounty_awarded: (o) => `Bounty Awarded: $${o.bounty?.toLocaleString()}`,
 };
 
@@ -391,7 +393,11 @@ const getRoleIntro = (opts: ReportEmailOptions): string => {
     }
   }
   if (actionType === 'promoted') {
-    return `A security report that was triaged by our team has been forwarded to your program for review. As a company participant, you will now receive updates on this report thread.`;
+    if (recipientRole === 'researcher') {
+      return `Great news! Your vulnerability report has been reviewed and validated by our security triage team. It has been <strong>accepted and forwarded</strong> to the affected company's security program. You will receive further updates as the company reviews and addresses the issue.`;
+    }
+    // Company recipient
+    return `A security report submitted through your bug bounty program has been reviewed and validated by our triage team. It has been <strong>officially assigned to your program</strong>. Please review the report thread and take appropriate action to remediate the described vulnerability.`;
   }
   if (actionType === 'comment') {
     const actorLabel = actorRole === 'researcher' ? 'Security Researcher'
@@ -436,6 +442,31 @@ const getRoleIntro = (opts: ReportEmailOptions): string => {
   return `There has been an activity update on a report you are associated with.`;
 };
 
+/** Convert a subset of markdown to HTML suitable for email */
+const mdToHtml = (text: string): string => {
+  return text
+    // Escape raw HTML entities first to avoid XSS from free-text
+    .replace(/&(?![a-z#0-9]+;)/gi, '&amp;')
+    // Bold/italic combinations
+    .replace(/\*\*\*(.+?)\*\*\*/g, '<strong><em>$1</em></strong>')
+    // Bold
+    .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+    // Italic
+    .replace(/(?<!\*)\*([^*\n]+)\*(?!\*)/g, '<em>$1</em>')
+    // Inline code
+    .replace(/`([^`]+)`/g, '<code style="background:#27272a;color:#e4e4e7;padding:2px 5px;border-radius:3px;font-family:monospace;font-size:12px;">$1</code>')
+    // Numbered list items (1. 2. etc)
+    .replace(/^\d+\.\s+(.+)$/gm, '<li style="margin-bottom:6px;">$1</li>')
+    // Bullet list items (* or -)
+    .replace(/^[*\-]\s+(.+)$/gm, '<li style="margin-bottom:6px;">$1</li>')
+    // Wrap consecutive <li> groups in <ul>
+    .replace(/(<li[^>]*>.*<\/li>\n?)+/gs, (match) => `<ul style="margin:10px 0;padding-left:20px;color:#fca5a5;">${match}</ul>`)
+    // Line breaks — double newlines become paragraph breaks
+    .replace(/\n\n+/g, '</p><p style="margin:8px 0;">')
+    // Single newlines
+    .replace(/\n/g, '<br/>');
+};
+
 export const reportEmailTemplate = (opts: ReportEmailOptions): string => {
   const headline = ACTION_HEADLINES[opts.actionType](opts);
   const intro = getRoleIntro(opts);
@@ -452,16 +483,20 @@ export const reportEmailTemplate = (opts: ReportEmailOptions): string => {
     opts.bounty ? `<tr><td class="detail-label">Bounty Awarded</td><td class="detail-value" style="color: #22c55e; font-weight: bold; font-size: 18px;">$${opts.bounty.toLocaleString()}</td></tr>` : '',
   ].filter(Boolean).join('\n');
 
+  // Convert markdown in reason/message to HTML before embedding
+  const reasonHtml = opts.reason ? mdToHtml(opts.reason) : '';
+  const messageHtml = opts.message ? mdToHtml(opts.message) : '';
+
   const reasonBlock = opts.reason ? `
     <div class="reason-box">
-      <div class="section-label">Reason / Decision Note</div>
-      <div class="reason-text">${opts.reason}</div>
+      <div class="section-label">Triage Note</div>
+      <div class="reason-text"><p style="margin:8px 0;">${reasonHtml}</p></div>
     </div>` : '';
 
   const commentBlock = opts.message ? `
     <div class="comment-box">
       <div class="section-label">Message</div>
-      <div class="comment-text">${opts.message.replace(/\n/g, '<br/>')}</div>
+      <div class="comment-text"><p style="margin:8px 0;">${messageHtml}</p></div>
     </div>` : '';
 
   const html = `

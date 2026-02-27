@@ -163,16 +163,9 @@ const isImage = (buffer: Buffer): boolean => {
 };
 
 export const uploadAvatar = catchAsync(async (req: Request, res: Response, next: NextFunction) => {
-    if (!req.file) {
-        return next(new AppError('Please upload a file', 400));
-    }
-
-    // Security: Validate file content via magic bytes (prevents extension spoofing)
-    if (!isImage(req.file.buffer)) {
-        return next(new AppError('Invalid file type. Only JPEG and PNG are allowed.', 400));
-    }
-
-    const result = await uploadToCloudinary(req.file.buffer);
+    if (!req.file) return next(new AppError('Please upload an image', 400));
+    
+    const result = await uploadToCloudinary(req.file);
 
     const updatedUser = await User.findByIdAndUpdate(req.user!.id, { avatar: result.url }, {
         new: true,

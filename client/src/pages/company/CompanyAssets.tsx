@@ -81,6 +81,41 @@ export default function CompanyAssets() {
                 if (data.data.length > 0) {
                     setSelectedDomain(data.data[0].domain);
                 }
+
+                // Hydrate assets from verifiedDomains
+                const hydratedAssets: Asset[] = [];
+                data.data.forEach((vd: any) => {
+                    if (vd.inScope && Array.isArray(vd.inScope)) {
+                        vd.inScope.forEach((sub: string) => {
+                            hydratedAssets.push({
+                                id: `db-in-${Math.random().toString(36).substr(2, 9)}`,
+                                domain: sub,
+                                type: 'Subdomain',
+                                ports: [443, 80],
+                                service: 'Unknown',
+                                status: 'IN_SCOPE',
+                                lastScanned: vd.dateVerified || new Date().toISOString()
+                            });
+                        });
+                    }
+                    if (vd.outScope && Array.isArray(vd.outScope)) {
+                        vd.outScope.forEach((sub: string) => {
+                            hydratedAssets.push({
+                                id: `db-out-${Math.random().toString(36).substr(2, 9)}`,
+                                domain: sub,
+                                type: 'Subdomain',
+                                ports: [],
+                                service: 'Unknown',
+                                status: 'OUT_OF_SCOPE',
+                                lastScanned: vd.dateVerified || new Date().toISOString()
+                            });
+                        });
+                    }
+                });
+                
+                if (hydratedAssets.length > 0) {
+                    setAssets(hydratedAssets);
+                }
             }
         } catch (error) {
             console.error("Failed to fetch assets", error);
@@ -150,16 +185,55 @@ export default function CompanyAssets() {
     setActiveMainTab('scans'); // Switch to scans tab to show progress
   };
 
-  const handleUpdateScope = (id: string, newStatus: AssetStatus) => {
+  const handleUpdateScope = async (id: string, newStatus: AssetStatus) => {
+    // 1. Update local state
     setAssets(prev => prev.map(a => a.id === id ? { ...a, status: newStatus } : a));
     
     const asset = assets.find(a => a.id === id);
+    if (!asset) return;
+
     const action = newStatus === 'IN_SCOPE' ? 'Added to Scope' : 'Marked Out-of-Scope';
     
     toast({
       title: `Asset ${action}`,
-      description: `${asset?.domain} has been updated.`,
+      description: `${asset.domain} has been updated.`,
     });
+
+    // 2. Identify the root domain this asset belongs to.
+    // Assuming the asset.domain is something like prefix.rootdomain.com
+    // Let's just find the verified domain that's a suffix of this asset
+    const rootVerifiedDomain = verifiedDomains.find(vd => asset.domain.endsWith(vd.domain));
+    
+    if (rootVerifiedDomain) {
+        // Collect all assets currently classified for this root domain
+        // INCLUDING this new change we just applied locally
+        const updatedAssetsList = assets.map(a => a.id === id ? { ...a, status: newStatus } : a);
+        
+        const inScopeSubdomains = updatedAssetsList
+            .filter(a => a.status === 'IN_SCOPE' && a.domain.endsWith(rootVerifiedDomain.domain))
+            .map(a => a.domain);
+            
+        const outScopeSubdomains = updatedAssetsList
+            .filter(a => a.status === 'OUT_OF_SCOPE' && a.domain.endsWith(rootVerifiedDomain.domain))
+            .map(a => a.domain);
+
+        try {
+            const token = localStorage.getItem('token');
+            await fetch(`${API_URL}/company/assets/${rootVerifiedDomain.id}/scope`, {
+                method: 'PATCH',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${token}`
+                },
+                body: JSON.stringify({
+                    inScope: inScopeSubdomains,
+                    outScope: outScopeSubdomains
+                })
+            });
+        } catch (err) {
+            console.error("Failed to sync scope with backend", err);
+        }
+    }
   };
 
   const handlePortScan = (id: string) => {

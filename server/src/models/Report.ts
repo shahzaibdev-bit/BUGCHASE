@@ -54,6 +54,7 @@ const reportSchema = new mongoose.Schema({
           enum: ['comment', 'status_change', 'severity_update', 'assignment', 'bounty_awarded', 'promoted'], 
           default: 'comment' 
       },
+      attachments: [String], // Array of Cloudinary URLs
       metadata: { type: mongoose.Schema.Types.Mixed }, // Flexible for reason, oldStatus, newStatus
       createdAt: { type: Date, default: Date.now }
   }],

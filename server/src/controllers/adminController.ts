@@ -276,3 +276,50 @@ export const updateProgramStatus = catchAsync(async (req: Request, res: Response
         }
     });
 });
+
+export const getProgramDetails = catchAsync(async (req: Request, res: Response, next: NextFunction) => {
+    const { id } = req.params;
+
+    // 1. Fetch program and fully populate company details
+    const program = await Program.findById(id).populate(
+        'companyId',
+        'name email avatar companyName website industry city domainVerified verifiedAssets'
+    );
+
+    if (!program) {
+        return next(new AppError('No program found with that ID', 404));
+    }
+
+    // 2. Fetch reports for this program to build Hall of Fame
+    // Specifically, find unique researchers who have submitted reports for this program.
+    // For a more strict Hall of Fame, we might filter by status: 'resolved' or 'rewarded'.
+    // For now, based on requirement "how many researchers have worked on this program", we'll get all valid submissions.
+    const Report = (await import('../models/Report')).default;
+    const reports = await Report.find({ programId: id })
+        .populate('researcherId', 'username name avatar reputationScore')
+        .select('researcherId status');
+
+    // Filter to unique researchers
+    const uniqueResearchers = new Map();
+    reports.forEach((report: any) => {
+        if (report.researcherId && !uniqueResearchers.has(report.researcherId._id.toString())) {
+            uniqueResearchers.set(report.researcherId._id.toString(), {
+                _id: report.researcherId._id,
+                username: report.researcherId.username || report.researcherId.name,
+                avatar: report.researcherId.avatar,
+                reputationScore: report.researcherId.reputationScore
+            });
+        }
+    });
+
+    const hallOfFame = Array.from(uniqueResearchers.values())
+        .sort((a: any, b: any) => (b.reputationScore || 0) - (a.reputationScore || 0));
+
+    res.status(200).json({
+        status: 'success',
+        data: {
+            program,
+            hallOfFame
+        }
+    });
+});

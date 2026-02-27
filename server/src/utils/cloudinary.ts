@@ -7,10 +7,27 @@ cloudinary.config({
   api_secret: 'lecGb1UdWtbJDXggoTzrpnXSjxg'
 });
 
-export const uploadToCloudinary = (buffer: Buffer): Promise<{ url: string; public_id: string }> => {
+export const uploadToCloudinary = (file: Express.Multer.File): Promise<{ url: string; public_id: string }> => {
   return new Promise((resolve, reject) => {
+    let resourceType: 'auto' | 'image' | 'video' | 'raw' = 'auto';
+    if (file.mimetype === 'application/pdf' || file.mimetype.includes('zip') || file.originalname.endsWith('.pdf')) {
+        resourceType = 'raw';
+    }
+
+    let uploadOptions: any = { 
+        folder: 'BugChase', 
+        resource_type: resourceType 
+    };
+
+    if (resourceType === 'raw') {
+        const ext = file.originalname.split('.').pop();
+        if (ext) {
+            uploadOptions.format = ext;
+        }
+    }
+
     const stream = cloudinary.uploader.upload_stream(
-      { folder: 'BugChase' },
+      uploadOptions,
       (error, result) => {
         if (result) {
           resolve({ url: result.secure_url, public_id: result.public_id });
@@ -19,7 +36,7 @@ export const uploadToCloudinary = (buffer: Buffer): Promise<{ url: string; publi
         }
       }
     );
-    streamifier.createReadStream(buffer).pipe(stream);
+    streamifier.createReadStream(file.buffer).pipe(stream);
   });
 };
 

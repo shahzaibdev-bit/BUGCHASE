@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import { io as socketIO } from 'socket.io-client';
 import { useParams, Link } from 'react-router-dom';
-import { CheckCircle, Clock, Users, Link as LinkIcon, ExternalLink, ChevronRight, MessageSquare, History, Shield, AlertTriangle, UploadCloud, Activity } from 'lucide-react';
+import { CheckCircle, Clock, Users, Link as LinkIcon, ExternalLink, ChevronRight, MessageSquare, History, Shield, AlertTriangle, UploadCloud, Activity, FileText, Image as ImageIcon, FileVideo, X } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -15,6 +16,13 @@ import { API_URL } from '@/config';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import rehypeRaw from 'rehype-raw';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger
+} from "@/components/ui/dialog";
 const Timeline = ({ currentStep }: { currentStep: number }) => {
   const steps = ['Submitted', 'Triaging', 'Triaged', 'Paid', 'Resolved']; // Updated to match backend roughly
 
@@ -84,6 +92,9 @@ export default function ReportDetails() {
   const [commentContent, setCommentContent] = useState('');
   const [report, setReport] = useState<any>(null);
   const [loading, setLoading] = useState(true);
+  const [previewMedia, setPreviewMedia] = useState<{ url: string; type: 'image' | 'video' } | null>(null);
+  const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   const fetchReport = async () => {
     try {
@@ -124,7 +135,13 @@ export default function ReportDetails() {
               content: activity.content,
               type: activity.type,
               createdAt: activity.timestamp,
-              sender: { name: activity.author, role: activity.role?.toLowerCase() || 'triager', avatar: activity.authorAvatar },
+              attachments: activity.attachments,
+              sender: { 
+                 name: activity.authorName || activity.author, 
+                 username: activity.authorUsername || activity.author,
+                 role: activity.role?.toLowerCase() || 'triager', 
+                 avatar: activity.authorAvatar 
+              },
               metadata: activity.metadata,
             },
           ],
@@ -153,26 +170,22 @@ export default function ReportDetails() {
       const content = commentContent.trim();
       if (!content) return;
 
-      // Optimistic Update
-      const tempId = Date.now().toString();
-      const newComment = {
-          content,
-          createdAt: new Date().toISOString(),
-          sender: { name: 'Me', _id: 'me' } // Placeholder for immediate feedback
-      };
+      setIsSubmitting(true);
 
-      // Update UI immediately
-      setReport((prev: any) => ({
-          ...prev,
-          comments: [...(prev.comments || []), newComment]
-      }));
-      setCommentContent('');
+      // Build FormData
+      const formData = new FormData();
+      formData.append('content', content);
+      selectedFiles.forEach((file) => {
+          formData.append('files', file);
+      });
 
       try {
           const res = await fetch(`${API_URL}/reports/${id}/comments`, {
               method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ content })
+              headers: { 
+                  Authorization: `Bearer ${localStorage.getItem('token')}` 
+              },
+              body: formData
           });
           
           if (!res.ok) {
@@ -180,22 +193,22 @@ export default function ReportDetails() {
               throw new Error(errorData.message || 'Failed to post comment check console');
           }
           
+          // Clear form on success natively
+          setCommentContent('');
+          setSelectedFiles([]);
+          
           // Re-fetch to ensure data consistency (IDs, real user details)
           fetchReport();
           toast({ title: 'Comment posted successfully' });
       } catch (err: any) {
           console.error('Post comment error:', err);
-          // Revert on failure
-          setReport((prev: any) => ({
-              ...prev,
-              comments: prev.comments.filter((c: any) => c.createdAt !== newComment.createdAt)
-          }));
-          setCommentContent(content); // Restore content
           toast({ 
               title: 'Failed to post comment', 
               description: err.message,
               variant: 'destructive' 
           });
+      } finally {
+          setIsSubmitting(false);
       }
   };
 
@@ -246,48 +259,103 @@ export default function ReportDetails() {
             {/* Section 1: Target */}
             <div className="flex items-center gap-4 pb-8 border-b border-zinc-200 dark:border-zinc-800">
                 <Avatar className="w-12 h-12 border border-zinc-200 dark:border-zinc-700 bg-zinc-100 dark:bg-zinc-800 shadow-sm">
-                    <AvatarImage src={report.programId?.companyId?.avatar} alt={report.assets?.[0]} className="object-cover" />
+                    <AvatarImage src={report.programId?.companyId?.avatar} alt={report.target || report.assets?.[0]} className="object-cover" />
                     <AvatarFallback className="text-sm font-bold text-zinc-700 dark:text-white uppercase">
-                        {(report.assets?.[0] || 'Unknown').charAt(0)}
+                        {((report.target || report.assets?.[0]) || 'Unknown').charAt(0)}
                     </AvatarFallback>
                 </Avatar>
                 <div>
                      <h3 className="text-zinc-500 dark:text-zinc-400 font-mono text-xs mb-1 uppercase tracking-wider">Target</h3>
-                    <span className="text-xl font-bold text-zinc-900 dark:text-white">{report.assets?.[0] || 'Unknown Target'}</span>
+                    <span className="text-xl font-bold text-zinc-900 dark:text-white">
+                        {report.assets?.[0] && !report.assets[0].includes('cloudinary.com') ? report.assets[0] : 'Unknown Target'}
+                    </span>
                 </div>
             </div>
 
-            {/* Section 2: Details */}
+            {/* Section 2: Vulnerability Details */}
             <div>
-                <h2 className="text-xl font-bold text-zinc-900 dark:text-white mb-4">Vulnerability details</h2>
-                <div className="prose prose-zinc dark:prose-invert max-w-none">
-                    <div 
-                        className="text-zinc-600 dark:text-zinc-400 leading-relaxed mb-6"
-                        dangerouslySetInnerHTML={{ __html: report.description }} 
-                    />
+                <h2 className="text-xl font-bold text-zinc-900 dark:text-white mb-4">Vulnerability Details</h2>
+                <div className="prose prose-sm md:prose-base prose-zinc dark:prose-invert max-w-none prose-pre:bg-[#0d1117] prose-pre:border prose-pre:border-zinc-800 prose-pre:shadow-sm prose-pre:rounded-lg prose-code:text-zinc-800 dark:prose-code:text-emerald-400 prose-code:bg-emerald-500/10 prose-code:px-1.5 prose-code:py-0.5 prose-code:rounded-md prose-code:before:content-none prose-code:after:content-none [&_pre_code]:text-zinc-300 dark:[&_pre_code]:text-zinc-300 [&_pre_code]:bg-transparent [&_pre_code]:p-0">
+                    <ReactMarkdown rehypePlugins={[rehypeRaw]} remarkPlugins={[remarkGfm]}>
+                        {report.description || '*No description provided.*'}
+                    </ReactMarkdown>
                 </div>
+            </div>
 
-                {/* Impact Block */}
-                {report.impact && (
-                    <div className="bg-red-50 dark:bg-red-950/10 border border-red-100 dark:border-red-900/20 rounded-lg p-6">
-                        <h4 className="flex items-center gap-2 text-red-600 dark:text-red-500 font-mono text-sm uppercase mb-3 font-bold">
-                            <AlertTriangle className="w-4 h-4" /> Impact
+            {/* Section 3: Steps to Reproduce & PoC */}
+            <div className="pt-4">
+                <h2 className="text-xl font-bold text-zinc-900 dark:text-white mb-4">Steps to Reproduce & PoC</h2>
+                <div className="prose prose-sm md:prose-base prose-zinc dark:prose-invert max-w-none bg-white dark:bg-zinc-900/40 p-6 md:p-8 rounded-xl border border-zinc-200 dark:border-zinc-800 prose-pre:bg-[#0d1117] prose-pre:border prose-pre:border-zinc-800 prose-pre:shadow-md prose-pre:rounded-lg prose-code:text-zinc-800 dark:prose-code:text-emerald-400 prose-code:bg-emerald-500/10 prose-code:px-1.5 prose-code:py-0.5 prose-code:rounded-md prose-code:before:content-none prose-code:after:content-none [&_pre_code]:text-zinc-300 dark:[&_pre_code]:text-zinc-300 [&_pre_code]:bg-transparent [&_pre_code]:p-0 leading-relaxed">
+                     <ReactMarkdown rehypePlugins={[rehypeRaw]} remarkPlugins={[remarkGfm]}>
+                        {report.pocSteps || '*No steps provided.*'}
+                     </ReactMarkdown>
+                </div>
+            </div>
+
+            {/* Section 3.5: Impact Assessment */}
+            {report.impact && (
+                <div className="pt-4">
+                    <div className="bg-rose-50/50 dark:bg-rose-950/10 border border-rose-100 dark:border-rose-900/30 rounded-xl p-6 md:p-8 relative overflow-hidden">
+                        <div className="absolute top-0 right-0 w-32 h-32 bg-rose-500/5 rotate-45 transform translate-x-16 -translate-y-16 pointer-events-none" />
+                        <h4 className="flex items-center gap-2 text-rose-600 dark:text-rose-400 font-mono text-sm uppercase tracking-widest mb-4 font-bold relative z-10">
+                            <AlertTriangle className="w-4 h-4" /> Impact Assessment
                         </h4>
-                        <div 
-                            className="text-zinc-700 dark:text-red-200/70 text-sm leading-relaxed"
-                            dangerouslySetInnerHTML={{ __html: report.impact }}
-                        />
+                        <div className="prose prose-sm md:prose-base prose-zinc dark:prose-invert prose-p:text-zinc-800 dark:prose-p:text-rose-100/80 max-w-none prose-pre:bg-[#0d1117] prose-pre:border prose-pre:border-rose-900/30 prose-code:text-rose-600 dark:prose-code:text-rose-400 prose-code:bg-rose-500/10 prose-code:px-1.5 prose-code:py-0.5 prose-code:rounded-md prose-code:before:content-none prose-code:after:content-none [&_pre_code]:text-zinc-300 dark:[&_pre_code]:text-zinc-300 [&_pre_code]:bg-transparent [&_pre_code]:p-0 leading-relaxed relative z-10">
+                            <ReactMarkdown rehypePlugins={[rehypeRaw]} remarkPlugins={[remarkGfm]}>
+                                {report.impact}
+                            </ReactMarkdown>
+                        </div>
                     </div>
-                )}
-            </div>
-
-            {/* Section 3: Validation Steps (POC) */}
-            <div>
-                <h2 className="text-xl font-bold text-zinc-900 dark:text-white mb-6">Validation steps</h2>
-                <div className="prose prose-zinc dark:prose-invert max-w-none bg-white dark:bg-zinc-900/50 p-6 rounded-lg border border-zinc-200 dark:border-zinc-800">
-                     <div dangerouslySetInnerHTML={{ __html: report.pocSteps }} />
                 </div>
-            </div>
+            )}
+
+            {/* Section 3.5: Attachments */}
+            {(() => {
+                const cloudinaryUrls = report.assets?.filter((url: string) => url.includes('cloudinary.com')) || [];
+                if (cloudinaryUrls.length === 0) return null;
+
+                return (
+                    <div>
+                        <h2 className="text-xl font-bold text-zinc-900 dark:text-white mb-6">Attachments (PoC)</h2>
+                        <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
+                            {cloudinaryUrls.map((url: string, index: number) => {
+                                const isVideo = url.includes('/video/') || /\.(mp4|webm|ogg)$/i.test(url);
+                                const isPdf = url.includes('/raw/') || /\.pdf$/i.test(url);
+
+                                return (
+                                    <div key={index} className="group relative aspect-video bg-zinc-100 dark:bg-zinc-900 rounded-lg overflow-hidden border border-zinc-200 dark:border-zinc-800 flex items-center justify-center">
+                                        {isVideo ? (
+                                            <div 
+                                                className="w-full h-full cursor-pointer relative group/video block"
+                                                onClick={() => setPreviewMedia({ url, type: 'video' })}
+                                            >
+                                                <video src={url} className="w-full h-full object-contain bg-black pointer-events-none" />
+                                                <div className="absolute inset-0 bg-black/50 opacity-0 group-hover/video:opacity-100 transition-opacity flex items-center justify-center">
+                                                    <div className="w-12 h-12 rounded-full bg-white/20 flex items-center justify-center backdrop-blur-sm">
+                                                        <div className="w-0 h-0 border-t-8 border-t-transparent border-l-[12px] border-l-white border-b-8 border-b-transparent ml-1" />
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        ) : isPdf ? (
+                                            <a href={url} target="_blank" rel="noopener noreferrer" className="flex flex-col items-center gap-2 p-4 w-full h-full justify-center hover:bg-zinc-50 dark:hover:bg-zinc-800/50 transition-colors">
+                                                <FileText className="w-8 h-8 text-rose-500" />
+                                                <span className="text-xs font-mono text-zinc-600 dark:text-zinc-400">View PDF</span>
+                                            </a>
+                                        ) : (
+                                            <div 
+                                                className="w-full h-full block cursor-pointer"
+                                                onClick={() => setPreviewMedia({ url, type: 'image' })}
+                                            >
+                                                <img src={url} alt={`Attachment ${index + 1}`} className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105" />
+                                            </div>
+                                        )}
+                                    </div>
+                                );
+                            })}
+                        </div>
+                    </div>
+                );
+            })()}
           </div>
 
           {/* Section 4: Activity / Comments System */}
@@ -303,8 +371,12 @@ export default function ReportDetails() {
                          <div className="absolute -left-[25px] top-0 -bottom-12 w-0.5 bg-zinc-200 dark:bg-zinc-800 -z-10" />
 
                      {/* Timeline Dot */}
-                     <div className="absolute -left-[44px] top-0 w-10 h-10 rounded-full bg-blue-100 text-blue-600 dark:bg-blue-950 dark:text-blue-400 flex items-center justify-center border-4 border-white dark:border-zinc-950 z-10">
-                         <span className="font-bold text-xs">{(report.researcherId?.name || 'U').charAt(0)}</span>
+                     <div className="absolute -left-[44px] top-0 w-10 h-10 rounded-full bg-blue-100 text-blue-600 dark:bg-blue-950 dark:text-blue-400 flex items-center justify-center border-4 border-white dark:border-zinc-950 z-10 overflow-hidden">
+                         {report.researcherId?.avatar ? (
+                             <img src={report.researcherId.avatar} alt="Researcher Avatar" className="w-full h-full object-cover" />
+                         ) : (
+                             <span className="font-bold text-xs">{(report.researcherId?.name || 'U').charAt(0).toUpperCase()}</span>
+                         )}
                      </div>
 
                      <div className="flex flex-col gap-2">
@@ -421,7 +493,7 @@ export default function ReportDetails() {
                                  )}
                                  {comment.type === 'bounty_awarded' && (
                                      <span className="text-zinc-800 dark:text-zinc-200 text-[14px] flex flex-wrap items-center gap-1 font-medium tracking-tight">
-                                          awarded a ${comment.metadata?.bountyAwarded?.toLocaleString() || comment.content.match(/\$(\d+)/)?.[1] || 0} bounty.
+                                          awarded a PKR {comment.metadata?.bountyAwarded?.toLocaleString() || comment.content.match(/\$(\d+)/)?.[1] || 0} bounty.
                                      </span>
                                  )}
                                  <span className="text-zinc-400 text-[10px] ml-2 opacity-0 group-hover:opacity-100 transition-opacity">
@@ -458,7 +530,45 @@ export default function ReportDetails() {
                                 </div>
                              ) : (
                                 <div className="mt-1 bg-white dark:bg-zinc-900/50 rounded-xl p-3 px-4 text-sm text-zinc-800 dark:text-zinc-200 border border-zinc-200 dark:border-zinc-800 shadow-sm inline-block max-w-full font-inter leading-relaxed">
-                                    <div dangerouslySetInnerHTML={{ __html: comment.content }} />
+                                     <div className="prose prose-sm prose-zinc dark:prose-invert max-w-none focus:outline-none break-words prose-p:m-0 prose-ul:m-0 prose-ol:m-0 [&>*:not(:last-child)]:mb-2" dangerouslySetInnerHTML={{ __html: comment.content }} />
+                                    {comment.attachments && comment.attachments.length > 0 && (
+                                        <div className="mt-3 grid grid-cols-2 sm:grid-cols-3 gap-2">
+                                            {comment.attachments.map((url: string, fileIdx: number) => {
+                                                const isVideo = url.includes('/video/') || /\.(mp4|webm|ogg)$/i.test(url);
+                                                const isPdf = url.includes('/raw/') || /\.pdf$/i.test(url);
+                                                
+                                                return (
+                                                    <div key={fileIdx} className="group/att relative aspect-square bg-zinc-100 dark:bg-zinc-800 rounded-md overflow-hidden border border-zinc-200 dark:border-zinc-700 flex items-center justify-center">
+                                                         {isVideo ? (
+                                                            <div 
+                                                                className="w-full h-full cursor-pointer relative block"
+                                                                onClick={() => setPreviewMedia({ url, type: 'video' })}
+                                                            >
+                                                                <video src={url} className="w-full h-full object-cover bg-black pointer-events-none" />
+                                                                <div className="absolute inset-0 bg-black/40 flex items-center justify-center">
+                                                                    <div className="w-8 h-8 rounded-full bg-white/20 flex items-center justify-center backdrop-blur-sm">
+                                                                        <div className="w-0 h-0 border-t-[5px] border-t-transparent border-l-[8px] border-l-white border-b-[5px] border-b-transparent ml-0.5" />
+                                                                    </div>
+                                                                </div>
+                                                            </div>
+                                                        ) : isPdf ? (
+                                                            <a href={url} target="_blank" rel="noopener noreferrer" className="flex flex-col items-center gap-1 p-2 w-full h-full justify-center hover:bg-zinc-50 dark:hover:bg-zinc-700 transition-colors">
+                                                                <FileText className="w-6 h-6 text-rose-500" />
+                                                                <span className="text-[10px] font-mono text-zinc-600 dark:text-zinc-400">PDF</span>
+                                                            </a>
+                                                        ) : (
+                                                            <div 
+                                                                className="w-full h-full block cursor-pointer"
+                                                                onClick={() => setPreviewMedia({ url, type: 'image' })}
+                                                            >
+                                                                <img src={url} alt="Attachment" className="w-full h-full object-cover transition-transform duration-300 hover:scale-105" />
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                                );
+                                            })}
+                                        </div>
+                                    )}
                                 </div>
                              )}
                          </div>
@@ -468,11 +578,14 @@ export default function ReportDetails() {
                  {/* Editor (Fixed Activity Item) */}
                  <div className="relative">
                     {/* NO Line Segment for Editor (Last Item) */}
-                    <div className="absolute -left-[44px] top-0 w-10 h-10 rounded-full bg-black text-white dark:bg-white dark:text-black flex items-center justify-center border-4 border-white dark:border-zinc-950 z-10">
-                         <span className="font-bold text-xs">ME</span>
+                    <div className="absolute -left-[44px] top-0 w-10 h-10 rounded-full bg-black text-white dark:bg-zinc-800 dark:text-white flex items-center justify-center border-4 border-white dark:border-zinc-950 z-10 overflow-hidden">
+                         {report.researcherId?.avatar ? (
+                             <img src={report.researcherId.avatar} alt="My Avatar" className="w-full h-full object-cover" />
+                         ) : (
+                             <span className="font-bold text-xs">ME</span>
+                         )}
                      </div>
-                    
-                    <div className="border border-zinc-300 dark:border-zinc-700 rounded-lg overflow-hidden bg-white dark:bg-zinc-900 shadow-sm focus-within:ring-2 focus-within:ring-zinc-900 dark:focus-within:ring-white transition-all">
+                                        <div className="border border-zinc-300 dark:border-zinc-700 rounded-lg overflow-hidden bg-white dark:bg-zinc-900 shadow-sm focus-within:ring-2 focus-within:ring-zinc-900 dark:focus-within:ring-white transition-all">
                         <div className="min-h-[100px] bg-white dark:bg-black">
                              <CyberpunkEditor 
                                 content={commentContent} 
@@ -480,35 +593,84 @@ export default function ReportDetails() {
                                 placeholder="" 
                             />
                         </div>
-                        <div className="flex items-center justify-between p-2 bg-zinc-50 dark:bg-zinc-900 border-t border-zinc-200 dark:border-zinc-800">
+                        
+                        {/* Selected Files Preview */}
+                        {selectedFiles.length > 0 && (
+                            <div className="px-3 py-2 border-t border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-800/50 flex flex-wrap gap-2">
+                                {selectedFiles.map((file, i) => (
+                                    <div key={i} className="flex items-center gap-1.5 bg-white dark:bg-zinc-700 border border-zinc-200 dark:border-zinc-600 rounded-md px-2 py-1 text-xs text-zinc-700 dark:text-zinc-300 shadow-sm">
+                                        <span className="truncate max-w-[120px] font-mono">{file.name}</span>
+                                        <button 
+                                            onClick={() => setSelectedFiles(prev => prev.filter((_, idx) => idx !== i))}
+                                            className="text-zinc-400 hover:text-red-500 transition-colors"
+                                        >
+                                            <X className="w-3 h-3" />
+                                        </button>
+                                    </div>
+                                ))}
+                            </div>
+                        )}
+
+                        <div className="flex flex-col sm:flex-row items-center justify-between p-2 lg:px-4 bg-zinc-50 dark:bg-zinc-900 border-t border-zinc-200 dark:border-zinc-800 gap-2">
                              {/* Hidden File Input */}
                              <input 
                                 type="file" 
                                 ref={fileInputRef} 
                                 className="hidden" 
                                 multiple 
-                                accept=".png,.jpg,.jpeg,.pdf"
+                                accept=".png,.jpg,.jpeg,.pdf,video/mp4,video/webm"
                                 onChange={(e) => {
-                                    // Handle file upload logic here if needed, or just log for now
-                                    console.log('Files selected:', e.target.files);
+                                    if (e.target.files) {
+                                        const newFiles = Array.from(e.target.files);
+                                        const validFiles = newFiles.filter(file => {
+                                            if (file.size > 5 * 1024 * 1024) {
+                                                toast({
+                                                    title: "File too large",
+                                                    description: `${file.name} exceeds the 5MB limit.`,
+                                                    variant: "destructive"
+                                                });
+                                                return false;
+                                            }
+                                            return true;
+                                        });
+                                        // Allow max 5 files total (prevent overloading)
+                                        if (selectedFiles.length + validFiles.length > 5) {
+                                            toast({
+                                                title: "Too many files",
+                                                description: "You can only attach up to 5 files per comment.",
+                                                variant: "destructive"
+                                            });
+                                            return;
+                                        }
+                                        setSelectedFiles(prev => [...prev, ...validFiles]);
+                                    }
+                                    if (fileInputRef.current) fileInputRef.current.value = ''; // Reset input to allow selecting same file again
                                 }}
                              />
                              <Button 
                                 variant="ghost" 
                                 size="sm" 
-                                className="text-zinc-500 hover:text-zinc-900 dark:hover:text-white h-8 text-xs font-normal"
+                                className="text-zinc-500 hover:text-zinc-900 dark:hover:text-white h-8 text-xs font-normal w-full sm:w-auto justify-start"
                                 onClick={() => fileInputRef.current?.click()}
                              >
                                 <UploadCloud className="w-4 h-4 mr-2" />
-                                Click to upload files PNG, JPG, PDF (Max 50MB)
+                                Click to upload files PNG, JPG, PDF (Max 5MB)
                              </Button>
 
                              <Button 
                                 onClick={handlePostComment}
                                 size="sm"
-                                className="h-8 bg-black hover:bg-zinc-800 text-white dark:bg-white dark:hover:bg-zinc-200 dark:text-black font-bold px-4 rounded-full"
+                                disabled={(!commentContent.trim() && selectedFiles.length === 0) || isSubmitting}
+                                className="h-8 bg-black hover:bg-zinc-800 text-white dark:bg-white dark:hover:bg-zinc-200 dark:text-black font-bold px-4 rounded-full w-full sm:w-auto min-w-[100px]"
                             >
-                                Comment
+                                {isSubmitting ? (
+                                    <span className="flex items-center gap-2">
+                                        <div className="w-4 h-4 rounded-full border-2 border-zinc-500 border-t-white dark:border-zinc-300 dark:border-t-black animate-spin" />
+                                        Posting...
+                                    </span>
+                                ) : (
+                                    'Comment'
+                                )}
                             </Button>
                         </div>
                     </div>
@@ -528,6 +690,101 @@ export default function ReportDetails() {
                     <h3 className="text-xs font-mono uppercase tracking-widest text-zinc-500 font-bold">Details</h3>
                 </div>
                 <div className="p-4 space-y-4">
+                     <div className="flex justify-between items-center">
+                        <span className="text-sm text-zinc-500">Program</span>
+                        {report.programId ? (
+                             <Dialog>
+                                 <DialogTrigger asChild>
+                                     <button className="text-sm font-medium text-blue-600 dark:text-blue-400 hover:underline">
+                                         {report.programId.title}
+                                     </button>
+                                 </DialogTrigger>
+                                 <DialogContent className="max-w-2xl w-full">
+                                     <DialogHeader className="pb-2 border-b border-zinc-200 dark:border-zinc-800">
+                                         <div className="flex items-center gap-3">
+                                             <div className="w-12 h-12 rounded-md bg-zinc-100 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 flex items-center justify-center overflow-hidden shrink-0">
+                                                 {report.programId.companyId?.avatar ? (
+                                                     <img src={report.programId.companyId.avatar} alt="Company" className="w-full h-full object-cover" />
+                                                 ) : (
+                                                     <span className="font-bold text-xl text-zinc-400">{(report.programId.companyName || report.programId.title || '?')[0]}</span>
+                                                 )}
+                                             </div>
+                                             <div>
+                                                 <DialogTitle className="text-xl">{report.programId.title}</DialogTitle>
+                                                 {report.programId.companyName && <p className="text-sm text-zinc-500">{report.programId.companyName}</p>}
+                                             </div>
+                                         </div>
+                                     </DialogHeader>
+
+                                     <div className="overflow-y-auto max-h-[65vh] pr-1 space-y-5 pt-3">
+                                         <div className="flex gap-2 flex-wrap">
+                                             {report.programId.type && (
+                                                 <span className="text-xs font-bold uppercase px-2.5 py-1 rounded border border-zinc-300 dark:border-zinc-700 text-zinc-700 dark:text-zinc-300 bg-zinc-100 dark:bg-zinc-800">
+                                                     {report.programId.type}
+                                                 </span>
+                                             )}
+                                             {report.programId.bountyRange && (
+                                                 <span className="text-xs font-bold px-2.5 py-1 rounded border border-zinc-300 dark:border-zinc-700 text-zinc-700 dark:text-zinc-300 bg-zinc-100 dark:bg-zinc-800">
+                                                     {report.programId.bountyRange}
+                                                 </span>
+                                             )}
+                                         </div>
+
+                                         {report.programId.description && (
+                                             <div>
+                                                 <h3 className="text-sm font-bold text-zinc-900 dark:text-white border-b border-zinc-200 dark:border-zinc-800 pb-1.5">About This Program</h3>
+                                                 <div
+                                                     className="text-sm text-zinc-700 dark:text-zinc-300 prose prose-sm prose-zinc dark:prose-invert max-w-none"
+                                                     dangerouslySetInnerHTML={{ __html: report.programId.description }}
+                                                 />
+                                             </div>
+                                         )}
+
+                                         {report.programId.rewards && (
+                                             <div>
+                                                 <h3 className="text-sm font-bold text-zinc-900 dark:text-white border-b border-zinc-200 dark:border-zinc-800 pb-1.5">Bounty Rewards</h3>
+                                                 <div className="grid grid-cols-4 gap-2">
+                                                     {(['critical','high','medium','low'] as const).map(sev => {
+                                                         const r = report.programId.rewards?.[sev];
+                                                         return (
+                                                             <div key={sev} className="rounded border border-zinc-200 dark:border-zinc-700 p-2.5 text-center bg-zinc-50 dark:bg-zinc-900">
+                                                                 <p className="text-[10px] font-bold uppercase mb-1 text-zinc-500 dark:text-zinc-400">{sev}</p>
+                                                                 {r?.min || r?.max ? (
+                                                                     <p className="text-xs font-mono font-bold text-zinc-900 dark:text-white">${(r.min||0).toLocaleString()} – ${(r.max||0).toLocaleString()}</p>
+                                                                 ) : <p className="text-xs text-zinc-400">N/A</p>}
+                                                             </div>
+                                                         );
+                                                     })}
+                                                 </div>
+                                             </div>
+                                         )}
+
+                                         {report.programId.rulesOfEngagement && (
+                                             <div>
+                                                 <h3 className="text-sm font-bold text-zinc-900 dark:text-white border-b border-zinc-200 dark:border-zinc-800 pb-1.5">Rules of Engagement</h3>
+                                                 <div
+                                                     className="text-sm text-zinc-700 dark:text-zinc-300 prose prose-sm prose-zinc dark:prose-invert max-w-none bg-zinc-50 dark:bg-zinc-900/50 border border-zinc-200 dark:border-zinc-800 rounded-lg p-3"
+                                                     dangerouslySetInnerHTML={{ __html: report.programId.rulesOfEngagement }}
+                                                 />
+                                             </div>
+                                         )}
+
+                                         {report.programId.safeHarbor && (
+                                             <div>
+                                                 <h3 className="text-sm font-bold text-zinc-900 dark:text-white border-b border-zinc-200 dark:border-zinc-800 pb-1.5">Safe Harbor</h3>
+                                                 <div
+                                                     className="text-sm text-zinc-700 dark:text-zinc-300 prose prose-sm prose-zinc dark:prose-invert max-w-none bg-zinc-50 dark:bg-zinc-900/50 border border-zinc-200 dark:border-zinc-800 rounded-lg p-3"
+                                                     dangerouslySetInnerHTML={{ __html: report.programId.safeHarbor }}
+                                                 />
+                                             </div>
+                                         )}
+                                     </div>
+                                 </DialogContent>
+                             </Dialog>
+                        ) : (
+                            <span className="text-sm font-medium text-zinc-900 dark:text-white">Unknown</span>
+                        )}
+                     </div>
                      <div className="flex justify-between items-center">
                         <span className="text-sm text-zinc-500">Report ID</span>
                         <span className="text-sm font-mono text-zinc-900 dark:text-white">{report._id.substring(report._id.length - 6)}</span>
@@ -582,6 +839,42 @@ export default function ReportDetails() {
 
         </div>
       </div>
+
+      {/* Fullscreen Preview Modal */}
+      {previewMedia && createPortal(
+          <div 
+              className="fixed inset-0 z-[99999] flex items-center justify-center bg-black/90 p-4 md:p-12 animate-in fade-in duration-200"
+              onClick={() => setPreviewMedia(null)}
+          >
+              <button 
+                  onClick={() => setPreviewMedia(null)}
+                  className="absolute top-6 right-6 p-2 rounded-full bg-white/10 text-white hover:bg-white/20 transition-colors z-[100000]"
+              >
+                  <X className="w-6 h-6" />
+              </button>
+              
+              <div 
+                  className="relative max-w-full max-h-full rounded-lg overflow-hidden flex items-center justify-center outline-none"
+                  onClick={(e) => e.stopPropagation()}
+              >
+                  {previewMedia.type === 'image' ? (
+                      <img 
+                          src={previewMedia.url} 
+                          alt="Preview" 
+                          className="max-w-full max-h-[85vh] object-contain rounded-md"
+                      />
+                  ) : previewMedia.type === 'video' ? (
+                      <video 
+                          src={previewMedia.url} 
+                          controls
+                          autoPlay
+                          className="max-w-full max-h-[85vh] rounded-md ring-1 ring-white/20 shadow-2xl bg-black"
+                      />
+                  ) : null}
+              </div>
+          </div>,
+          document.body
+      )}
     </div>
   );
 }

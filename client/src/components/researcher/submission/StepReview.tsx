@@ -1,8 +1,10 @@
-import React from 'react';
+import React, { useState } from 'react';
+import { createPortal } from 'react-dom';
 import { SubmissionData } from './types';
 import { cn } from '@/lib/utils';
 import { Badge } from '@/components/ui/badge';
 import { Checkbox } from '@/components/ui/checkbox';
+import { X } from 'lucide-react';
 
 interface StepReviewProps {
     data: SubmissionData;
@@ -10,8 +12,10 @@ interface StepReviewProps {
 }
 
 export const StepReview = ({ data, updateData }: StepReviewProps) => {
+    const [previewMedia, setPreviewMedia] = useState<{ url: string; type: 'image' | 'video' } | null>(null);
+
     return (
-        <div className="space-y-8 animate-fade-in">
+        <div className="space-y-8 animate-fade-in relative block">
             
             {/* Header Section */}
             <div className="space-y-1">
@@ -87,6 +91,62 @@ export const StepReview = ({ data, updateData }: StepReviewProps) => {
                         dangerouslySetInnerHTML={{ __html: data.validationSteps || '-' }}
                     />
                 </div>
+
+                {/* Attachments Preview */}
+                {data.files && data.files.length > 0 && (
+                    <div className="p-6">
+                        <h4 className="text-xs font-mono font-bold text-zinc-500 uppercase mb-4">Attachments ({data.files.length})</h4>
+                        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
+                            {data.files.map((file, index) => {
+                                const isImage = file.type.startsWith('image/');
+                                const isVideo = file.type.startsWith('video/');
+                                const isMedia = isImage || isVideo;
+                                const objectUrl = URL.createObjectURL(file);
+                                const sizeMB = (file.size / (1024 * 1024)).toFixed(2);
+
+                                return (
+                                    <div 
+                                        key={index} 
+                                        onClick={() => {
+                                            if (isMedia) {
+                                                setPreviewMedia({ url: objectUrl, type: isImage ? 'image' : 'video' });
+                                            } else {
+                                                window.open(objectUrl, '_blank');
+                                            }
+                                        }}
+                                        className="group relative rounded-lg border border-border bg-muted/30 overflow-hidden aspect-square flex flex-col cursor-pointer hover:border-foreground/50 transition-colors"
+                                    >
+                                        <div className="flex-1 bg-black/5 flex items-center justify-center overflow-hidden">
+                                            {isImage ? (
+                                                <img 
+                                                    src={objectUrl} 
+                                                    alt={`Attachment ${index + 1}`} 
+                                                    className="w-full h-full object-cover transition-transform group-hover:scale-105"
+                                                />
+                                            ) : isVideo ? (
+                                                <video 
+                                                    src={objectUrl} 
+                                                    className="w-full h-full object-cover bg-black"
+                                                />
+                                            ) : (
+                                                 <div className="flex flex-col items-center justify-center text-muted-foreground p-4 text-center">
+                                                    <div className="mb-2 opacity-50 transition-transform group-hover:scale-110 group-hover:text-foreground">
+                                                        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z"/><polyline points="14 2 14 8 20 8"/></svg>
+                                                    </div>
+                                                    <span className="text-xs font-medium uppercase tracking-wider">{file.name.split('.').pop() || 'FILE'}</span>
+                                                </div>
+                                            )}
+                                        </div>
+                                        <div className="p-2 border-t border-border bg-background text-xs truncate font-mono text-center relative z-10 transition-colors group-hover:bg-muted" title={file.name}>
+                                            <div className="truncate text-foreground font-semibold">{file.name}</div>
+                                            <div className="text-[10px] text-muted-foreground">{sizeMB} MB</div>
+                                        </div>
+                                    </div>
+                                );
+                            })}
+                        </div>
+                    </div>
+                )}
             </div>
 
             {/* Legal / Confirmation */}
@@ -108,6 +168,42 @@ export const StepReview = ({ data, updateData }: StepReviewProps) => {
                      </div>
                 </div>
             </div>
+
+            {/* Fullscreen Preview Modal */}
+            {previewMedia && createPortal(
+                <div 
+                    className="fixed inset-0 z-[99999] flex items-center justify-center bg-black/90 p-4 md:p-12 animate-in fade-in duration-200"
+                    onClick={() => setPreviewMedia(null)}
+                >
+                    <button 
+                        onClick={() => setPreviewMedia(null)}
+                        className="absolute top-6 right-6 p-2 rounded-full bg-white/10 text-white hover:bg-white/20 transition-colors z-[100000]"
+                    >
+                        <X className="w-6 h-6" />
+                    </button>
+                    
+                    <div 
+                        className="relative max-w-full max-h-full rounded-lg overflow-hidden flex items-center justify-center outline-none"
+                        onClick={(e) => e.stopPropagation()} // Prevent closing when clicking the media itself
+                    >
+                        {previewMedia.type === 'image' ? (
+                            <img 
+                                src={previewMedia.url} 
+                                alt="Preview" 
+                                className="max-w-full max-h-[85vh] object-contain rounded-md"
+                            />
+                        ) : previewMedia.type === 'video' ? (
+                            <video 
+                                src={previewMedia.url} 
+                                controls
+                                autoPlay
+                                className="max-w-full max-h-[85vh] rounded-md ring-1 ring-white/20 shadow-2xl bg-black"
+                            />
+                        ) : null}
+                    </div>
+                </div>,
+                document.body
+            )}
         </div>
     );
 };

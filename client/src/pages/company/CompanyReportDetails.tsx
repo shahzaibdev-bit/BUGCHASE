@@ -53,7 +53,8 @@ import {
   DialogDescription,
   DialogHeader,
   DialogTitle,
-  DialogFooter
+  DialogFooter,
+  DialogTrigger
 } from "@/components/ui/dialog";
 import {
   Select,
@@ -120,6 +121,7 @@ interface TimelineEvent {
   authorAvatar?: string;
   role: 'Triager' | 'Researcher' | 'Company';
   content: string;
+  attachments?: string[];
   timestamp: string;
   metadata?: any;
 }
@@ -167,6 +169,7 @@ const mapComment = (c: any): TimelineEvent => {
     authorAvatar: sender?.avatar,
     role,
     content: c.content || '',
+    attachments: c.attachments || [],
     timestamp: c.createdAt || new Date().toISOString(),
     metadata: c.metadata,
   };
@@ -190,6 +193,7 @@ export default function CompanyReportDetails() {
   });
 
   const [mobileTab, setMobileTab] = useState<'details' | 'activity' | 'tools'>('details');
+  const [previewMedia, setPreviewMedia] = useState<{ url: string; type: 'image' | 'video' | 'pdf' } | null>(null);
   const [cvssModalOpen, setCvssModalOpen] = useState(false);
   const [rejectModalOpen, setRejectModalOpen] = useState(false);
   const [rejectStatus, setRejectStatus] = useState<ReportStatus>('NA');
@@ -436,6 +440,7 @@ export default function CompanyReportDetails() {
               authorAvatar: event.authorAvatar,
               role: event.role || 'Researcher',
               content: event.content || '',
+              attachments: event.attachments || [],
               timestamp: event.timestamp || new Date().toISOString(),
               metadata: event.metadata,
             } as any,
@@ -624,7 +629,98 @@ export default function CompanyReportDetails() {
                                         <ArrowLeft className="w-4 h-4 mr-1" /> Back
                                     </Button>
                                     <Separator orientation="vertical" className="h-4" />
-                                    <span className="font-mono">{report.programId || 'Report'}</span>
+                                    {report.programId ? (
+                                        <Dialog>
+                                            <DialogTrigger asChild>
+                                                <button className="font-mono text-blue-600 dark:text-blue-400 hover:underline">
+                                                    {report.programId.title}
+                                                </button>
+                                            </DialogTrigger>
+                                            <DialogContent className="max-w-2xl w-full">
+                                                <DialogHeader className="pb-2 border-b border-zinc-200 dark:border-zinc-800">
+                                                    <div className="flex items-center gap-3">
+                                                        <div className="w-12 h-12 rounded-md bg-zinc-100 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 flex items-center justify-center overflow-hidden shrink-0">
+                                                            {report.programId.companyId?.avatar ? (
+                                                                <img src={report.programId.companyId.avatar} alt="Company" className="w-full h-full object-cover" />
+                                                            ) : (
+                                                                <span className="font-bold text-xl text-zinc-400">{(report.programId.companyName || report.programId.title || '?')[0]}</span>
+                                                            )}
+                                                        </div>
+                                                        <div>
+                                                            <DialogTitle className="text-xl">{report.programId.title}</DialogTitle>
+                                                            {report.programId.companyName && <p className="text-sm text-zinc-500">{report.programId.companyName}</p>}
+                                                        </div>
+                                                    </div>
+                                                </DialogHeader>
+
+                                                <div className="overflow-y-auto max-h-[65vh] pr-1 space-y-5 pt-3">
+                                                    <div className="flex gap-2 flex-wrap">
+                                                        {report.programId.type && (
+                                                            <span className="text-xs font-bold uppercase px-2.5 py-1 rounded border border-zinc-300 dark:border-zinc-700 text-zinc-700 dark:text-zinc-300 bg-zinc-100 dark:bg-zinc-800">
+                                                                {report.programId.type}
+                                                            </span>
+                                                        )}
+                                                        {report.programId.bountyRange && (
+                                                            <span className="text-xs font-bold px-2.5 py-1 rounded border border-zinc-300 dark:border-zinc-700 text-zinc-700 dark:text-zinc-300 bg-zinc-100 dark:bg-zinc-800">
+                                                                {report.programId.bountyRange}
+                                                            </span>
+                                                        )}
+                                                    </div>
+
+                                                    {report.programId.description && (
+                                                        <div>
+                                                            <h3 className="text-sm font-bold text-zinc-900 dark:text-white border-b border-zinc-200 dark:border-zinc-800 pb-1.5">About This Program</h3>
+                                                            <div
+                                                                className="text-sm text-zinc-700 dark:text-zinc-300 prose prose-sm prose-zinc dark:prose-invert max-w-none"
+                                                                dangerouslySetInnerHTML={{ __html: report.programId.description }}
+                                                            />
+                                                        </div>
+                                                    )}
+
+                                                    {report.programId.rewards && (
+                                                        <div>
+                                                            <h3 className="text-sm font-bold text-zinc-900 dark:text-white border-b border-zinc-200 dark:border-zinc-800 pb-1.5">Bounty Rewards</h3>
+                                                            <div className="grid grid-cols-4 gap-2">
+                                                                {(['critical','high','medium','low'] as const).map(sev => {
+                                                                    const r = report.programId.rewards?.[sev];
+                                                                    return (
+                                                                        <div key={sev} className="rounded border border-zinc-200 dark:border-zinc-700 p-2.5 text-center bg-zinc-50 dark:bg-zinc-900">
+                                                                            <p className="text-[10px] font-bold uppercase mb-1 text-zinc-500 dark:text-zinc-400">{sev}</p>
+                                                                            {r?.min || r?.max ? (
+                                                                                <p className="text-xs font-mono font-bold text-zinc-900 dark:text-white">${(r.min||0).toLocaleString()} – ${(r.max||0).toLocaleString()}</p>
+                                                                            ) : <p className="text-xs text-zinc-400">N/A</p>}
+                                                                        </div>
+                                                                    );
+                                                                })}
+                                                            </div>
+                                                        </div>
+                                                    )}
+
+                                                    {report.programId.rulesOfEngagement && (
+                                                        <div>
+                                                            <h3 className="text-sm font-bold text-zinc-900 dark:text-white border-b border-zinc-200 dark:border-zinc-800 pb-1.5">Rules of Engagement</h3>
+                                                            <div
+                                                                className="text-sm text-zinc-700 dark:text-zinc-300 prose prose-sm prose-zinc dark:prose-invert max-w-none bg-zinc-50 dark:bg-zinc-900/50 border border-zinc-200 dark:border-zinc-800 rounded-lg p-3"
+                                                                dangerouslySetInnerHTML={{ __html: report.programId.rulesOfEngagement }}
+                                                            />
+                                                        </div>
+                                                    )}
+
+                                                    {report.programId.safeHarbor && (
+                                                        <div>
+                                                            <h3 className="text-sm font-bold text-zinc-900 dark:text-white border-b border-zinc-200 dark:border-zinc-800 pb-1.5">Safe Harbor</h3>
+                                                            <div
+                                                                className="text-sm text-zinc-700 dark:text-zinc-300 prose prose-sm prose-zinc dark:prose-invert max-w-none bg-zinc-50 dark:bg-zinc-900/50 border border-zinc-200 dark:border-zinc-800 rounded-lg p-3"
+                                                                dangerouslySetInnerHTML={{ __html: report.programId.safeHarbor }}
+                                                            />
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            </DialogContent>
+                                        </Dialog>
+                                    ) : (
+                                        <span className="font-mono text-zinc-900 dark:text-zinc-100">Unknown Program</span>
+                                    )}
                                 </div>
                                 <h1 className="text-[20px] md:text-2xl font-bold tracking-tight text-foreground break-words leading-tight">{report.title}</h1>
                             </div>
@@ -683,9 +779,9 @@ export default function CompanyReportDetails() {
 
                     {/* Description */}
                     <GlassCard className="p-6 space-y-4">
-                        <h3 className="text-lg font-semibold flex items-center gap-2">
-                            <FileText className="w-5 h-5 text-muted-foreground" /> Vulnerability Description
-                        </h3>
+                        <h2 className="text-2xl font-bold tracking-tight text-zinc-900 dark:text-white mb-2 flex items-center gap-2">
+                            <FileText className="w-6 h-6 text-zinc-500" /> Description
+                        </h2>
                         <div className="prose prose-zinc dark:prose-invert max-w-none text-sm text-zinc-700 dark:text-zinc-300 break-words" 
                             dangerouslySetInnerHTML={{ __html: report.description || '<em>No description provided.</em>' }} 
                         />
@@ -693,13 +789,67 @@ export default function CompanyReportDetails() {
 
                     {/* POC */}
                     <GlassCard className="p-6 space-y-4">
-                        <h3 className="text-lg font-semibold flex items-center gap-2">
-                            <Activity className="w-5 h-5 text-muted-foreground" /> Steps to Reproduce
-                        </h3>
+                        <h2 className="text-2xl font-bold tracking-tight text-zinc-900 dark:text-white mb-2 flex items-center gap-2">
+                            <Activity className="w-6 h-6 text-zinc-500" /> Proof of Concept
+                        </h2>
                         <div className="prose prose-zinc dark:prose-invert max-w-none text-sm text-zinc-700 dark:text-zinc-300 bg-zinc-100 dark:bg-black/20 p-4 rounded-md border border-zinc-200 dark:border-white/5 overflow-x-auto" 
                             dangerouslySetInnerHTML={{ __html: report.pocSteps || '<em>No steps provided.</em>' }} 
                         />
                     </GlassCard>
+
+                    {(() => {
+                        const cloudinaryUrls = report.assets?.filter((url: string) => url.includes('cloudinary.com')) || [];
+                        if (cloudinaryUrls.length === 0) return null;
+                        
+                        return (
+                            <GlassCard className="p-6 space-y-4">
+                                <h2 className="text-2xl font-bold tracking-tight text-zinc-900 dark:text-white mb-2 flex items-center gap-2">
+                                    <FileText className="w-6 h-6 text-zinc-500" /> Attachments (PoC)
+                                </h2>
+                                <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mt-2">
+                                    {cloudinaryUrls.map((url: string, index: number) => {
+                                        const isVideo = url.includes('/video/') || /\.(mp4|webm|ogg)$/i.test(url);
+                                        const isPdf = url.includes('/raw/') || /\.pdf$/i.test(url);
+                                        
+                                        return (
+                                            <div key={index} className="group relative aspect-square bg-zinc-100 dark:bg-zinc-800 rounded-lg overflow-hidden border border-zinc-200 dark:border-zinc-700 hover:border-black dark:hover:border-white transition-colors shadow-sm flex items-center justify-center">
+                                                {isVideo ? (
+                                                    <div 
+                                                        className="w-full h-full cursor-pointer relative block"
+                                                        onClick={() => setPreviewMedia({ url, type: 'video' })}
+                                                    >
+                                                        <video src={url} className="w-full h-full object-cover pointer-events-none" />
+                                                        <div className="absolute inset-0 flex items-center justify-center bg-black/20 group-hover:bg-black/40 transition-colors">
+                                                            <div className="w-8 h-8 rounded-full bg-white/90 flex items-center justify-center shadow-lg backdrop-blur-sm">
+                                                                <div className="w-0 h-0 border-t-[5px] border-t-transparent border-l-[8px] border-l-black border-b-[5px] border-b-transparent ml-1" />
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                ) : isPdf ? (
+                                                    <a
+                                                        href={url}
+                                                        target="_blank"
+                                                        rel="noopener noreferrer"
+                                                        className="w-full h-full cursor-pointer relative flex flex-col items-center justify-center bg-zinc-50 dark:bg-zinc-900 group-hover:bg-zinc-100 dark:group-hover:bg-zinc-800 transition-colors"
+                                                    >
+                                                        <svg className="w-10 h-10 text-red-500 mb-2" fill="currentColor" viewBox="0 0 24 24"><path d="M19 3H5C3.89 3 3 3.9 3 5V19C3 20.1 3.89 21 5 21H19C20.1 21 21 20.1 21 19V5C21 3.9 20.1 3 19 3ZM9.5 11.5C9.5 12.3 8.8 13 8 13H7V15H5.5V9H8C8.8 9 9.5 9.7 9.5 10.5V11.5ZM14.5 13.5C14.5 14.3 13.8 15 13 15H10.5V9H13C13.8 9 14.5 9.7 14.5 10.5V13.5ZM18.5 10.5H17V11.5H18.5V13H17V15H15.5V9H18.5V10.5ZM7 10.5H8V11.5H7V10.5ZM12 10.5H13V13.5H12V10.5Z"/></svg>
+                                                        <span className="text-xs font-mono font-bold text-zinc-600 dark:text-zinc-400">PDF Document</span>
+                                                    </a>
+                                                ) : (
+                                                    <img 
+                                                        src={url} 
+                                                        alt={`Attachment ${index + 1}`} 
+                                                        className="w-full h-full object-cover cursor-pointer hover:scale-105 transition-transform duration-300"
+                                                        onClick={() => setPreviewMedia({ url, type: 'image' })}
+                                                    />
+                                                )}
+                                            </div>
+                                        );
+                                    })}
+                                </div>
+                            </GlassCard>
+                        );
+                    })()}
 
                     {/* Asset Info */}
                     <GlassCard className="p-6">
@@ -832,7 +982,50 @@ export default function CompanyReportDetails() {
                                             </div>
                                         ) : (
                                             <div className="mt-1 bg-white dark:bg-zinc-900/50 rounded-xl p-3 px-4 text-sm text-zinc-800 dark:text-zinc-200 border border-zinc-200 dark:border-zinc-800 shadow-sm inline-block max-w-full font-inter leading-relaxed">
-                                                <div dangerouslySetInnerHTML={{ __html: event.content }} />
+                                                <div className="prose prose-sm prose-zinc dark:prose-invert max-w-none focus:outline-none break-words prose-p:m-0 prose-ul:m-0 prose-ol:m-0 [&>*:not(:last-child)]:mb-2" dangerouslySetInnerHTML={{ __html: event.content }} />
+                                            </div>
+                                        )}
+                                        {event.attachments && event.attachments.length > 0 && (
+                                            <div className="mt-3 grid grid-cols-2 sm:grid-cols-3 gap-2">
+                                                {event.attachments.map((url: string, fileIdx: number) => {
+                                                    const isVideo = url.includes('/video/') || /\.(mp4|webm|ogg)$/i.test(url);
+                                                    const isPdf = url.includes('/raw/') || /\.pdf$/i.test(url);
+                                                    
+                                                    return (
+                                                        <div key={fileIdx} className="group/att relative aspect-square bg-zinc-100 dark:bg-zinc-800 rounded-md overflow-hidden border border-zinc-200 dark:border-zinc-700 flex items-center justify-center">
+                                                            {isVideo ? (
+                                                                <div 
+                                                                    className="w-full h-full cursor-pointer relative block"
+                                                                    onClick={() => setPreviewMedia({ url, type: 'video' })}
+                                                                >
+                                                                    <video src={url} className="w-full h-full object-cover bg-black pointer-events-none" />
+                                                                    <div className="absolute inset-0 bg-black/20 group-hover/att:bg-black/40 transition-colors flex items-center justify-center">
+                                                                        <div className="w-8 h-8 rounded-full bg-white/90 flex items-center justify-center backdrop-blur-sm">
+                                                                            <div className="w-0 h-0 border-t-[5px] border-t-transparent border-l-[8px] border-l-black border-b-[5px] border-b-transparent ml-1" />
+                                                                        </div>
+                                                                    </div>
+                                                                </div>
+                                                            ) : isPdf ? (
+                                                                <a
+                                                                    href={url}
+                                                                    target="_blank"
+                                                                    rel="noopener noreferrer"
+                                                                    className="w-full h-full cursor-pointer relative flex flex-col items-center justify-center bg-zinc-50 dark:bg-zinc-900 group-hover/att:bg-zinc-200 dark:group-hover/att:bg-zinc-700 transition-colors p-2"
+                                                                >
+                                                                    <svg className="w-8 h-8 text-red-500 mb-2" fill="currentColor" viewBox="0 0 24 24"><path d="M19 3H5C3.89 3 3 3.9 3 5V19C3 20.1 3.89 21 5 21H19C20.1 21 21 20.1 21 19V5C21 3.9 20.1 3 19 3ZM9.5 11.5C9.5 12.3 8.8 13 8 13H7V15H5.5V9H8C8.8 9 9.5 9.7 9.5 10.5V11.5ZM14.5 13.5C14.5 14.3 13.8 15 13 15H10.5V9H13C13.8 9 14.5 9.7 14.5 10.5V13.5ZM18.5 10.5H17V11.5H18.5V13H17V15H15.5V9H18.5V10.5ZM7 10.5H8V11.5H7V10.5ZM12 10.5H13V13.5H12V10.5Z"/></svg>
+                                                                    <span className="text-[10px] font-mono font-bold text-zinc-600 dark:text-zinc-400">PDF Document</span>
+                                                                </a>
+                                                            ) : (
+                                                                <img 
+                                                                    src={url} 
+                                                                    alt={`Attachment ${fileIdx + 1}`} 
+                                                                    className="w-full h-full object-cover cursor-pointer hover:scale-105 transition-transform duration-300"
+                                                                    onClick={() => setPreviewMedia({ url, type: 'image' })}
+                                                                />
+                                                            )}
+                                                        </div>
+                                                    );
+                                                })}
                                             </div>
                                         )}
                                     </div>
@@ -913,20 +1106,40 @@ export default function CompanyReportDetails() {
                         <div>
                             <label className="text-xs font-mono text-muted-foreground uppercase">Researcher</label>
                             <div className="flex items-center gap-3 mt-3">
-                                <div className="w-8 h-8 rounded-full bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center font-bold text-xs ring-2 ring-white/10 text-white overflow-hidden">
+                                <a
+                                    href={`/h/${researcher?.username || researcher?.name}`}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="w-8 h-8 rounded-full bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center font-bold text-xs ring-2 ring-white/10 text-white overflow-hidden hover:opacity-80 transition-opacity"
+                                >
                                     {researcher?.avatar ? (
                                         <img src={researcher.avatar} alt={researcher.username} className="w-full h-full object-cover" />
                                     ) : (
                                         (researcher?.username || researcher?.name || 'R')[0].toUpperCase()
                                     )}
-                                </div>
+                                </a>
                                 <div className="flex-1">
-                                    <p className="text-sm font-medium hover:underline cursor-pointer">@{researcher?.username || researcher?.name || 'Unknown'}</p>
+                                    <a
+                                        href={`/h/${researcher?.username || researcher?.name}`}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        className="text-sm font-medium hover:underline cursor-pointer text-zinc-900 dark:text-zinc-100"
+                                    >
+                                        @{researcher?.username || researcher?.name || 'Unknown'}
+                                    </a>
                                     {researcher?.rank && <p className="text-[10px] text-muted-foreground">Rank {researcher.rank}</p>}
                                 </div>
-                                <Button size="sm" variant="outline" className="h-7 text-xs">Profile</Button>
+                                <Button
+                                    size="sm"
+                                    variant="outline"
+                                    className="h-7 text-xs"
+                                    onClick={() => window.open(`/h/${researcher?.username || researcher?.name}`, '_blank')}
+                                >
+                                    Profile
+                                </Button>
                             </div>
                         </div>
+
                         {triager && (
                             <>
                                 <Separator className="bg-zinc-200 dark:bg-white/5" />
@@ -1259,6 +1472,26 @@ export default function CompanyReportDetails() {
             />
 
         </div>
+
+        <Dialog open={!!previewMedia} onOpenChange={(open) => !open && setPreviewMedia(null)}>
+            <DialogContent className="max-w-5xl w-full p-1 bg-transparent border-none shadow-none text-white h-[90vh]">
+                <DialogHeader className="absolute top-4 right-4 z-50">
+                    <DialogTitle className="sr-only">Attachment Preview</DialogTitle>
+                </DialogHeader>
+                {previewMedia && (
+                    <div className="relative w-full h-full flex flex-col items-center justify-center bg-black/90 rounded-lg overflow-hidden backdrop-blur-xl border border-white/10 ring-1 ring-white/5">
+                        {previewMedia.type === 'video' ? (
+                            <video src={previewMedia.url} controls autoPlay className="max-w-full max-h-full object-contain w-full h-full rounded-md shadow-2xl" />
+                        ) : previewMedia.type === 'pdf' ? (
+                            <iframe src={`${previewMedia.url}#view=FitH`} className="w-full h-full rounded-md shadow-2xl bg-white" title="PDF Preview" />
+                        ) : (
+                            <img src={previewMedia.url} alt="Attachment Preview" className="max-w-full max-h-[85vh] object-contain rounded-md shadow-2xl" />
+                        )}
+                    </div>
+                )}
+            </DialogContent>
+        </Dialog>
+
     </div>
   );
 }

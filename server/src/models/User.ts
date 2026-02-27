@@ -48,6 +48,8 @@ export interface IUser extends Document {
         verificationToken: string; // Added as per request
         dateVerified: string; // ISO Date
         status: 'verified' | 'disabled';
+        inScope?: string[];
+        outScope?: string[];
     }[];
     achievements?: {
         title: string;
@@ -158,7 +160,9 @@ const userSchema = new mongoose.Schema<IUser>({
             type: String,
             enum: ['verified', 'disabled'],
             default: 'verified'
-        }
+        },
+        inScope: [String],
+        outScope: [String]
   }],
   achievements: [{
       title: String,

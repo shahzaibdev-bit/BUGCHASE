@@ -215,6 +215,35 @@ export const updateAssetStatus = catchAsync(async (req: Request, res: Response, 
     });
 });
 
+export const updateAssetScope = catchAsync(async (req: Request, res: Response, next: NextFunction) => {
+    const { id } = req.params;
+    const { inScope, outScope } = req.body;
+
+    const user = await User.findById(req.user!.id);
+    if (!user || !user.verifiedAssets) {
+        return next(new AppError('User or assets not found', 404));
+    }
+
+    const asset = user.verifiedAssets.find(a => a.id === id);
+    if (!asset) {
+        return next(new AppError('Asset not found', 404));
+    }
+
+    if (inScope && Array.isArray(inScope)) {
+        asset.inScope = inScope;
+    }
+    if (outScope && Array.isArray(outScope)) {
+        asset.outScope = outScope;
+    }
+
+    await user.save({ validateBeforeSave: false });
+
+    res.status(200).json({
+        status: 'success',
+        data: asset
+    });
+});
+
 export const deleteVerifiedAsset = catchAsync(async (req: Request, res: Response, next: NextFunction) => {
     const { id } = req.params;
 
@@ -258,14 +287,33 @@ export const createProgram = catchAsync(async (req: Request, res: Response, next
         const user = await User.findById(req.user!.id);
         if (!user) return next(new AppError('User not found', 404));
 
-        const scope = (selectedAssets || []).map((assetId: string) => {
+        const scope = (selectedAssets || []).flatMap((assetId: string) => {
             const asset = user.verifiedAssets?.find(a => a.id === assetId);
-            return {
-                asset: asset ? asset.domain : assetId,
-                type: 'Web',
-                instruction: 'Testing permitted',
-                tier: 'Primary'
-            };
+            if (!asset) {
+                return [{
+                    asset: assetId,
+                    type: 'Web',
+                    instruction: 'Testing permitted',
+                    tier: 'Primary'
+                }];
+            }
+            
+            // If the asset has inScope subdomains, use those. Otherwise fallback to the root domain.
+            if (asset.inScope && asset.inScope.length > 0) {
+                return asset.inScope.map(domain => ({
+                    asset: domain,
+                    type: 'Web',
+                    instruction: 'Testing permitted',
+                    tier: 'Primary'
+                }));
+            } else {
+                return [{
+                    asset: asset.domain,
+                    type: 'Web',
+                    instruction: 'Testing permitted',
+                    tier: 'Primary'
+                }];
+            }
         });
 
         const formattedOutOfScope = outOfScope.map((item: any) => ({
@@ -286,7 +334,7 @@ export const createProgram = catchAsync(async (req: Request, res: Response, next
             if (rewardValues.length > 0) {
                 const min = Math.min(...rewardValues);
                 const max = Math.max(...rewardValues);
-                bountyRange = `$${min} - $${max}`;
+                bountyRange = `PKR ${min} - PKR ${max}`;
             }
         }
 
@@ -411,55 +459,46 @@ export const deleteProgram = catchAsync(async (req: Request, res: Response, next
 
 export const getReportDetails = catchAsync(async (req: Request, res: Response, next: NextFunction) => {
     const { id } = req.params;
-    
-    // 1. Fetch Report
-    // We need to ensure the report belongs to a program owned by this company
-    // OR if we implement team logic, belongs to the company the user is part of.
-    // For now, simple check: report.program.companyId === req.user.id
-    
-    const report = await import('../models/Report').then(m => m.default.findById(id)
-        .populate('researcherId', 'username name avatar rank')
-        .populate('triagerId', 'name title avatar')
+
+    const Report = (await import('../models/Report')).default;
+    // Note: Report model has no companyId field — reports link to companies via programId.
+    // We fetch by _id only and verify ownership via the program's companyId below.
+    const report = await Report.findById(id)
+        .populate('researcherId', 'name username email avatar')
         .populate('comments.sender', 'name username role avatar')
-    );
+        .populate('triagerId', 'name username email avatar')
+        .populate({
+            path: 'programId',
+            model: 'Program',
+            select: 'title companyName type bountyRange description rewards rulesOfEngagement safeHarbor submissionGuidelines scope',
+            populate: {
+                path: 'companyId',
+                model: 'User',
+                select: 'name avatar'
+            }
+        });
 
     if (!report) {
-         return next(new AppError('Report not found', 404));
+        return next(new AppError('Report not found', 404));
     }
 
-    // 2. Permission Check
-    // We need to verify if the program this report belongs to is owned by the company.
-    // Since Report schema stores `programId` as string (maybe ID or just string?), 
-    // we might need to fetch the program to check ownership if `programId` is a MongoID.
-    // However, the `createProgram` controller sets `companyId` on the Program.
-    // Let's check `Report` model again. `programId` is String.
-    // If it's a real ID, we can fetch Program and check companyId.
-    
-    // For MVP/Demo if programId is NOT a mongo ID (mock data), we might skip this strict check 
-    // but in production we MUST check. 
-    // Assuming `programId` in Report is the `_id` of the Program document.
-    
-    // Let's try to find the Program.
+    // Permission check: ensure this report belongs to a program owned by this company
     const Program = (await import('../models/Program')).default;
     const program = await Program.findById(report.programId);
-    
+
     if (program) {
-        if (program.companyId.toString() !== req.user!.id && program.companyId.toString() !== req.user!.parentCompany?.toString()) {
-             return next(new AppError('You do not have permission to view this report', 403));
+        const companyId = req.user!.id || req.user!._id?.toString();
+        const parentId = req.user!.parentCompany?.toString();
+        const programOwner = program.companyId.toString();
+        if (programOwner !== companyId && programOwner !== parentId) {
+            return next(new AppError('You do not have permission to view this report', 403));
         }
-    } else {
-        // If program not found (maybe legacy data), we might block or allow if testing.
-        // For now, allowing if no program found is risky. 
-        // Let's assume for this specific codebase state we allow it if we can't fully verify, 
-        // OR easier: check if the user is a company and maybe just strict check is better.
-        // But for "Reviewing" purpose, let's proceed. 
     }
+    // If program not found (e.g. legacy/test data), allow access
 
     res.status(200).json({
         status: 'success',
-        data: {
-            report
-        }
+        data: { report }
     });
 });
 
@@ -537,11 +576,13 @@ export const addCompanyComment = catchAsync(async (req: Request, res: Response, 
         io.to(id).emit('new_activity', {
              id: newComment._id,
              type: 'comment',
-             author: (newComment.sender as any)?.role !== 'company' ? ((newComment.sender as any)?.username || (newComment.sender as any)?.name || 'Unknown User') : ((newComment.sender as any)?.name || 'Unknown Company'),
+             author: req.user!.role !== 'company' ? (req.user!.username || req.user!.name || 'Unknown User') : (req.user!.name || 'Unknown Company'),
+             authorName: req.user!.name,
+             authorUsername: req.user!.username,
              role: 'Company',
              content: newComment.content,
              timestamp: newComment.createdAt,
-             authorAvatar: (newComment.sender as any)?.avatar
+             authorAvatar: req.user!.avatar
         });
     } catch (socketError) {
         console.error("Socket emit failed:", socketError);

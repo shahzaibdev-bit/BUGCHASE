@@ -322,10 +322,16 @@ export default function ResearcherReports() {
             <h3 className="font-bold text-lg text-zinc-900 dark:text-white mb-1 leading-tight">{report.title}</h3>
             
             <div className="flex items-center gap-2 mb-4">
-              <div className="w-4 h-4 rounded-full flex items-center justify-center text-[8px] font-bold uppercase bg-zinc-200 text-zinc-700 dark:bg-zinc-800 dark:text-white">
-                 {(report.assets?.[0] || '?').charAt(0)}
-              </div>
-              <span className="text-xs font-medium text-zinc-600 dark:text-zinc-400">{report.assets?.[0] || 'Unknown'}</span>
+              {report.programId?.companyId?.avatar ? (
+                <img src={report.programId.companyId.avatar} alt="Company Logo" className="w-4 h-4 rounded-full object-cover" />
+              ) : (
+                <div className="w-4 h-4 rounded-full flex items-center justify-center text-[8px] font-bold uppercase bg-zinc-200 text-zinc-700 dark:bg-zinc-800 dark:text-white">
+                   {(report.programId?.companyName || report.programId?.companyId?.name || report.assets?.[0] || '?').charAt(0)}
+                </div>
+              )}
+              <span className="text-xs font-medium text-zinc-600 dark:text-zinc-400">
+                {report.programId?.companyName || report.programId?.companyId?.name || report.assets?.[0] || 'Unknown Target'}
+              </span>
             </div>
 
             <div className="flex items-center justify-between pt-3 border-t border-zinc-200/50 dark:border-zinc-800/50">
@@ -335,7 +341,7 @@ export default function ResearcherReports() {
                 <SeverityBadge severity={report.severity} />
               </div>
               <span className="font-mono text-sm font-medium text-zinc-900 dark:text-white">
-                {report.bounty > 0 ? `$${report.bounty}` : '-'}
+                {report.bounty > 0 ? `PKR ${report.bounty.toLocaleString()}` : '-'}
               </span>
             </div>
           </div>
@@ -379,18 +385,24 @@ export default function ResearcherReports() {
                 </td>
                 <td className="py-3 px-4">
                   <div className="flex items-center gap-2">
-                     {/* Placeholder Logo */}
-                    <div className="w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold uppercase bg-zinc-200 text-zinc-700 dark:bg-zinc-800 dark:text-white">
-                      {(report.assets?.[0] || '?').charAt(0)}
-                    </div>
-                    <span className="text-sm font-medium text-zinc-700 dark:text-zinc-300">{report.assets?.[0] || 'Unknown Target'}</span>
+                     {/* Company Logo */}
+                    {report.programId?.companyId?.avatar ? (
+                      <img src={report.programId.companyId.avatar} alt="Company Logo" className="w-5 h-5 rounded-full object-cover" />
+                    ) : (
+                      <div className="w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold uppercase bg-zinc-200 text-zinc-700 dark:bg-zinc-800 dark:text-white">
+                        {(report.programId?.companyName || report.programId?.companyId?.name || report.assets?.[0] || '?').charAt(0)}
+                      </div>
+                    )}
+                    <span className="text-sm font-medium text-zinc-700 dark:text-zinc-300">
+                      {report.programId?.companyName || report.programId?.companyId?.name || report.assets?.[0] || 'Unknown Target'}
+                    </span>
                   </div>
                 </td>
                 <td className="py-3 px-4 text-sm">
                   <SeverityBadge severity={report.severity} />
                 </td>
                 <td className="py-3 px-4 font-mono text-sm text-zinc-600 dark:text-zinc-300">
-                  {report.bounty > 0 ? `$${report.bounty}` : '-'}
+                  {report.bounty > 0 ? `PKR ${report.bounty.toLocaleString()}` : '-'}
                 </td>
                 <td className="py-3 px-4 text-right">
                     <div className="flex justify-end">

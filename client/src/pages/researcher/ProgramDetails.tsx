@@ -10,7 +10,9 @@ import {
     XCircle, 
     Lock,
     Trophy,
-    ExternalLink
+    ExternalLink,
+    Building2,
+    Globe
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
@@ -31,16 +33,12 @@ const ProgramDetails = () => {
                  const data = await res.json();
                  
                  if (res.ok) {
-                     setProgram(data.data);
+                     setProgram(data.data.program);
+                     setLeaderboard(data.data.hallOfFame || []);
                  } else {
                      console.error('Failed to fetch program');
                  }
 
-                 // 2. Fetch Leaderboard (Keep existing logic or integrate if new endpoint ready)
-                 // For now, keeping the reported-stats based leaderboard logic if we had a reports endpoint
-                 // But since we are focusing on connecting program *details*, we might skip reports integration here for a sec 
-                 // or just use empty if endpoints not fully ready for public aggregation.
-                 // We will skip report aggregation for now to ensure the main page loads.
              } catch (err) {
                  console.error('Failed to fetch details', err);
              } finally {
@@ -73,24 +71,23 @@ const ProgramDetails = () => {
     // Backend Response Mapping
     // Backend returns: { title, companyName, rewards: { critical: {min,max}, ... }, description, scope: [{ asset, type, instruction, tier }], ... }
     
-    // Helper for rewards display
     const formatReward = (range: { min: number, max: number }) => {
         if (!range || (range.min === 0 && range.max === 0)) return 'Varies';
-        return `$${range.min} - $${range.max}`; // Or PKR based on currency pref, using $ default for now
+        return `PKR ${range.min.toLocaleString()} - PKR ${range.max.toLocaleString()}`;
     };
 
-    const maxPayout = program.rewards?.critical?.max > 0 
-        ? `$${program.rewards.critical.max.toLocaleString()}` 
-        : program.bountyRange || 'Varies';
+    const maxPayout = program.rewards?.critical?.max 
+        ? (typeof program.rewards.critical.max === 'string' ? program.rewards.critical.max : `PKR ${program.rewards.critical.max.toLocaleString()}`)
+        : program.bountyRange?.replace(/\$/g, 'PKR ') || 'Varies';
 
     // Map Scope
     // Backend 'scope' array: { asset: string, type: 'Web/API'|..., instruction: string, tier: string }
-    // Frontend expects: url, type, inScope
     const assets = (program.scope || []).map((s: any) => ({
         url: s.asset,
         type: s.type || 'Target',
-        inScope: true, // Assuming backend 'scope' is purely In-Scope items
-        instruction: s.instruction
+        inScope: true, 
+        instruction: s.instruction,
+        tier: s.tier
     }));
     // Append out of scope if exist
     (program.outOfScope || []).forEach((os: any) => {
@@ -144,7 +141,7 @@ const ProgramDetails = () => {
                              </div>
                              <div className="flex items-center gap-2 text-sm text-zinc-500 dark:text-zinc-400 font-mono">
                                 <Shield className="w-4 h-4" />
-                                <span>Public Bug Bounty Program • {program.companyName}</span>
+                                <span>Public Bug Bounty Program • {program.companyId?.name || program.companyName}</span>
                              </div>
                         </div>
 
@@ -157,7 +154,9 @@ const ProgramDetails = () => {
                             <div className="w-px h-8 bg-zinc-200 dark:bg-white/10" />
                             <div className="flex flex-col">
                                 <div className="text-[10px] text-zinc-500 uppercase tracking-wider font-mono mb-0.5">Avg Triage</div>
-                                <div className="text-xl font-bold text-zinc-900 dark:text-white font-mono tracking-tight">~24h</div>
+                                <div className="text-xl font-bold text-zinc-900 dark:text-white font-mono tracking-tight">
+                                    {program.avgTriageTime ? `~${program.avgTriageTime}` : '~24h'}
+                                </div>
                             </div>
                             {/* <div className="w-px h-8 bg-zinc-200 dark:bg-white/10" />
                             <div className="flex flex-col">
@@ -199,6 +198,27 @@ const ProgramDetails = () => {
                                 ))}
                             </ul>
                         </div>
+
+                        {program.rulesOfEngagement && (
+                            <div className="space-y-4 pt-4 border-t border-zinc-200 dark:border-white/10">
+                                <h3 className="text-sm font-bold font-mono text-zinc-900 dark:text-white uppercase tracking-wider">Rules of Engagement</h3>
+                                <div className="prose dark:prose-invert max-w-none text-zinc-600 dark:text-zinc-300 leading-relaxed font-sans text-sm" dangerouslySetInnerHTML={{ __html: program.rulesOfEngagement }} />
+                            </div>
+                        )}
+                        
+                        {program.safeHarbor && (
+                            <div className="space-y-4 pt-4 border-t border-zinc-200 dark:border-white/10">
+                                <h3 className="text-sm font-bold font-mono text-zinc-900 dark:text-white uppercase tracking-wider">Safe Harbor</h3>
+                                <div className="prose dark:prose-invert max-w-none text-zinc-600 dark:text-zinc-300 leading-relaxed font-sans text-sm" dangerouslySetInnerHTML={{ __html: program.safeHarbor }} />
+                            </div>
+                        )}
+
+                        {program.submissionGuidelines && (
+                            <div className="space-y-4 pt-4 border-t border-zinc-200 dark:border-white/10">
+                                <h3 className="text-sm font-bold font-mono text-zinc-900 dark:text-white uppercase tracking-wider">Submission Guidelines</h3>
+                                <div className="prose dark:prose-invert max-w-none text-zinc-600 dark:text-zinc-300 leading-relaxed font-sans text-sm" dangerouslySetInnerHTML={{ __html: program.submissionGuidelines }} />
+                            </div>
+                        )}
                     </div>
 
                     {/* Scope Table */}
@@ -288,24 +308,72 @@ const ProgramDetails = () => {
                             <h2 className="text-sm font-bold font-mono tracking-wide text-zinc-900 dark:text-white uppercase">TOP RESEARCHERS</h2>
                         </div>
                         <div className="space-y-4">
-                            <p className="text-sm text-zinc-500 text-center py-4">No reports yet. Be the first!</p>
-                            {/* 
-                            {programData.topResearchers.map((hacker, idx) => (
-                                <div key={idx} className="flex items-center justify-between group cursor-pointer">
-                                    <div className="flex items-center gap-3">
-                                        <div className="w-8 h-8 rounded bg-zinc-200 dark:bg-white/10 flex items-center justify-center text-xs font-bold text-zinc-600 dark:text-zinc-300">
-                                            {hacker.avatar}
+                            {leaderboard.length === 0 ? (
+                                <p className="text-sm text-zinc-500 text-center py-4">No reports yet. Be the first!</p>
+                            ) : (
+                                leaderboard.slice(0, 5).map((hacker, idx) => (
+                                    <div key={idx} className="flex items-center justify-between group cursor-pointer">
+                                        <div className="flex items-center gap-3">
+                                            {hacker.avatar ? (
+                                                <img 
+                                                    src={hacker.avatar} 
+                                                    alt={hacker.username}
+                                                    className="w-8 h-8 rounded object-cover border border-zinc-200 dark:border-white/10"
+                                                />
+                                            ) : (
+                                                <div className="w-8 h-8 rounded bg-zinc-200 dark:bg-white/10 flex items-center justify-center text-xs font-bold text-zinc-600 dark:text-zinc-300">
+                                                    {hacker.username?.substring(0, 2).toUpperCase()}
+                                                </div>
+                                            )}
+                                            <span className="text-sm font-medium text-zinc-700 dark:text-zinc-300 group-hover:text-zinc-900 dark:group-hover:text-white transition-colors">
+                                                {hacker.username}
+                                            </span>
                                         </div>
-                                        <span className="text-sm font-medium text-zinc-700 dark:text-zinc-300 group-hover:text-zinc-900 dark:group-hover:text-white transition-colors">
-                                            {hacker.name}
+                                        <span className="text-xs font-mono text-zinc-500">
+                                            {hacker.reputationScore} REP
                                         </span>
                                     </div>
-                                    <span className="text-xs font-mono text-zinc-500">
-                                        {hacker.count} Reports
-                                    </span>
+                                ))
+                            )}
+                        </div>
+                    </div>
+
+                    {/* Publisher Info Widget */}
+                    <div className="rounded-xl border border-zinc-200 dark:border-white/10 bg-white/60 dark:bg-zinc-900/40 backdrop-blur-sm p-6 space-y-5">
+                        <div className="flex items-center gap-3 border-b border-zinc-200 dark:border-white/10 pb-4">
+                            <Building2 className="w-5 h-5 text-zinc-500" />
+                            <h2 className="text-sm font-bold font-mono tracking-wide text-zinc-900 dark:text-white uppercase">PUBLISHER INFO</h2>
+                        </div>
+                        
+                        <div className="flex items-center gap-4 mb-2">
+                            {program.companyId?.avatar ? (
+                                <img src={program.companyId.avatar} alt="Company Logo" className="w-12 h-12 rounded-lg object-cover border border-zinc-200 dark:border-zinc-800 bg-white" />
+                            ) : (
+                                <div className="w-12 h-12 rounded-lg bg-zinc-200 dark:bg-zinc-800 flex items-center justify-center text-lg font-bold text-zinc-600 dark:text-zinc-300 font-mono">
+                                    {(program.companyId?.name || program.companyName)?.substring(0, 2).toUpperCase()}
                                 </div>
-                            ))} 
-                            */}
+                            )}
+                            <div>
+                                <h3 className="font-bold text-zinc-900 dark:text-white">{program.companyId?.name || program.companyName}</h3>
+                                <p className="text-xs text-zinc-500">{program.companyId?.email || 'No public email'}</p>
+                            </div>
+                        </div>
+
+                        <div className="space-y-3 pt-2">
+                            <div className="flex justify-between text-sm">
+                                <span className="text-zinc-500 font-medium tracking-wide">Industry</span>
+                                <span className="font-mono text-zinc-900 dark:text-white">{program.companyId?.industry || 'N/A'}</span>
+                            </div>
+                            <div className="flex justify-between text-sm">
+                                <span className="text-zinc-500 font-medium tracking-wide">Location</span>
+                                <span className="font-mono text-zinc-900 dark:text-white">{program.companyId?.city || 'N/A'}</span>
+                            </div>
+                            <div className="flex justify-between text-sm">
+                                <span className="text-zinc-500 font-medium tracking-wide">Domain Verified</span>
+                                <span className="font-mono">
+                                    {(program.companyId?.verifiedAssets && program.companyId.verifiedAssets.length > 0) ? <CheckCircle className="inline h-4 w-4 text-emerald-500"/> : <XCircle className="inline h-4 w-4 text-zinc-400" />}
+                                </span>
+                            </div>
                         </div>
                     </div>
 

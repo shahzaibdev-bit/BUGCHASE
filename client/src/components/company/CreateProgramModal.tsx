@@ -16,11 +16,19 @@ import { cn } from '@/lib/utils';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { API_URL } from '@/config';
 
+interface VerifiedAsset {
+  id: string;
+  domain: string;
+  type?: string;
+  inScope?: string[];
+  outScope?: string[];
+}
+
 interface CreateProgramModalProps {
   isOpen: boolean;
   onClose: () => void;
   companyName: string;
-  verifiedAssets: { id: string; domain: string; type?: string }[];
+  verifiedAssets: VerifiedAsset[];
   onSuccess?: () => void;
 }
 
@@ -52,8 +60,6 @@ export const CreateProgramModal = ({ isOpen, onClose, companyName, verifiedAsset
   });
 
   const [assetDropdownOpen, setAssetDropdownOpen] = useState(false);
-  const [newOosAsset, setNewOosAsset] = useState('');
-  const [newOosReason, setNewOosReason] = useState('');
 
   // Helper to toggle asset
   const toggleAsset = (assetId: string) => {
@@ -73,26 +79,12 @@ export const CreateProgramModal = ({ isOpen, onClose, companyName, verifiedAsset
       return verifiedAssets.filter(a => formData.selectedAssets.includes(a.id)).map(a => ({
           id: a.id,
           name: a.domain,
-          tier: 'Web'
+          tier: 'Web',
+          inScope: a.inScope || [],
+          outScope: a.outScope || []
       }));
   };
 
-  const addOutOfScopeAsset = () => {
-      if (!newOosAsset) return;
-      setFormData(prev => ({
-          ...prev,
-          outOfScope: [...prev.outOfScope, { asset: newOosAsset, reason: newOosReason || 'Out of bounds' }]
-      }));
-      setNewOosAsset('');
-      setNewOosReason('');
-  };
-
-  const removeOutOfScopeAsset = (index: number) => {
-      setFormData(prev => ({
-          ...prev,
-          outOfScope: prev.outOfScope.filter((_, i) => i !== index)
-      }));
-  };
 
   const updateReward = (severity: string, field: 'min' | 'max', value: string) => {
       setFormData(prev => ({
@@ -118,7 +110,8 @@ export const CreateProgramModal = ({ isOpen, onClose, companyName, verifiedAsset
               description: formData.description,
               isPrivate: formData.isPrivate,
               selectedAssets: formData.selectedAssets,
-              outOfScope: formData.outOfScope,
+              // Derive outOfScope from the selected verified assets directly to send to backend if needed
+              outOfScope: getSelectedAssetDetails().flatMap(a => a.outScope.map(domain => ({ asset: domain, reason: 'Out of scope subdomain' }))),
               rulesOfEngagement: formData.rulesOfEngagement,
               safeHarbor: formData.safeHarbor,
               submissionGuidelines: formData.submissionGuidelines,
@@ -346,84 +339,67 @@ export const CreateProgramModal = ({ isOpen, onClose, companyName, verifiedAsset
                      </div>
 
                      {/* Selected Assets List */}
-                     <ScrollArea className="h-[200px] bg-muted/10 rounded-lg border border-border p-4">
+                     <ScrollArea className="h-[400px] rounded-lg border border-border p-4 bg-background overflow-y-auto">
                         {formData.selectedAssets.length === 0 ? (
-                            <div className="h-full flex flex-col items-center justify-center text-muted-foreground gap-2">
+                            <div className="h-full flex flex-col items-center justify-center text-muted-foreground gap-2 py-12">
                                <Server className="h-8 w-8 opacity-20" />
                                <span className="text-xs font-mono">NO ASSETS DEFINED</span>
                             </div>
                         ) : (
-                           <div className="space-y-2">
-                              {getSelectedAssetDetails().map((asset: { id: string; name: string; tier: string }) => (
-                                 <div key={asset.id} className="flex items-center justify-between p-3 bg-background border border-border rounded group">
+                           <div className="space-y-8">
+                              {getSelectedAssetDetails().map((asset) => (
+                                 <div key={asset.id} className="flex flex-col gap-4">
                                      <div className="flex items-center gap-3">
-                                        <div className="h-2 w-2 rounded-full bg-foreground shadow-sm"></div>
-                                        <span className="font-mono text-sm text-foreground">{asset.name}</span>
+                                        <div className="h-12 w-12 rounded-full bg-foreground flex items-center justify-center shadow-sm shrink-0">
+                                            <Globe className="h-6 w-6 text-background" />
+                                        </div>
+                                        <span className="font-mono text-lg font-bold text-foreground truncate">{asset.name}</span>
                                      </div>
-                                     <div className="flex items-center gap-3">
-                                         <span className="text-[10px] font-bold text-muted-foreground">IN_SCOPE</span>
-                                         <Badge className="bg-foreground/5 text-foreground border-none rounded-sm font-mono text-[10px]">
-                                            {asset.tier}
-                                         </Badge>
-                                         <Button 
-                                            variant="ghost" 
-                                            size="sm" 
-                                            className="h-6 w-6 p-0 text-muted-foreground hover:text-red-500"
-                                            onClick={() => toggleAsset(asset.id)}
-                                         >
-                                            <X className="h-3 w-3" />
-                                         </Button>
+                                     
+                                     <div className="pl-6 ml-6 border-l-2 border-muted-foreground/20 space-y-6">
+                                        {/* In-scope */}
+                                        <div className="space-y-3">
+                                            <span className="font-mono text-sm font-bold text-foreground flex items-center gap-2">
+                                                In-scope:
+                                            </span>
+                                            {asset.inScope.length > 0 ? (
+                                                <ul className="space-y-2">
+                                                    {asset.inScope.map((sub, idx) => (
+                                                        <li key={idx} className="flex items-center gap-3">
+                                                            <div className="h-4 w-4 rounded-full bg-foreground shrink-0 shadow-sm" />
+                                                            <span className="font-mono text-sm text-muted-foreground">{sub}</span>
+                                                        </li>
+                                                    ))}
+                                                </ul>
+                                            ) : (
+                                                <p className="font-mono text-xs text-muted-foreground italic pl-7">No specific subdomains defined.</p>
+                                            )}
+                                        </div>
+
+                                        {/* Out-scope */}
+                                        <div className="space-y-3">
+                                            <span className="font-mono text-sm font-bold text-foreground flex items-center gap-2">
+                                                Out-scope:
+                                            </span>
+                                            {asset.outScope.length > 0 ? (
+                                                <ul className="space-y-2">
+                                                    {asset.outScope.map((sub, idx) => (
+                                                        <li key={idx} className="flex items-center gap-3">
+                                                            <div className="h-4 w-4 rounded-full bg-foreground shrink-0 shadow-sm" />
+                                                            <span className="font-mono text-sm text-muted-foreground">{sub}</span>
+                                                        </li>
+                                                    ))}
+                                                </ul>
+                                            ) : (
+                                                <p className="font-mono text-xs text-muted-foreground italic pl-7">None defined.</p>
+                                            )}
+                                        </div>
                                      </div>
                                  </div>
                               ))}
                            </div>
                         )}
                      </ScrollArea>
-
-                     {/* Out of Scope Section */}
-                     <div className="space-y-4 pt-4 border-t border-border">
-                         <label className="text-xs font-mono text-foreground uppercase">Out of Scope Definitions</label>
-                         
-                         <div className="flex gap-2">
-                             <Input 
-                                 placeholder="e.g. staging.example.com" 
-                                 value={newOosAsset} 
-                                 onChange={(e) => setNewOosAsset(e.target.value)}
-                                 className="bg-background border-border text-sm font-mono"
-                             />
-                             <Input 
-                                 placeholder="Reason (optional)" 
-                                 value={newOosReason} 
-                                 onChange={(e) => setNewOosReason(e.target.value)}
-                                 className="bg-background border-border text-sm font-mono"
-                             />
-                             <Button type="button" onClick={addOutOfScopeAsset} variant="outline" className="shrink-0 bg-muted/50 border-border">
-                                 <Plus className="h-4 w-4" /> Add
-                             </Button>
-                         </div>
-
-                         {formData.outOfScope.length > 0 && (
-                             <div className="space-y-2 mt-4">
-                                {formData.outOfScope.map((oos, idx) => (
-                                    <div key={idx} className="flex flex-col sm:flex-row sm:items-center justify-between p-3 bg-muted/5 border border-dashed border-border rounded text-sm group">
-                                         <div className="flex items-center gap-3">
-                                            <Shield className="h-4 w-4 text-muted-foreground/50" />
-                                            <span className="font-mono font-bold text-foreground">{oos.asset}</span>
-                                            {oos.reason && <span className="text-muted-foreground text-xs">— {oos.reason}</span>}
-                                         </div>
-                                         <Button 
-                                            variant="ghost" 
-                                            size="icon" 
-                                            className="h-6 w-6 opacity-0 group-hover:opacity-100 transition-opacity text-destructive"
-                                            onClick={() => removeOutOfScopeAsset(idx)}
-                                         >
-                                            <Trash2 className="h-4 w-4" />
-                                         </Button>
-                                    </div>
-                                ))}
-                             </div>
-                         )}
-                     </div>
                   </div>
                 )}
 
@@ -474,36 +450,6 @@ export const CreateProgramModal = ({ isOpen, onClose, companyName, verifiedAsset
                 {/* STEP 4: OPERATIONS & SLA */}
                 {step === 4 && (
                   <div className="space-y-8">
-                     {/* SLAs Section */}
-                     <div className="space-y-4">
-                        <div className="flex items-center justify-between">
-                           <h3 className="text-sm font-bold font-mono text-foreground flex items-center gap-2">
-                              <Smartphone className="h-4 w-4" /> RESPONSE SLAs (HOURS)
-                           </h3>
-                        </div>
-                        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                           {[
-                              { label: 'First Response', key: 'firstResponse', default: 24 },
-                              { label: 'Triage Time', key: 'triage', default: 48 },
-                              { label: 'Bounty Paid', key: 'bounty', default: 168 },
-                              { label: 'Resolution', key: 'resolution', default: 360 }
-                           ].map((sla) => (
-                              <div key={sla.key} className="p-4 bg-muted/10 border border-border rounded-lg space-y-2">
-                                 <label className="text-[10px] font-mono text-muted-foreground uppercase">{sla.label}</label>
-                                 <div className="relative">
-                                    <Input 
-                                       type="number" 
-                                       className="h-9 bg-background border-border font-mono text-sm"
-                                       value={formData.slas[sla.key as keyof typeof formData.slas]}
-                                       onChange={(e) => setFormData({...formData, slas: {...formData.slas, [sla.key]: Number(e.target.value)}})}
-                                    />
-                                    <span className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground text-xs font-mono">hrs</span>
-                                 </div>
-                              </div>
-                           ))}
-                        </div>
-                     </div>
-
                      {/* Rewards Section */}
                      <div className="pt-6 border-t border-border">
                     {formData.type === 'VDP' ? (
@@ -576,33 +522,107 @@ export const CreateProgramModal = ({ isOpen, onClose, companyName, verifiedAsset
 
                 {/* STEP 5: REVIEW */}
                 {step === 5 && (
-                   <div className="flex flex-col items-center justify-center space-y-8 py-4">
+                   <div className="flex flex-col items-center justify-center space-y-8 py-4 w-full">
                       <div className="relative">
                          <div className="absolute inset-0 bg-foreground blur-3xl opacity-10 rounded-full"></div>
-                         <CheckCircle className="h-24 w-24 text-foreground relative z-10" />
+                         <CheckCircle className="h-16 w-16 text-foreground relative z-10" />
                       </div>
 
                       <div className="text-center space-y-2">
                          <h1 className="text-3xl font-bold tracking-tight text-foreground">PROGRAM READY</h1>
-                         <p className="text-muted-foreground max-w-sm mx-auto">
-                           Your program is ready to be published. It will be reviewed by the BugChase Triage Team within 24 hours.
+                         <p className="text-muted-foreground max-w-sm mx-auto text-sm">
+                           Please review your program details before publishing. It will be reviewed by the BugChase Triage Team within 24 hours.
                          </p>
                       </div>
 
-                      <div className="w-full bg-muted/20 border border-border rounded-xl p-6 grid grid-cols-2 gap-y-8 gap-x-12">
-                         <div>
-                            <p className="text-xs font-mono text-muted-foreground uppercase tracking-widest mb-1">PROGRAM TITLE</p>
-                            <p className="text-xl font-mono font-bold text-foreground">{formData.title}</p>
+                      <div className="w-full bg-muted/20 border border-border rounded-xl p-6 space-y-8 max-h-[50vh] overflow-y-auto custom-scrollbar">
+                         {/* Basic Info */}
+                         <div className="grid grid-cols-1 md:grid-cols-2 gap-y-6 gap-x-8">
+                            <div>
+                               <p className="text-[10px] font-mono text-muted-foreground uppercase tracking-widest mb-1">PROGRAM TITLE</p>
+                               <p className="text-lg font-bold text-foreground">{formData.title || 'N/A'}</p>
+                            </div>
+                            <div>
+                               <p className="text-[10px] font-mono text-muted-foreground uppercase tracking-widest mb-1">PROGRAM TYPE</p>
+                               <div className="flex items-center gap-2 mt-1">
+                                  {formData.type === 'BBP' ? <DollarSign className="h-4 w-4 text-foreground" /> : <Shield className="h-4 w-4 text-foreground" />}
+                                  <p className="text-sm font-bold text-foreground">
+                                     {formData.type === 'BBP' ? 'Bug Bounty (Paid)' : 'Vulnerability Disclosure (Unpaid)'}
+                                  </p>
+                               </div>
+                            </div>
+                            <div>
+                               <p className="text-[10px] font-mono text-muted-foreground uppercase tracking-widest mb-1">VISIBILITY</p>
+                               <p className="text-sm text-foreground">{formData.isPrivate ? 'Private (Invite Only)' : 'Public'}</p>
+                            </div>
+                             <div>
+                                <p className="text-[10px] font-mono text-muted-foreground uppercase tracking-widest mb-1">ASSET SCOPE</p>
+                                <p className="text-sm text-foreground">
+                                    {getSelectedAssetDetails().reduce((acc, curr) => acc + curr.inScope.length, 0)} In-Scope,{' '}
+                                    {getSelectedAssetDetails().reduce((acc, curr) => acc + curr.outScope.length, 0)} Out-of-Scope
+                                </p>
+                             </div>
                          </div>
-                         <div>
-                            <p className="text-xs font-mono text-muted-foreground uppercase tracking-widest mb-1">ASSET SCOPE</p>
-                            <p className="text-xl font-mono font-bold text-foreground">{formData.selectedAssets.length} ASSETS</p>
+
+                         {/* Details & Policies */}
+                         <div className="border-t border-border pt-6 space-y-6">
+                            <h3 className="text-sm font-bold font-mono text-foreground flex items-center gap-2">
+                               <Shield className="h-4 w-4" /> POLICIES & DETAILS
+                            </h3>
+                            
+                            <div className="grid grid-cols-1 gap-4">
+                               <div className="bg-background border border-border rounded p-4">
+                                  <p className="text-[10px] font-mono text-muted-foreground uppercase tracking-widest mb-2">Description</p>
+                                  <div className="text-sm text-foreground/80 line-clamp-3 prose prose-sm prose-invert" dangerouslySetInnerHTML={{ __html: formData.description || 'No description provided.' }} />
+                               </div>
+                               
+                               {(formData.rulesOfEngagement || formData.safeHarbor || formData.submissionGuidelines) && (
+                                   <div className="bg-background border border-border rounded p-4 grid grid-cols-1 md:grid-cols-3 gap-4">
+                                      {formData.rulesOfEngagement && (
+                                          <div>
+                                             <p className="text-[10px] font-mono text-muted-foreground uppercase tracking-widest mb-1">Rules of Engagement</p>
+                                             <p className="text-xs text-foreground/70">Provided ✓</p>
+                                          </div>
+                                      )}
+                                      {formData.safeHarbor && (
+                                          <div>
+                                             <p className="text-[10px] font-mono text-muted-foreground uppercase tracking-widest mb-1">Safe Harbor</p>
+                                             <p className="text-xs text-foreground/70">Provided ✓</p>
+                                          </div>
+                                      )}
+                                      {formData.submissionGuidelines && (
+                                          <div>
+                                             <p className="text-[10px] font-mono text-muted-foreground uppercase tracking-widest mb-1">Guidelines</p>
+                                             <p className="text-xs text-foreground/70">Provided ✓</p>
+                                          </div>
+                                      )}
+                                   </div>
+                               )}
+                            </div>
                          </div>
+
+                         {/* Rewards (if BBP) */}
                          {formData.type === 'BBP' && (
-                           <div className="col-span-2 border-t border-border pt-6">
-                              <p className="text-xs font-mono text-muted-foreground uppercase tracking-widest mb-1">PROGRAM TYPE</p>
-                              <p className="text-3xl font-mono font-bold text-foreground">Bug Bounty</p>
-                           </div>
+                             <div className="border-t border-border pt-6 space-y-4">
+                                <h3 className="text-sm font-bold font-mono text-foreground flex items-center gap-2">
+                                   <DollarSign className="h-4 w-4" /> REWARD STRUCTURE (PKR)
+                                </h3>
+                                <div className="grid grid-cols-2 gap-4">
+                                   {Object.entries(formData.rewards).map(([severity, range]) => (
+                                       <div key={severity} className="bg-background border border-border rounded p-3 flex justify-between items-center">
+                                          <p className={cn(
+                                              "text-xs font-mono uppercase font-bold",
+                                              severity === 'critical' ? "text-red-500" :
+                                              severity === 'high' ? "text-orange-500" :
+                                              severity === 'medium' ? "text-yellow-500" : "text-blue-500"
+                                          )}>{severity}</p>
+                                          <p className="text-xs text-foreground font-mono">
+                                              {range.min || '0'} - {range.max || '0'}
+                                          </p>
+                                       </div>
+                                   ))}
+                                </div>
+                             </div>
                          )}
                       </div>
                    </div>

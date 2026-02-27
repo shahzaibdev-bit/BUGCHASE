@@ -29,7 +29,10 @@ export const getPublicProgramById = catchAsync(async (req: Request, res: Respons
         _id: req.params.id,
         status: 'Active' 
         // We might allow private if the user has access, but for now strict public
-    });
+    }).populate(
+        'companyId',
+        'name email avatar companyName website industry city domainVerified verifiedAssets'
+    );
 
     if (!program) {
         return next(new AppError('Program not found or not active', 404));
@@ -40,8 +43,33 @@ export const getPublicProgramById = catchAsync(async (req: Request, res: Respons
         // Check invitation logic here in future
     }
 
+    // Fetch reports for this program to build Hall of Fame
+    const Report = (await import('../models/Report')).default;
+    const reports = await Report.find({ programId: program._id })
+        .populate('researcherId', 'username name avatar reputationScore')
+        .select('researcherId status');
+
+    // Filter to unique researchers
+    const uniqueResearchers = new Map();
+    reports.forEach((report: any) => {
+        if (report.researcherId && !uniqueResearchers.has(report.researcherId._id.toString())) {
+            uniqueResearchers.set(report.researcherId._id.toString(), {
+                _id: report.researcherId._id,
+                username: report.researcherId.username || report.researcherId.name,
+                avatar: report.researcherId.avatar,
+                reputationScore: report.researcherId.reputationScore
+            });
+        }
+    });
+
+    const hallOfFame = Array.from(uniqueResearchers.values())
+        .sort((a: any, b: any) => (b.reputationScore || 0) - (a.reputationScore || 0));
+
     res.status(200).json({
         status: 'success',
-        data: program
+        data: {
+            program,
+            hallOfFame
+        }
     });
 });

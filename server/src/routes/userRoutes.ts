@@ -21,8 +21,8 @@ const upload = multer({
 
 // Allow public access mostly, but rate limit it to prevent scraping abuse
 // 20 requests per minute per IP
-const publicProfileLimiter = rateLimiter(20, 60);
-const uploadLimiter = rateLimiter(5, 60); // 5 uploads per minute
+const publicProfileLimiter = rateLimiter(20, 60, 'profile');
+const uploadLimiter = rateLimiter(5, 60, 'upload'); // 5 uploads per minute
 
 router.get('/p/:username', publicProfileLimiter, getPublicProfile);
 

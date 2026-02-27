@@ -1,6 +1,9 @@
 import { Request, Response, NextFunction } from 'express';
 import catchAsync from '../utils/catchAsync';
 import AppError from '../utils/AppError';
+import fs from 'fs';
+import path from 'path';
+import { uploadToCloudinary } from '../utils/cloudinary';
 import Report from '../models/Report';
 import User from '../models/User';
 import Program from '../models/Program';
@@ -195,6 +198,21 @@ export const claimReport = catchAsync(async (req: Request, res: Response, next: 
         return next(new AppError('Report already claimed by another triager', 400));
     }
 
+    // --- NEW: Concurrency Enforcements ---
+    const triagerRecord = await User.findById(triagerId).select('maxConcurrentReports');
+    if (triagerRecord) {
+        const activeCount = await Report.countDocuments({
+            triagerId: triagerId,
+            status: { $in: ['Triaging', 'Under Review', 'Needs Info'] }
+        });
+        const currentMax = triagerRecord.maxConcurrentReports || 10;
+        
+        if (activeCount >= currentMax) {
+            return next(new AppError(`You have reached your maximum concurrent reports limit (${currentMax}). Please resolve active reports before claiming new ones.`, 400));
+        }
+    }
+    // ------------------------------------
+
     if (report.status === 'Submitted') {
         const researcherName = (report.researcherId as any)?.username || (report.researcherId as any)?.name || 'Researcher';
         
@@ -280,7 +298,17 @@ export const getReportDetails = catchAsync(async (req: Request, res: Response, n
     const { id } = req.params;
     const report = await Report.findById(id)
         .populate('researcherId', 'username name email avatar')
-        .populate('comments.sender', 'username name role avatar');
+        .populate('comments.sender', 'username name role avatar')
+        .populate({
+            path: 'programId',
+            model: 'Program',
+            select: 'title companyName type bountyRange description rewards rulesOfEngagement safeHarbor submissionGuidelines scope',
+            populate: {
+                path: 'companyId',
+                model: 'User',
+                select: 'name avatar'
+            }
+        });
 
     if (!report) {
         return next(new AppError('Report not found', 404));
@@ -302,9 +330,22 @@ export const postComment = catchAsync(async (req: Request, res: Response, next: 
     const report = await Report.findById(id);
     if (!report) return next(new AppError('Report not found', 404));
 
+    // Process uploaded files if any
+    const uploadedUrls: string[] = [];
+    if (req.files && Array.isArray(req.files)) {
+        const uploadPromises = req.files.map((file: Express.Multer.File) => {
+            return uploadToCloudinary(file);
+        });
+        const results = await Promise.all(uploadPromises);
+        results.forEach(result => {
+            uploadedUrls.push(result.url);
+        });
+    }
+
     report.comments.push({
         sender: req.user.id,
         content,
+        attachments: uploadedUrls,
         createdAt: new Date()
     });
 
@@ -318,11 +359,14 @@ export const postComment = catchAsync(async (req: Request, res: Response, next: 
         io.to(id).emit('new_activity', {
             id: newComment._id,
             type: 'comment',
-            author: (newComment.sender as any)?.role !== 'company' ? ((newComment.sender as any)?.username || (newComment.sender as any)?.name || 'Unknown User') : ((newComment.sender as any)?.name || 'Unknown Company'),
+            author: req.user!.role !== 'company' ? (req.user!.username || req.user!.name || 'Unknown User') : (req.user!.name || 'Unknown Company'),
+            authorName: req.user!.name,
+            authorUsername: req.user!.username,
             role: 'Triager',
             content: newComment.content,
+            attachments: newComment.attachments,
             timestamp: newComment.createdAt,
-            authorAvatar: (newComment.sender as any)?.avatar
+            authorAvatar: req.user!.avatar
         });
     } catch (socketError) {
         console.error("Socket emit failed:", socketError);
@@ -458,26 +502,27 @@ export const updateReportSeverity = catchAsync(async (req: Request, res: Respons
 // Submit Triage Decision
 export const submitDecision = catchAsync(async (req: Request, res: Response, next: NextFunction) => {
     const { id } = req.params;
-    const { status, note, bountyAmount } = req.body; // status: Triaged, Spade, Duplicate, NA...
+    const { status, note, bountyAmount } = req.body;
 
-    const report = await Report.findById(id).populate('researcherId programId');
+    // Populate researcherId with explicit fields (including email) at query time
+    const report = await Report.findById(id)
+        .populate('researcherId', 'name email username avatar');
 
     if (!report) {
-         return next(new AppError('Report not found', 404));
+        return next(new AppError('Report not found', 404));
     }
+
+    const oldStatus = report.status; // capture BEFORE overwriting
 
     report.status = status;
     if (note && status === 'Triaged') report.triagerNote = note;
-    
-    // If status is "Triaged", notify Company
-    // If status is "Spam", "Duplicate", "NA", notify Researcher
 
     report.comments.push({
         sender: req.user.id,
         content: `Changed status to ${status}`,
         type: 'status_change',
         metadata: { 
-            oldStatus: report.status, 
+            oldStatus,
             newStatus: status,
             reason: note 
         },
@@ -501,104 +546,123 @@ export const submitDecision = catchAsync(async (req: Request, res: Response, nex
             metadata: newSystemComment.metadata
         });
         
-        io.to(id).emit('status_updated', {
-             status
-        });
+        io.to(id).emit('status_updated', { status });
     } catch (socketError) {
         console.error("Socket emit failed on submit decision:", socketError);
     }
 
     res.status(200).json({
         status: 'success',
-        data: {
-            report
-        }
+        data: { report }
     });
 
-    // Create Notification and Email in background
+    // Send Email notifications in background (non-blocking)
     (async () => {
-        try {
-            await report.populate('researcherId', 'name email');
-            const researcher = report.researcherId as any;
+        const researcher = report.researcherId as any;
+        console.log('[EMAIL DEBUG] researcher email:', researcher?.email, '| status:', status);
 
-            // In-App Notification for Researcher
+        // In-App Notification — separate try-catch so it doesn't block email
+        try {
+            const recipientId = researcher?._id || researcher;
             await Notification.create({
-                recipient: report.researcherId,
+                recipient: recipientId,
                 title: `Report Status Updated: ${report.title}`,
                 message: `Your report has been marked as ${status}.`,
                 type: 'report_status',
                 link: `/researcher/reports/${report._id}`
             });
+        } catch (notifErr) {
+            console.error('[EMAIL DEBUG] Notification.create failed:', notifErr);
+        }
 
-            // Email Researcher
+        // Email Researcher — own try-catch
+        try {
             if (researcher?.email) {
                 const senderName = req.user.name || req.user.username || 'Triager';
+                console.log('[EMAIL DEBUG] Sending researcher email to:', researcher.email);
+                const html = reportEmailTemplate({
+                    recipientName: researcher.name || 'Researcher',
+                    recipientRole: 'researcher',
+                    actorName: senderName,
+                    actorRole: 'triager',
+                    actionType: status === 'Triaged' ? 'promoted' : 'status_change',
+                    reportTitle: report.title,
+                    reportId: String(report._id),
+                    severity: report.severity,
+                    oldStatus,
+                    newStatus: status,
+                    reason: note || undefined,
+                    link: `${process.env.CLIENT_URL || 'http://localhost:3000'}/researcher/reports/${report._id}`
+                });
                 await sendEmail(
                     researcher.email,
-                    `Status Updated: ${report.title}`,
-                    reportEmailTemplate({
-                        recipientName: researcher.name || 'Researcher',
-                        recipientRole: 'researcher',
-                        actorName: senderName,
+                    `Report ${status === 'Triaged' ? 'Promoted' : 'Status Updated'}: ${report.title}`,
+                    html
+                );
+                console.log('[EMAIL DEBUG] Researcher email sent successfully');
+            } else {
+                console.warn('[EMAIL DEBUG] No researcher email found — skipping');
+            }
+        } catch (researcherEmailErr) {
+            console.error('[EMAIL DEBUG] Researcher email failed:', researcherEmailErr);
+        }
+
+        // Email Company when Triaged — own try-catch
+        if (status === 'Triaged') {
+            try {
+                const prog = await Program.findById(report.programId).populate('companyId', 'name email');
+                const company = prog?.companyId as any;
+                console.log('[EMAIL DEBUG] Company email:', company?.email);
+                if (company?.email) {
+                    const html = reportEmailTemplate({
+                        recipientName: company.name || 'Security Team',
+                        recipientRole: 'company',
+                        actorName: req.user.name || 'BugChase Triage',
                         actorRole: 'triager',
-                        actionType: 'status_change',
+                        actionType: 'promoted',
                         reportTitle: report.title,
                         reportId: String(report._id),
                         severity: report.severity,
-                        newStatus: status,
-                        reason: note || undefined,
-                        link: `${process.env.CLIENT_URL}/researcher/reports/${report._id}`
-                    })
-                );
-            }
-
-            // If promoted to Triaged — notify Company
-            if (status === 'Triaged') {
-                const prog = await Program.findById(report.programId).populate('companyId', 'name email');
-                const company = prog?.companyId as any;
-                if (company?.email) {
+                        newStatus: 'Triaged',
+                        link: `${process.env.CLIENT_URL || 'http://localhost:3000'}/company/reports/${report._id}`
+                    });
                     await sendEmail(
                         company.email,
                         `New Report Forwarded to Your Program: ${report.title}`,
-                        reportEmailTemplate({
-                            recipientName: company.name || 'Security Team',
-                            recipientRole: 'company',
-                            actorName: req.user.name || 'BugChase Triage',
-                            actorRole: 'triager',
-                            actionType: 'promoted',
-                            reportTitle: report.title,
-                            reportId: String(report._id),
-                            severity: report.severity,
-                            newStatus: 'Triaged',
-                            link: `${process.env.CLIENT_URL}/company/reports/${report._id}`
-                        })
+                        html
                     );
+                    console.log('[EMAIL DEBUG] Company email sent successfully');
                 }
+            } catch (companyEmailErr) {
+                console.error('[EMAIL DEBUG] Company email failed:', companyEmailErr);
             }
-        } catch (error) {
-            console.error('Failed to send decision email or notification:', error);
         }
     })();
+
 });
+
+
 
 // Update Report Status
 export const updateReportStatus = catchAsync(async (req: Request, res: Response, next: NextFunction) => {
     const { id } = req.params;
     const { status, note } = req.body;
 
-    const report = await Report.findById(id);
+    // Populate researcherId at query time so email has the address
+    const report = await Report.findById(id).populate('researcherId', 'name email username');
     if (!report) return next(new AppError('Report not found', 404));
+
+    const oldStatus = report.status; // capture BEFORE overwriting
 
     // Persist changes
     report.status = status;
 
-    // Add to specific timeline/activity logic if needed
     report.comments.push({
         sender: req.user.id,
         content: `Changed status to ${status}`,
         type: 'status_change',
         metadata: { 
-            oldStatus: report.status,
+            oldStatus,
             newStatus: status,
             reason: note 
         },
@@ -634,10 +698,9 @@ export const updateReportStatus = catchAsync(async (req: Request, res: Response,
         data: { report }
     });
 
-    // Send Email to Researcher in background
+    // Send Email notifications in background
     (async () => {
         try {
-            await report.populate('researcherId', 'name email avatar');
             const researcher = report.researcherId as any;
             if (researcher?.email) {
                 const senderName = req.user.name || req.user.username || 'Triager';
@@ -653,17 +716,43 @@ export const updateReportStatus = catchAsync(async (req: Request, res: Response,
                         reportTitle: report.title,
                         reportId: String(report._id),
                         severity: report.severity,
+                        oldStatus,
                         newStatus: status,
                         reason: note || undefined,
                         link: `${process.env.CLIENT_URL}/researcher/reports/${report._id}`
                     })
                 );
             }
+
+            // If promoted to Triaged — also notify the Company
+            if (status === 'Triaged') {
+                const prog = await Program.findById(report.programId).populate('companyId', 'name email');
+                const company = (prog?.companyId) as any;
+                if (company?.email) {
+                    await sendEmail(
+                        company.email,
+                        `Report Promoted to Your Program: ${report.title}`,
+                        reportEmailTemplate({
+                            recipientName: company.name || 'Security Team',
+                            recipientRole: 'company',
+                            actorName: req.user.name || 'BugChase Triage',
+                            actorRole: 'triager',
+                            actionType: 'promoted',
+                            reportTitle: report.title,
+                            reportId: String(report._id),
+                            severity: report.severity,
+                            newStatus: 'Triaged',
+                            link: `${process.env.CLIENT_URL}/company/reports/${report._id}`
+                        })
+                    );
+                }
+            }
         } catch (error) {
             console.error('Failed to send status email:', error);
         }
     })();
 });
+
 
 // Reopen Report
 export const reopenReport = catchAsync(async (req: Request, res: Response, next: NextFunction) => {

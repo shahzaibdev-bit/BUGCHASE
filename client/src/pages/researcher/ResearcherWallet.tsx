@@ -106,7 +106,7 @@ export default function ResearcherWallet() {
                             <Loader2 className="w-8 h-8 animate-spin text-zinc-500" />
                         ) : (
                             <>
-                                {walletBalance.toLocaleString()} <span className="text-2xl text-zinc-500 font-normal">USD</span>
+                                {walletBalance.toLocaleString()} <span className="text-2xl text-zinc-500 font-normal">PKR</span>
                             </>
                         )}
                     </div>
@@ -210,7 +210,7 @@ export default function ResearcherWallet() {
                         ? "text-emerald-600 dark:text-emerald-400" 
                         : "text-zinc-900 dark:text-white"
                   )}>
-                    {txn.amount}
+                    {txn.amount.startsWith('+') ? '+ PKR ' + txn.amount.substring(1) : (txn.amount.startsWith('-') ? '- PKR ' + txn.amount.substring(1) : 'PKR ' + txn.amount)}
                   </td>
                   <td className="px-6 py-4 text-right">
                     <span className={cn(
@@ -267,7 +267,7 @@ export default function ResearcherWallet() {
                     {/* Balance Display */}
                     <div className="bg-zinc-50 dark:bg-zinc-900/50 rounded-2xl p-4 border border-zinc-200 dark:border-zinc-800 flex items-center justify-between">
                       <span className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider">Available for Withdrawal</span>
-                      <span className="text-lg font-bold font-mono text-zinc-900 dark:text-white">USD {walletBalance.toLocaleString()}</span>
+                      <span className="text-lg font-bold font-mono text-zinc-900 dark:text-white">PKR {walletBalance.toLocaleString()}</span>
                     </div>
 
                     {/* Amount Input */}
@@ -382,11 +382,11 @@ export default function ResearcherWallet() {
                   <div className="p-6 bg-zinc-50 dark:bg-zinc-900 border-t border-zinc-200 dark:border-zinc-800 space-y-4">
                      <div className="flex items-center justify-between text-xs">
                         <span className="text-zinc-500">Transaction Fee</span>
-                        <span className="font-mono text-zinc-900 dark:text-white">USD 0.00 (Free)</span>
+                        <span className="font-mono text-zinc-900 dark:text-white">PKR 0.00 (Free)</span>
                      </div>
                      <div className="flex items-center justify-between text-sm">
                         <span className="font-bold text-zinc-700 dark:text-zinc-300">Total Receive</span>
-                        <span className="font-bold font-mono text-xl text-zinc-900 dark:text-white">USD {Number(withdrawAmount) || 0}</span>
+                        <span className="font-bold font-mono text-xl text-zinc-900 dark:text-white">PKR {Number(withdrawAmount) || 0}</span>
                      </div>
                      
                      <Button className="w-full bg-zinc-900 dark:bg-white text-white dark:text-zinc-900 hover:bg-zinc-800 dark:hover:bg-zinc-200 font-bold h-12 rounded-xl shadow-lg shadow-zinc-900/20 dark:shadow-white/10">

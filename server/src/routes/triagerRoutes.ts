@@ -17,8 +17,10 @@ import {
     reopenReport,
     generateSummary
 } from '../controllers/triagerController';
+import multer from 'multer';
 
 const router = express.Router();
+const upload = multer({ storage: multer.memoryStorage() });
 
 // Apply protection and role restriction to all routes
 router.use(protect);
@@ -31,7 +33,7 @@ router.get('/queue', getMyQueue);
 router.get('/assigned', getAssignedReports);
 router.get('/pool', getGlobalPool);
 router.get('/reports/:id', getReportDetails); // Details
-router.post('/reports/:id/chat', postComment); // Chat
+router.post('/reports/:id/chat', upload.array('files', 5), postComment); // Chat
 router.post('/claim/:id', claimReport);
 router.patch('/reports/:id/severity', updateReportSeverity);
 router.patch('/reports/:id/status', updateReportStatus);

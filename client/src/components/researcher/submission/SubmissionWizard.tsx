@@ -17,6 +17,7 @@ export const SubmissionWizard = () => {
     const programId = searchParams.get('program');
 
     const [currentStep, setCurrentStep] = useState(1);
+    const [isSubmitting, setIsSubmitting] = useState(false);
     const [programScope, setProgramScope] = useState<any[]>([]); // To store assets
     const [loadingProgram, setLoadingProgram] = useState(false);
 
@@ -47,8 +48,8 @@ export const SubmissionWizard = () => {
                 const res = await fetch(`${API_URL}/programs/${programId}`);
                 if (res.ok) {
                     const json = await res.json();
-                    if (json.data && json.data.scope) {
-                        setProgramScope(json.data.scope);
+                    if (json.data && json.data.program && json.data.program.scope) {
+                        setProgramScope(json.data.program.scope);
                     }
                 }
             } catch (error) {
@@ -70,12 +71,24 @@ export const SubmissionWizard = () => {
     const canProceed = () => {
         if (currentStep === 1) return data.target && data.category;
         if (currentStep === 2) return data.severity !== 'None';
-        if (currentStep === 3) return data.title.length > 2 && data.vulnerabilityDetails.length > 2 && data.impact.length > 2;
+        if (currentStep === 3) {
+            // Strip HTML tags to ensure it's not just `<p></p>`
+            const stripHtml = (html: string) => {
+                if (!html) return '';
+                return html.replace(/<[^>]*>?/gm, '').trim();
+            };
+            
+            return data.title.trim().length > 2 && 
+                   stripHtml(data.vulnerabilityDetails).length > 2 && 
+                   stripHtml(data.impact).length > 2 &&
+                   stripHtml(data.validationSteps).length > 2;
+        }
         return true;
     };
 
     const handleSubmit = async () => {
         try {
+            setIsSubmitting(true);
             // Format CVSS Vector from Object to String
             // Example: CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:N/I:N/A:N
             const vec = data.cvssVector as any;
@@ -84,22 +97,40 @@ export const SubmissionWizard = () => {
             const token = localStorage.getItem('token');
             console.log("Submitting report with token:", token ? "Present" : "Missing"); // Debug Log
 
-            const headers: HeadersInit = {
-                'Content-Type': 'application/json'
-            };
+            const headers: HeadersInit = {};
             if (token) {
                 headers['Authorization'] = `Bearer ${token}`;
+            }
+
+            const formData = new FormData();
+            if (programId) formData.append('programId', programId);
+            if (data.target) formData.append('target', data.target);
+            if (data.assetType) formData.append('assetType', data.assetType);
+            if (data.category) formData.append('vulnerabilityCategory', data.category);
+            if (data.bugType) formData.append('bugType', data.bugType);
+            if (data.cwe) formData.append('cwe', data.cwe);
+            formData.append('severityMode', data.severityMode);
+            formData.append('severity', data.severity);
+            formData.append('cvssVector', cvssString);
+            formData.append('cvssScore', data.cvssScore.toString());
+            formData.append('title', data.title);
+            formData.append('vulnerabilityDetails', data.vulnerabilityDetails);
+            formData.append('validationSteps', data.validationSteps);
+            formData.append('impact', data.impact);
+            formData.append('agreedToTerms', data.agreedToTerms.toString());
+
+            // Append files securely
+            if (data.files && data.files.length > 0) {
+                data.files.forEach(file => {
+                    formData.append('files', file); 
+                });
             }
 
             const res = await fetch(`${API_URL}/reports`, {
                 method: 'POST',
                 headers,
-                credentials: 'include', // Ensure cookies are sent if needed
-                body: JSON.stringify({
-                    programId, // From URL
-                    ...data,
-                    cvssVector: cvssString // Send formatted string
-                })
+                credentials: 'include',
+                body: formData
             });
             const result = await res.json();
 
@@ -116,6 +147,8 @@ export const SubmissionWizard = () => {
                 description: error.message,
                 variant: 'destructive'
             });
+        } finally {
+            setIsSubmitting(false);
         }
     };
 
@@ -176,11 +209,20 @@ export const SubmissionWizard = () => {
                         ) : (
                              <Button 
                                 onClick={handleSubmit} 
-                                disabled={!data.agreedToTerms}
-                                className="bg-black hover:bg-zinc-800 dark:bg-white dark:hover:bg-zinc-200 text-white dark:text-black font-bold px-8 shadow-lg hover:shadow-xl hover:-translate-y-1 transition-all"
+                                disabled={!data.agreedToTerms || isSubmitting}
+                                className="bg-black hover:bg-zinc-800 dark:bg-white dark:hover:bg-zinc-200 text-white dark:text-black font-bold px-8 shadow-lg hover:shadow-xl hover:-translate-y-1 transition-all disabled:opacity-50"
                             >
-                                <Send className="w-4 h-4 mr-2" />
-                                Submit Report
+                                {isSubmitting ? (
+                                    <>
+                                        <div className="animate-spin rounded-full h-4 w-4 border-2 border-white/20 border-t-white mr-2" />
+                                        Submitting...
+                                    </>
+                                ) : (
+                                    <>
+                                        <Send className="w-4 h-4 mr-2" />
+                                        Submit Report
+                                    </>
+                                )}
                             </Button>
                         )}
                     </div>

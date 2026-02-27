@@ -77,7 +77,7 @@ export const signup = catchAsync(async (req: Request, res: Response, next: NextF
   }
 
   // Reset Rate Limit on Successful Signup Attempt
-  await resetRateLimit(req);
+  await resetRateLimit(req, 'auth');
 
   res.status(201).json({
     status: 'success',
@@ -124,7 +124,7 @@ export const verifyEmail = catchAsync(async (req: Request, res: Response, next: 
   (userObj as any).reputationScore = ((userObj as any).reputationScore || 0) + calculateDynamicReputation(userObj);
 
   // Reset Rate Limit on Success
-  await resetRateLimit(req);
+  await resetRateLimit(req, 'auth');
 
   res.status(200).json({
     status: 'success',
@@ -174,7 +174,7 @@ export const login = catchAsync(async (req: Request, res: Response, next: NextFu
   (userObj as any).reputationScore = ((userObj as any).reputationScore || 0) + calculateDynamicReputation(userObj);
 
   // Reset Rate Limit on Success
-  await resetRateLimit(req);
+  await resetRateLimit(req, 'auth');
 
   res.status(200).json({
     status: 'success',
@@ -297,7 +297,7 @@ export const updatePassword = catchAsync(async (req: Request, res: Response, nex
   });
 
   // Reset Rate Limit (Optional, but good since they successfully authenticated again)
-  await resetRateLimit(req);
+  await resetRateLimit(req, 'auth');
 
   res.status(200).json({
     status: 'success',

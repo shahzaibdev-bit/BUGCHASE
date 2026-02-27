@@ -59,6 +59,7 @@ export default function TriagerQueue() {
   const [expertiseFilter, setExpertiseFilter] = useState<string>('all');
   const [activeTab, setActiveTab] = useState('active');
   const [loading, setLoading] = useState(true);
+  const [userExpertise, setUserExpertise] = useState<string[]>([]);
 
   // Fetch Data
   const fetchData = async () => {
@@ -66,16 +67,22 @@ export default function TriagerQueue() {
     try {
         const token = localStorage.getItem('token');
         const headers = { 'Authorization': `Bearer ${token}` };
-        const [queueRes, poolRes] = await Promise.all([
+        const [queueRes, poolRes, profileRes] = await Promise.all([
             fetch(`${API_URL}/triager/queue`, { headers }),
-            fetch(`${API_URL}/triager/pool`, { headers })
+            fetch(`${API_URL}/triager/pool`, { headers }),
+            fetch(`${API_URL}/triager/profile`, { headers })
         ]);
         
         const queueData = await queueRes.json();
         const poolData = await poolRes.json();
+        const profileData = await profileRes.json();
 
         if (queueRes.ok) setMyQueue(queueData.data.reports);
         if (poolRes.ok) setUnassignedPool(poolData.data.reports);
+        if (profileRes.ok && profileData.data?.preferences?.expertise) {
+            setUserExpertise(profileData.data.preferences.expertise);
+            setExpertiseFilter('matched'); // Set default format to matched
+        }
 
     } catch (error) {
         console.error("Failed to fetch reports", error);
@@ -89,9 +96,25 @@ export default function TriagerQueue() {
     fetchData();
   }, []);
 
-  const filteredPool = unassignedPool.filter(r => 
-    expertiseFilter === 'all' || (r.expertise || 'Web') === expertiseFilter
-  );
+  const filteredPool = unassignedPool.filter(r => {
+    if (expertiseFilter === 'all') return true;
+    if (expertiseFilter === 'matched') {
+         // Map raw categories to standardized expertise array names if necessary,
+         // For now, assuming standard match:
+         const rExp = r.expertise || 'Web';
+         // Easiest soft match: convert 'Web security' to 'web', 'Cloud Infra' to 'cloud', etc.
+         const cleanExp = rExp.toLowerCase().includes('web') ? 'web' 
+                          : rExp.toLowerCase().includes('mobile') ? 'mobile'
+                          : rExp.toLowerCase().includes('source') ? 'source'
+                          : rExp.toLowerCase().includes('cloud') ? 'cloud'
+                          : rExp.toLowerCase().includes('iot') ? 'iot'
+                          : rExp.toLowerCase().includes('api') ? 'api'
+                          : rExp.toLowerCase().includes('crypto') ? 'crypto'
+                          : rExp.toLowerCase().includes('database') ? 'database' : '';
+         return userExpertise.includes(cleanExp);
+    }
+    return (r.expertise || 'Web') === expertiseFilter;
+  });
 
   const handleClaim = async (id: string) => {
     try {
@@ -294,6 +317,7 @@ export default function TriagerQueue() {
                             <SelectValue placeholder="All Areas" />
                         </SelectTrigger>
                         <SelectContent className="bg-white dark:bg-black border-zinc-200 dark:border-zinc-800">
+                            <SelectItem value="matched">MATCHED EXPERTISE</SelectItem>
                             <SelectItem value="all">ALL EXPERTISE</SelectItem>
                             <SelectItem value="Web">WEB SECURITY</SelectItem>
                             <SelectItem value="Mobile">MOBILE SECURITY</SelectItem>

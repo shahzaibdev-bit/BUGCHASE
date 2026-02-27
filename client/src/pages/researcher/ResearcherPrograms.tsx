@@ -160,7 +160,7 @@ export default function ResearcherPrograms() {
                 <div className="flex items-center justify-between pt-4 border-t border-border/30 mt-auto">
                 <div>
                     <p className="text-xs text-muted-foreground">Bounty</p>
-                    <p className="font-bold text-primary font-mono text-sm">{program.bountyRange}</p>
+                    <p className="font-bold text-primary font-mono text-sm">{program.bountyRange?.replace(/\$/g, 'PKR ')}</p>
                 </div>
                 <Link to={`/researcher/programs/${program._id}`}>
                     <Button variant="glass" size="sm" className="gap-1 group-hover:bg-primary/20">

@@ -6,6 +6,7 @@ import catchAsync from '../utils/catchAsync';
 import mongoose from 'mongoose';
 import { sendEmail, reportEmailTemplate } from '../services/emailService';
 import { getIO } from '../services/socketService';
+import { uploadToCloudinary } from '../utils/cloudinary';
 
 // Create a new report
 export const createReport = catchAsync(async (req: Request, res: Response, next: NextFunction) => {
@@ -20,9 +21,20 @@ export const createReport = catchAsync(async (req: Request, res: Response, next:
     assetType,
     vulnerabilityDetails, // mapped to description
     validationSteps, // mapped to pocSteps
-    impact,
-    assets // additional files/urls
+    impact
   } = req.body;
+
+  // Process uploaded files if any
+  const uploadedUrls: string[] = [];
+  if (req.files && Array.isArray(req.files)) {
+      const uploadPromises = req.files.map((file: Express.Multer.File) => {
+          return uploadToCloudinary(file);
+      });
+      const results = await Promise.all(uploadPromises);
+      results.forEach(result => {
+          uploadedUrls.push(result.url);
+      });
+  }
 
   // Basic validation mapping
   const reportData = {
@@ -36,7 +48,7 @@ export const createReport = catchAsync(async (req: Request, res: Response, next:
     description: vulnerabilityDetails,
     pocSteps: validationSteps,
     impact,
-    assets: target ? [target] : [], // Use target as primary asset
+    assets: target ? [target, ...uploadedUrls] : uploadedUrls, // Use target as primary asset, append Cloudinary URLs
     status: 'Submitted'
   };
 
@@ -77,7 +89,18 @@ export const createReport = catchAsync(async (req: Request, res: Response, next:
 
 // Get reports for logged-in researcher
 export const getMyReports = catchAsync(async (req: Request, res: Response, next: NextFunction) => {
-  const reports = await Report.find({ researcherId: req.user!.id }).sort({ createdAt: -1 });
+  const reports = await Report.find({ researcherId: req.user!.id })
+    .populate({
+         path: 'programId',
+         model: 'Program',
+         select: 'title companyId companyName type bountyRange description rewards rulesOfEngagement safeHarbor submissionGuidelines scope',
+         populate: {
+             path: 'companyId',
+             model: 'User',
+             select: 'avatar name'
+         }
+    })
+    .sort({ createdAt: -1 });
 
   res.status(200).json({
     status: 'success',
@@ -92,8 +115,8 @@ export const getReport = catchAsync(async (req: Request, res: Response, next: Ne
     .populate('researcherId', 'username name nickname avatar')
     .populate({
          path: 'programId',
-         model: 'Program', // Explicitly provide model since schema lacks ref
-         select: 'companyId companyName', // The Program schema has companyId ref
+         model: 'Program',
+         select: 'title companyId companyName type bountyRange description rewards rulesOfEngagement safeHarbor submissionGuidelines scope',
          populate: {
              path: 'companyId',
              model: 'User',
@@ -139,9 +162,22 @@ export const addComment = catchAsync(async (req: Request, res: Response, next: N
       return next(new AppError('You do not have permission to comment on this report', 403));
   }
 
+  // Process uploaded files if any
+  const uploadedUrls: string[] = [];
+  if (req.files && Array.isArray(req.files)) {
+      const uploadPromises = req.files.map((file: Express.Multer.File) => {
+          return uploadToCloudinary(file);
+      });
+      const results = await Promise.all(uploadPromises);
+      results.forEach(result => {
+          uploadedUrls.push(result.url);
+      });
+  }
+
   report.comments.push({
     sender: req.user!.id,
     content,
+    attachments: uploadedUrls,
     createdAt: new Date()
   });
 
@@ -155,20 +191,22 @@ export const addComment = catchAsync(async (req: Request, res: Response, next: N
   try {
       const io = getIO();
       // Determine role based on sender
-      const senderObj = newComment.sender as any;
       let roleLabel = 'System';
-      if (senderObj.role === 'researcher') roleLabel = 'Researcher';
-      else if (senderObj.role === 'triager') roleLabel = 'Triager';
-      else if (senderObj.role === 'admin') roleLabel = 'Admin';
+      if (req.user!.role === 'researcher') roleLabel = 'Researcher';
+      else if (req.user!.role === 'triager') roleLabel = 'Triager';
+      else if (req.user!.role === 'admin') roleLabel = 'Admin';
       
       io.to(req.params.id).emit('new_activity', {
            id: newComment._id,
            type: 'comment',
-           author: senderObj?.role !== 'company' ? (senderObj?.username || senderObj?.name || 'Unknown User') : (senderObj?.name || 'Unknown Company'),
+           author: req.user!.role !== 'company' ? (req.user!.username || req.user!.name || 'Unknown User') : (req.user!.name || 'Unknown Company'),
+           authorName: req.user!.name,
+           authorUsername: req.user!.username,
            role: roleLabel,
            content: newComment.content,
+           attachments: newComment.attachments,
            timestamp: newComment.createdAt,
-           authorAvatar: senderObj?.avatar
+           authorAvatar: req.user!.avatar
       });
   } catch (socketError) {
       console.error("Socket emit failed:", socketError);

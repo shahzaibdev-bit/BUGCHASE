@@ -1,6 +1,6 @@
 import express from 'express';
 import { protect, restrictTo } from '../middlewares/authMiddleware';
-import { broadcastAnnouncement, getAllUsers, updateUserStatus, createTriager, getTriagers, getAllPrograms, updateProgramStatus } from '../controllers/adminController';
+import { broadcastAnnouncement, getAllUsers, updateUserStatus, createTriager, getTriagers, getAllPrograms, updateProgramStatus, getProgramDetails } from '../controllers/adminController';
 
 const router = express.Router();
 
@@ -17,6 +17,7 @@ router.get('/triagers', getTriagers);
 
 // Programs
 router.get('/programs', getAllPrograms);
+router.get('/programs/:id', getProgramDetails);
 router.patch('/programs/:id/status', updateProgramStatus);
 
 export default router;

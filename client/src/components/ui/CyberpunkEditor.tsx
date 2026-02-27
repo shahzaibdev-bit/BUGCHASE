@@ -6,11 +6,10 @@ import StarterKit from '@tiptap/starter-kit';
 import Placeholder from '@tiptap/extension-placeholder';
 import Underline from '@tiptap/extension-underline';
 import Link from '@tiptap/extension-link';
-import Image from '@tiptap/extension-image';
 import { 
     Bold, Italic, Underline as UnderlineIcon, Strikethrough, 
-    List, ListOrdered, Code, Quote, Link as LinkIcon, Image as ImageIcon, 
-    Undo, Redo, Check, X, Eye
+    List, ListOrdered, Code, Quote, Link as LinkIcon, 
+    Undo, Redo, Check, Eye
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
@@ -46,7 +45,6 @@ const ToolbarButton = ({ onClick, isActive, icon: Icon, title, disabled }: any) 
 
 export default function CyberpunkEditor({ content, onChange, placeholder }: EditorProps) {
   const [linkUrl, setLinkUrl] = useState('');
-  const [imageUrl, setImageUrl] = useState('');
   const [isPreview, setIsPreview] = useState(false);
   const [, setRevision] = useState(0);
 
@@ -55,8 +53,13 @@ export default function CyberpunkEditor({ content, onChange, placeholder }: Edit
       StarterKit,
       Placeholder.configure({ placeholder: placeholder || 'Type here...' }),
       Underline,
-      Link.configure({ openOnClick: false }),
-      Image,
+      Link.configure({ 
+          openOnClick: false,
+          HTMLAttributes: {
+              target: '_blank',
+              rel: 'noopener noreferrer'
+          }
+      }),
     ],
     content,
     editorProps: {
@@ -89,18 +92,16 @@ export default function CyberpunkEditor({ content, onChange, placeholder }: Edit
 
   const setLink = () => {
     if (linkUrl) {
-      editor.chain().focus().extendMarkRange('link').setLink({ href: linkUrl }).run();
+      let finalUrl = linkUrl.trim();
+      // Auto-prefix absolute URL for standard web links so React Router doesn't trap them
+      if (!/^https?:\/\//i.test(finalUrl) && !/^mailto:/i.test(finalUrl) && !/^tel:/i.test(finalUrl)) {
+          finalUrl = `https://${finalUrl}`;
+      }
+      editor.chain().focus().extendMarkRange('link').setLink({ href: finalUrl }).run();
       setLinkUrl('');
     } else {
         editor.chain().focus().extendMarkRange('link').unsetLink().run();
     }
-  };
-
-  const addImage = () => {
-      if (imageUrl) {
-        editor.chain().focus().setImage({ src: imageUrl }).run();
-        setImageUrl('');
-      }
   };
 
   return (
@@ -154,35 +155,6 @@ export default function CyberpunkEditor({ content, onChange, placeholder }: Edit
                             className="h-8 font-mono text-xs bg-background border-border"
                          />
                          <Button size="icon" className="h-8 w-8 shrink-0 bg-foreground hover:bg-foreground/90 text-background" onClick={setLink}>
-                             <Check className="w-4 h-4" />
-                         </Button>
-                    </div>
-                </PopoverContent>
-            </Popover>
-
-             {/* Custom Image Popover */}
-             <Popover>
-                <PopoverTrigger asChild>
-                    <button 
-                         disabled={isPreview}
-                        className={cn(
-                        "p-1.5 rounded-md transition-all duration-200 text-muted-foreground hover:bg-muted hover:text-foreground",
-                        isPreview && "opacity-50 cursor-not-allowed"
-                        )}
-                        title="Image"
-                    >
-                        <ImageIcon className="w-3.5 h-3.5" />
-                    </button>
-                </PopoverTrigger>
-                <PopoverContent className="w-80 p-3" align="start">
-                    <div className="flex gap-2">
-                         <Input 
-                            value={imageUrl} 
-                            onChange={(e) => setImageUrl(e.target.value)} 
-                            placeholder="https://image-url.com/file.png" 
-                            className="h-8 font-mono text-xs bg-background border-border"
-                         />
-                         <Button size="icon" className="h-8 w-8 shrink-0 bg-foreground hover:bg-foreground/90 text-background" onClick={addImage}>
                              <Check className="w-4 h-4" />
                          </Button>
                     </div>
