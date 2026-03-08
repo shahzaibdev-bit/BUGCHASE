@@ -8,7 +8,6 @@ import {
   Save, 
   X, 
   Shield, 
-  DollarSign, 
   Globe, 
   Server, 
   Smartphone,
@@ -21,7 +20,8 @@ import {
   Plus,
   Check,
   ChevronDown,
-  ChevronUp
+  ChevronUp,
+  Banknote
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -395,7 +395,7 @@ const CompanyProgramDetails = () => {
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                  {[
                     { label: 'Total Reports', value: data.stats.reports, icon: FileText },
-                    { label: 'Bounties Paid', value: `$${data.stats.paid}`, icon: DollarSign },
+                    { label: 'Bounties Paid', value: `PKR ${data.stats.paid}`, icon: Banknote },
                     { label: 'Avg Response', value: data.stats.avgResponse, icon: Smartphone },
                     { label: 'Program Type', value: data.type === 'BBP' ? 'Bug Bounty' : 'VDP', icon: Shield },
                  ].map((stat, i) => (
@@ -715,7 +715,7 @@ const CompanyProgramDetails = () => {
                                         {/* Header */}
                                         <div className="grid grid-cols-3 bg-muted/40 p-4 text-xs font-mono font-bold text-muted-foreground uppercase border-b border-border">
                                             <div>Severity</div>
-                                            <div className="col-span-2">Reward Range (USD)</div>
+                                            <div className="col-span-2">Reward Range (PKR)</div>
                                         </div>
                                         
                                         {/* Rows */}
@@ -748,7 +748,7 @@ const CompanyProgramDetails = () => {
                                                             />
                                                         </div>
                                                     ) : (
-                                                        <span>${(range?.min || 0).toLocaleString()} - ${(range?.max || 0).toLocaleString()}</span>
+                                                        <span>PKR {(range?.min || 0).toLocaleString()} - PKR {(range?.max || 0).toLocaleString()}</span>
                                                     )}
                                                 </div>
                                             </div>

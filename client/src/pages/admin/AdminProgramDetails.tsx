@@ -266,7 +266,7 @@ export default function AdminProgramDetails() {
                       </div>
                        <div className="flex justify-between text-sm">
                           <span className="text-zinc-600 dark:text-zinc-400 font-medium">Bounty Range</span>
-                          <span className="font-mono text-foreground">{program.bountyRange || 'N/A'}</span>
+                          <span className="font-mono text-foreground">{program.bountyRange?.replace(/\$/g, 'PKR ') || 'N/A'}</span>
                       </div>
                   </div>
               </GlassCard>

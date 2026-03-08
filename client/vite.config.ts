@@ -6,12 +6,18 @@ import path from "path";
 export default defineConfig({
   server: {
     host: true, // Listen on all addresses
+    allowedHosts: true, // Allow localtunnel domains
     port: 3000,
     proxy: {
       '/api': {
         target: 'http://localhost:5000',
         changeOrigin: true,
         secure: false,
+      },
+      '/kyc': {
+        target: 'http://localhost:8000',
+        changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/kyc/, ''),
       },
       '/socket.io': {
         target: 'http://localhost:5000',

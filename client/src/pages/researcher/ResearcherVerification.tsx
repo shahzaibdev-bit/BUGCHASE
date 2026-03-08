@@ -108,7 +108,7 @@ export default function ResearcherVerification() {
 
     try {
       // 1. Call Python Service
-      const kycUrl = import.meta.env.VITE_KYC_API_URL || 'http://localhost:8000';
+      const kycUrl = import.meta.env.VITE_KYC_API_URL || '/kyc';
       const response = await fetch(`${kycUrl}/verify-kyc`, {
         method: 'POST',
         body: formData,

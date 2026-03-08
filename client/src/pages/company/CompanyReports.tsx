@@ -174,7 +174,7 @@ export default function CompanyReports() {
                   </td>
                   <td className="p-4 font-mono text-sm">@{report.researcher}</td>
                   <td className="p-4 font-mono font-semibold text-primary">
-                    {report.bounty > 0 ? `$${report.bounty.toLocaleString()}` : '-'}
+                    {report.bounty > 0 ? `PKR ${report.bounty.toLocaleString()}` : '-'}
                   </td>
                   <td className="p-4">
                     <div className="flex items-center gap-2">

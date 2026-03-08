@@ -117,7 +117,7 @@ export default function ReportDetails() {
   // Real-time socket — receive live updates from triager/company actions
   useEffect(() => {
     if (!id) return;
-    const socketUrl = (import.meta.env.VITE_API_URL || 'http://localhost:5000').replace(/\/api\/?$/, '');
+    const socketUrl = (import.meta.env.VITE_API_URL || '/').replace(/\/api\/?$/, '');
     const socket = socketIO(socketUrl, { withCredentials: true });
     socket.on('connect', () => socket.emit('join_report', id));
 
@@ -725,7 +725,7 @@ export default function ReportDetails() {
                                              )}
                                              {report.programId.bountyRange && (
                                                  <span className="text-xs font-bold px-2.5 py-1 rounded border border-zinc-300 dark:border-zinc-700 text-zinc-700 dark:text-zinc-300 bg-zinc-100 dark:bg-zinc-800">
-                                                     {report.programId.bountyRange}
+                                                     {report.programId.bountyRange?.replace(/\$/g, 'PKR ')}
                                                  </span>
                                              )}
                                          </div>

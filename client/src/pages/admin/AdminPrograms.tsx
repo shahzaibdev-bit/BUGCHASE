@@ -291,7 +291,7 @@ export default function AdminPrograms() {
                              </div>
                              <div className="col-span-2 space-y-1">
                                  <span className="text-[10px] uppercase tracking-widest text-muted-foreground font-mono">Bounty Range</span>
-                                 <p className="font-mono text-xs text-muted-foreground">{program.bountyRange || 'N/A'}</p>
+                                 <p className="font-mono text-xs text-muted-foreground">{program.bountyRange?.replace(/\$/g, 'PKR ') || 'N/A'}</p>
                              </div>
                         </div>
                     </div>
@@ -341,7 +341,7 @@ export default function AdminPrograms() {
                         {program.type.toUpperCase()}
                       </td>
                       <td className="px-6 py-4 font-mono text-xs text-muted-foreground">
-                        {program.bountyRange || 'N/A'}
+                        {program.bountyRange?.replace(/\$/g, 'PKR ') || 'N/A'}
                       </td>
                       <td className="px-6 py-4">
                         <Badge variant="outline" className={`font-mono text-[10px] uppercase ${statusColors[program.status]}`}>

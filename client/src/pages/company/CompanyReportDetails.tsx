@@ -242,7 +242,7 @@ export default function CompanyReportDetails() {
           setAiReasoning(data.data.reasoning);
           setRewardRange(data.data.rewardRange);
           setSelectedBountyMessage('AI');
-          setReplyContent(`Thank you for submitting this report regarding **${report.title}**.\n\nBased on our severity assessment, we are pleased to award you a bounty of **$${data.data.suggestedAmount?.toLocaleString()}**.\n\nWe greatly appreciate your efforts in helping secure BugChase!`);
+          setReplyContent(`Thank you for submitting this report regarding **${report.title}**.\n\nBased on our severity assessment, we are pleased to award you a bounty of **PKR ${data.data.suggestedAmount?.toLocaleString()}**.\n\nWe greatly appreciate your efforts in helping secure BugChase!`);
       } catch (error: any) {
           console.error("AI Suggestion error:", error);
           toast({ title: "Error", description: error.message || "Failed to get AI suggestion", variant: "destructive" });
@@ -355,7 +355,7 @@ export default function CompanyReportDetails() {
           setBountyModalOpen(false);
           setBountyAmount('');
           setReplyContent('');
-          toast({ title: 'Bounty Awarded', description: `$${bountyAmount} has been sent to the researcher.` });
+          toast({ title: 'Bounty Awarded', description: `PKR ${bountyAmount} has been sent to the researcher.` });
           fetchReport();
       } catch (error: any) {
           console.error('Bounty error:', error);
@@ -418,7 +418,8 @@ export default function CompanyReportDetails() {
   // Real-time socket — join report room, receive live updates from other actors
   useEffect(() => {
     if (!id) return;
-    const socket = socketIO(import.meta.env.VITE_API_URL || 'http://localhost:5000', {
+    const socketUrl = import.meta.env.VITE_API_URL || '/';
+    const socket = socketIO(socketUrl, {
       withCredentials: true,
       transports: ['websocket'],
     });
@@ -662,7 +663,7 @@ export default function CompanyReportDetails() {
                                                         )}
                                                         {report.programId.bountyRange && (
                                                             <span className="text-xs font-bold px-2.5 py-1 rounded border border-zinc-300 dark:border-zinc-700 text-zinc-700 dark:text-zinc-300 bg-zinc-100 dark:bg-zinc-800">
-                                                                {report.programId.bountyRange}
+                                                                {report.programId.bountyRange?.replace(/\$/g, 'PKR ')}
                                                             </span>
                                                         )}
                                                     </div>
@@ -687,7 +688,7 @@ export default function CompanyReportDetails() {
                                                                         <div key={sev} className="rounded border border-zinc-200 dark:border-zinc-700 p-2.5 text-center bg-zinc-50 dark:bg-zinc-900">
                                                                             <p className="text-[10px] font-bold uppercase mb-1 text-zinc-500 dark:text-zinc-400">{sev}</p>
                                                                             {r?.min || r?.max ? (
-                                                                                <p className="text-xs font-mono font-bold text-zinc-900 dark:text-white">${(r.min||0).toLocaleString()} – ${(r.max||0).toLocaleString()}</p>
+                                                                                <p className="text-xs font-mono font-bold text-zinc-900 dark:text-white">PKR {(r.min||0).toLocaleString()} – PKR {(r.max||0).toLocaleString()}</p>
                                                                             ) : <p className="text-xs text-zinc-400">N/A</p>}
                                                                         </div>
                                                                     );
@@ -944,7 +945,7 @@ export default function CompanyReportDetails() {
                                             )}
                                             {event.type === 'bounty_awarded' && (
                                                 <span className="text-zinc-800 dark:text-zinc-200 text-[14px] flex flex-wrap items-center gap-1 font-medium tracking-tight">
-                                                     rewarded {researcher?.username || researcher?.name || 'researcher'} with a ${event.metadata?.bountyAwarded?.toLocaleString()} bounty.
+                                                     rewarded {researcher?.username || researcher?.name || 'researcher'} with a PKR {event.metadata?.bountyAwarded?.toLocaleString()} bounty.
                                                 </span>
                                             )}
                                             <span className="text-zinc-400 text-[10px] ml-2 opacity-0 group-hover:opacity-100 transition-opacity">
@@ -1333,19 +1334,19 @@ export default function CompanyReportDetails() {
                         {/* Bounty Input */}
                         <div className="space-y-2">
                             <label className="text-xs font-bold text-zinc-500 uppercase flex items-center justify-between">
-                                Bounty Amount (USD)
+                                Bounty Amount (PKR)
                                 {rewardRange && (
                                     <span className="text-zinc-400 font-mono">
-                                        Limit: ${rewardRange.min} - ${rewardRange.max}
+                                        Limit: PKR {rewardRange.min} - PKR {rewardRange.max}
                                     </span>
                                 )}
                             </label>
                             <div className="relative">
-                                <DollarSign className="absolute left-3 top-2.5 h-5 w-5 text-muted-foreground" />
+                                <span className="absolute left-3 top-2.5 text-sm font-bold text-muted-foreground">PKR</span>
                                 <Input
                                     type="number"
                                     placeholder="0"
-                                    className="pl-10 text-lg font-mono bg-white dark:bg-zinc-900 border-zinc-200 dark:border-zinc-800"
+                                    className="pl-12 text-lg font-mono bg-white dark:bg-zinc-900 border-zinc-200 dark:border-zinc-800"
                                     value={bountyAmount}
                                     onChange={(e) => setBountyAmount(e.target.value ? Number(e.target.value) : '')}
                                     min={rewardRange?.min || 0}

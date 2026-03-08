@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { 
-  X, Check, ChevronRight, ChevronLeft, Shield, DollarSign, 
+  X, Check, ChevronRight, ChevronLeft, Shield, Banknote, 
   Globe, Smartphone, Server, Plus, ChevronDown, CheckCircle, Trash2
 } from 'lucide-react';
 import { Dialog, DialogContent } from '@/components/ui/dialog';
@@ -238,7 +238,7 @@ export const CreateProgramModal = ({ isOpen, onClose, companyName, verifiedAsset
                                          : "border-border bg-background hover:border-foreground/50"
                                    )}>
                                       <div className={cn("p-3 rounded-full transition-colors", formData.type === 'BBP' ? "bg-foreground text-background" : "bg-muted text-muted-foreground")}>
-                                         <DollarSign className="h-6 w-6" />
+                                         <Banknote className="h-6 w-6" />
                                       </div>
                                       <div>
                                         <h3 className="font-bold text-foreground">Bug Bounty Program</h3>
@@ -545,7 +545,7 @@ export const CreateProgramModal = ({ isOpen, onClose, companyName, verifiedAsset
                             <div>
                                <p className="text-[10px] font-mono text-muted-foreground uppercase tracking-widest mb-1">PROGRAM TYPE</p>
                                <div className="flex items-center gap-2 mt-1">
-                                  {formData.type === 'BBP' ? <DollarSign className="h-4 w-4 text-foreground" /> : <Shield className="h-4 w-4 text-foreground" />}
+                                   {formData.type === 'BBP' ? <Banknote className="h-4 w-4 text-foreground" /> : <Shield className="h-4 w-4 text-foreground" />}
                                   <p className="text-sm font-bold text-foreground">
                                      {formData.type === 'BBP' ? 'Bug Bounty (Paid)' : 'Vulnerability Disclosure (Unpaid)'}
                                   </p>
@@ -605,7 +605,7 @@ export const CreateProgramModal = ({ isOpen, onClose, companyName, verifiedAsset
                          {formData.type === 'BBP' && (
                              <div className="border-t border-border pt-6 space-y-4">
                                 <h3 className="text-sm font-bold font-mono text-foreground flex items-center gap-2">
-                                   <DollarSign className="h-4 w-4" /> REWARD STRUCTURE (PKR)
+                                   <Banknote className="h-4 w-4" /> REWARD STRUCTURE (PKR)
                                 </h3>
                                 <div className="grid grid-cols-2 gap-4">
                                    {Object.entries(formData.rewards).map(([severity, range]) => (

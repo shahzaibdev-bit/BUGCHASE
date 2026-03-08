@@ -3,6 +3,22 @@ import { GoogleGenerativeAI } from "@google/generative-ai";
 const API_KEY = "AIzaSyAhv7Kuim2F_yiM3aVKPpUF-mOx0EuJ8kE"; // Ideally move to process.env.GEMINI_API_KEY
 const genAI = new GoogleGenerativeAI(API_KEY);
 
+const generateWithRetry = async (model: any, prompt: string, retries = 3, delay = 1000) => {
+    for (let i = 0; i < retries; i++) {
+        try {
+            return await model.generateContent(prompt);
+        } catch (error: any) {
+            const is503 = error.status === 503 || (error.message && error.message.includes('503'));
+            if (i === retries - 1 || !is503) {
+                throw error;
+            }
+            console.log(`Gemini API 503 error. Retrying in ${delay}ms... (Attempt ${i + 1} of ${retries})`);
+            await new Promise(resolve => setTimeout(resolve, delay));
+            delay *= 2; // Exponential backoff
+        }
+    }
+};
+
 export const generateReportSummary = async (report: any, timeline: any[]) => {
     try {
         const model = genAI.getGenerativeModel({ 
@@ -49,7 +65,7 @@ export const generateReportSummary = async (report: any, timeline: any[]) => {
         }
         `;
 
-        const result = await model.generateContent(prompt);
+        const result = await generateWithRetry(model, prompt);
         const response = await result.response;
         const text = response.text();
 
@@ -84,8 +100,8 @@ export const suggestBountyAmount = async (report: any, timeline: any[], rewardRa
         You are a Bug Bounty Program Manager determining the final reward payout for a vulnerability report.
         
         **Program Constraints for this Severity (${report.severity}):**
-        - Minimum Reward: $${rewardRange.min}
-        - Maximum Reward: $${rewardRange.max}
+        - Minimum Reward: PKR ${rewardRange.min}
+        - Maximum Reward: PKR ${rewardRange.max}
         
         **Report Details:**
         - Title: ${report.title}
@@ -101,7 +117,7 @@ export const suggestBountyAmount = async (report: any, timeline: any[], rewardRa
 
         **Instructions:**
         1. Evaluate the report's quality, completeness, impact, and how helpful the researcher was in the communication timeline.
-        2. Propose a specific integer dollar amount for the bounty. It MUST be between the Minimum Reward ($${rewardRange.min}) and Maximum Reward ($${rewardRange.max}) inclusive.
+        2. Propose a specific integer PKR amount for the bounty. It MUST be between the Minimum Reward (PKR ${rewardRange.min}) and Maximum Reward (PKR ${rewardRange.max}) inclusive.
         3. If the minimum and maximum are 0, return 0.
         4. Provide a brief 1-2 sentence reasoning explaining why this specific amount was chosen.
 
@@ -112,7 +128,7 @@ export const suggestBountyAmount = async (report: any, timeline: any[], rewardRa
         }
         `;
 
-        const result = await model.generateContent(prompt);
+        const result = await generateWithRetry(model, prompt);
         const response = await result.response;
         const text = response.text();
 
@@ -159,7 +175,7 @@ export const generateReportMessage = async (report: any, timeline: any[], type: 
             **Task:** Write a friendly, professional closing message acknowledging the researcher's report. Inform them that the engineering team has reviewed and successfully patched the issue. Thank them for their contribution to the program's security. Keep it concise (2-3 short paragraphs).
             `
             : `
-            **Task:** Write a friendly, professional message informing the researcher that they are being awarded a bounty of $${bountyAmount}. Acknowledge their specific finding by name and thank them for their responsible disclosure. Keep it concise (2-3 short paragraphs).
+            **Task:** Write a friendly, professional message informing the researcher that they are being awarded a bounty of PKR ${bountyAmount}. Acknowledge their specific finding by name and thank them for their responsible disclosure. Keep it concise (2-3 short paragraphs).
             `;
 
         const finalPrompt = `
@@ -175,7 +191,7 @@ export const generateReportMessage = async (report: any, timeline: any[], type: 
         }
         `;
 
-        const result = await model.generateContent(finalPrompt);
+        const result = await generateWithRetry(model, finalPrompt);
         const response = await result.response;
         const text = response.text();
 

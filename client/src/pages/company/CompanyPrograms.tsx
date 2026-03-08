@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Plus, Search, Globe, Lock, Users, DollarSign, Calendar, MoreVertical, Edit, Trash2, Eye, ShieldAlert } from 'lucide-react';
+import { Plus, Search, Globe, Lock, Users, Banknote, Calendar, MoreVertical, Edit, Trash2, Eye, ShieldAlert } from 'lucide-react';
 import { GlassCard } from '@/components/ui/glass-card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -178,17 +178,17 @@ export default function CompanyPrograms() {
                   </div>
                   <div className="space-y-1">
                     <div className="flex items-center gap-1 text-muted-foreground">
-                      <DollarSign className="h-3 w-3" />
+                      <Banknote className="h-3 w-3" />
                       <span className="text-xs">Total Paid</span>
                     </div>
-                    <p className="font-mono font-semibold">$0</p>
+                    <p className="font-mono font-semibold">PKR 0</p>
                   </div>
                 </div>
 
                 {program.type === 'BBP' && (
                     <div className="flex items-center justify-between text-sm">
                       <span className="text-muted-foreground">Bounty Range</span>
-                      <span className="font-mono text-primary">{program.bountyRange}</span>
+                      <span className="font-mono text-primary">{program.bountyRange?.replace(/\$/g, 'PKR ')}</span>
                     </div>
                 )}
 

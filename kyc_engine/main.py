@@ -121,19 +121,43 @@ def verify_kyc(
             return JSONResponse(content={"success": False, "error": "INVALID_DOCUMENT", "message": "No Pakistani CNIC detected."})
 
         # 4. Verify Face
+        # result = DeepFace.verify(
+        #     img1_path=img_id,
+        #     img2_path=img_live,
+        #     model_name="Facenet512",
+        #     detector_backend="opencv",
+        #     enforce_detection=False,
+        #     align=True
+        # )
+
         result = DeepFace.verify(
             img1_path=img_id,
             img2_path=img_live,
             model_name="Facenet512",
             detector_backend="opencv",
+            distance_metric="euclidean_l2", # <-- Perfect.
             enforce_detection=False,
             align=True
         )
 
+        # verified = result.get("verified", False)
+        # distance = result.get("distance", 1.0)
+        # confidence = round((1 - distance) * 100, 2)
+        # final_verdict = verified and confidence > 70
+
+        # return JSONResponse(content={
+        #     "success": final_verdict,
+        #     "confidence": confidence,
+        #     "verdict": "VERIFIED" if final_verdict else "MATCH FAILED"
+        # })
+
         verified = result.get("verified", False)
         distance = result.get("distance", 1.0)
-        confidence = round((1 - distance) * 100, 2)
-        final_verdict = verified and confidence > 40 
+        
+        # NEW MATH: Euclidean L2 distance maxes out at 2.0
+        # Divide by 2.0 to normalize it back to a percentage
+        confidence = round((1 - (distance / 2.0)) * 100, 2)
+        final_verdict = verified and confidence > 60
 
         return JSONResponse(content={
             "success": final_verdict,

@@ -343,7 +343,7 @@ const TimelineNode = ({ event, isConsecutive, onPreviewMedia }: { event: Timelin
                         )}
                         {event.type === 'bounty_awarded' && (
                             <span className="text-zinc-800 dark:text-zinc-200 text-[14px] flex flex-wrap items-center gap-1 font-medium tracking-tight">
-                                 rewarded the researcher with a ${event.metadata?.bountyAwarded?.toLocaleString() || event.content.match(/\$(\d+)/)?.[1] || 0} bounty.
+                                 rewarded the researcher with a PKR {event.metadata?.bountyAwarded?.toLocaleString() || event.content.match(/\$(\d+)/)?.[1] || event.content.match(/PKR\s(\d+)/)?.[1] || 0} bounty.
                             </span>
                         )}
                         <span className="text-zinc-400 text-[10px] ml-2 opacity-0 group-hover:opacity-100 transition-opacity">
@@ -1097,7 +1097,7 @@ export default function TriagerReportDetails() {
                                                         )}
                                                         {report.programId.bountyRange && (
                                                             <span className="text-xs font-bold px-2.5 py-1 rounded border border-zinc-300 dark:border-zinc-700 text-zinc-700 dark:text-zinc-300 bg-zinc-100 dark:bg-zinc-800">
-                                                                {report.programId.bountyRange}
+                                                                {report.programId.bountyRange?.replace(/\$/g, 'PKR ')}
                                                             </span>
                                                         )}
                                                     </div>
