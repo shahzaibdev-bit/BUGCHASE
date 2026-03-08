@@ -204,11 +204,13 @@ export default function ResearcherProfile() {
       setIsUploading(true);
       try {
           const token = localStorage.getItem('token');
+          const headers: HeadersInit = {};
+          if (token) headers['Authorization'] = `Bearer ${token}`;
+
           const res = await fetch(`${API_URL}/users/upload-avatar`, {
               method: 'POST',
-              headers: {
-                'Authorization': `Bearer ${token}`
-              },
+              headers,
+              credentials: 'include',
               body: formData,
           });
           const data = await res.json();
@@ -236,12 +238,13 @@ export default function ResearcherProfile() {
 
     try {
         const token = localStorage.getItem('token');
+        const headers: HeadersInit = { 'Content-Type': 'application/json' };
+        if (token) headers['Authorization'] = `Bearer ${token}`;
+
         const res = await fetch(`${API_URL}/auth/update-me`, {
             method: 'PATCH',
-            headers: { 
-              'Content-Type': 'application/json',
-              'Authorization': `Bearer ${token}`
-            },
+            headers,
+            credentials: 'include',
             body: JSON.stringify({
                 name: profile.name,
                 username: profile.nickname,
@@ -304,12 +307,13 @@ export default function ResearcherProfile() {
 
       try {
           const token = localStorage.getItem('token');
+          const headers: HeadersInit = { 'Content-Type': 'application/json' };
+          if (token) headers['Authorization'] = `Bearer ${token}`;
+
           const res = await fetch(`${API_URL}/auth/update-me`, {
               method: 'PATCH',
-              headers: { 
-                'Content-Type': 'application/json',
-                'Authorization': `Bearer ${token}`
-              },
+              headers,
+              credentials: 'include',
               body: JSON.stringify({ [field]: value })
           });
 
@@ -336,12 +340,13 @@ export default function ResearcherProfile() {
     setIsUpdatingPassword(true);
     try {
         const token = localStorage.getItem('token');
+        const headers: HeadersInit = { 'Content-Type': 'application/json' };
+        if (token) headers['Authorization'] = `Bearer ${token}`;
+
         const res = await fetch(`${API_URL}/auth/update-password`, {
             method: 'PATCH',
-            headers: { 
-              'Content-Type': 'application/json',
-              'Authorization': `Bearer ${token}`
-            },
+            headers,
+            credentials: 'include',
             body: JSON.stringify({ currentPassword, newPassword }),
         });
 

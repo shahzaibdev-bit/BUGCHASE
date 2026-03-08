@@ -358,7 +358,7 @@ const ACTION_HEADLINES: Record<EmailActionType, (opts: ReportEmailOptions) => st
   promoted:  (o) => o.recipientRole === 'researcher'
     ? `Your Report Has Been Accepted: ${o.reportTitle}`
     : `New Security Report Assigned to Your Program: ${o.reportTitle}`,
-  bounty_awarded: (o) => `Bounty Awarded: $${o.bounty?.toLocaleString()}`,
+  bounty_awarded: (o) => `Bounty Awarded: PKR ${o.bounty?.toLocaleString()}`,
 };
 
 const getSeverityColor = (severity?: string) => {
@@ -436,7 +436,7 @@ const getRoleIntro = (opts: ReportEmailOptions): string => {
   }
   if (actionType === 'bounty_awarded') {
     if (recipientRole === 'researcher') {
-      return `Congratulations! ${actorName} has rewarded you with a bounty of <strong>$${bounty?.toLocaleString()}</strong> for your finding. The funds have been credited to your wallet.`;
+      return `Congratulations! ${actorName} has rewarded you with a bounty of <strong>PKR ${bounty?.toLocaleString()}</strong> for your finding. The funds have been credited to your wallet.`;
     }
   }
   return `There has been an activity update on a report you are associated with.`;
@@ -480,7 +480,7 @@ export const reportEmailTemplate = (opts: ReportEmailOptions): string => {
     opts.severity ? `<tr><td class="detail-label">Severity</td><td class="detail-value"><span style="background:${severityColor}22; color:${severityColor}; padding: 2px 8px; border-radius: 4px; font-size: 12px; font-weight: bold; text-transform: uppercase;">${opts.severity}</span></td></tr>` : '',
     opts.cvssScore !== undefined ? `<tr><td class="detail-label">CVSS Score</td><td class="detail-value" style="font-weight: bold;">${opts.cvssScore.toFixed(1)}</td></tr>` : '',
     opts.newStatus ? `<tr><td class="detail-label">Status</td><td class="detail-value"><span style="background:${statusColor}22; color:${statusColor}; padding: 2px 8px; border-radius: 4px; font-size: 12px; font-weight: bold; text-transform: uppercase;">${opts.newStatus}</span></td></tr>` : '',
-    opts.bounty ? `<tr><td class="detail-label">Bounty Awarded</td><td class="detail-value" style="color: #22c55e; font-weight: bold; font-size: 18px;">$${opts.bounty.toLocaleString()}</td></tr>` : '',
+    opts.bounty ? `<tr><td class="detail-label">Bounty Awarded</td><td class="detail-value" style="color: #22c55e; font-weight: bold; font-size: 18px;">PKR ${opts.bounty.toLocaleString()}</td></tr>` : '',
   ].filter(Boolean).join('\n');
 
   // Convert markdown in reason/message to HTML before embedding

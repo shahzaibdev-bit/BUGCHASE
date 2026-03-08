@@ -95,6 +95,7 @@ interface ReportState {
     final: number;
     vector: string;
     researcherVector: string; // Added field
+    level?: string;
   };
   timeline: TimelineEvent[];
   isLocked: boolean;
@@ -390,7 +391,7 @@ const TimelineNode = ({ event, isConsecutive, onPreviewMedia }: { event: Timelin
                                  <div className="prose prose-sm prose-zinc dark:prose-invert max-w-none focus:outline-none break-words prose-p:m-0 prose-ul:m-0 prose-ol:m-0 [&>*:not(:last-child)]:mb-2" dangerouslySetInnerHTML={{ __html: event.content }} />
                              ) : (
                                  <div className="prose prose-sm prose-zinc dark:prose-invert max-w-none">
-                                     <ReactMarkdown remarkPlugins={[remarkGfm]}>{event.content}</ReactMarkdown>
+                                     <ReactMarkdown rehypePlugins={[rehypeRaw]} remarkPlugins={[remarkGfm]}>{event.content}</ReactMarkdown>
                                  </div>
                              )}
                              {event.attachments && event.attachments.length > 0 && (
@@ -464,7 +465,8 @@ export default function TriagerReportDetails() {
             initial: 0, 
             final: 0, 
             vector: '',
-            researcherVector: '' 
+            researcherVector: '',
+            level: 'Info'
         },
         timeline: [],
         isLocked: false,
@@ -521,7 +523,7 @@ export default function TriagerReportDetails() {
                     author: r.researcherId?.username || r.researcherId?.name || 'Researcher',
                     authorAvatar: r.researcherId?.avatar,
                     role: 'Researcher',
-                    content: `Hi, I found a vulnerability in <b>${r.assets?.[0] || 'the program'}</b>. Please verify.`,
+                    content: `Hi, I found a vulnerability in **${r.assets?.[0] || 'the program'}**. Please verify.`,
                     timestamp: r.createdAt
                 };
                 
@@ -533,7 +535,8 @@ export default function TriagerReportDetails() {
                         initial: 0, // Could be prior severity
                         final: r.cvssScore || 0,
                         vector: r.cvssVector || '',
-                        researcherVector: r.cvssVector || '' // Assuming we start with this
+                        researcherVector: r.cvssVector || '', // Assuming we start with this
+                        level: r.severity || 'Info'
                     },
                     timeline: finalTimeline, // For now only showing comments in timeline. Ideally would fetch audit logs too.
                     isLocked: !!r.triagerId,
@@ -1046,13 +1049,7 @@ export default function TriagerReportDetails() {
                                 {state.isLocked ? "LOCKED BY YOU" : "UNLOCKED"}
                             </div>
 
-                             {/* Timer */}
-                            <div className="p-3 rounded border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 flex items-center justify-between">
-                                <span className="text-xs font-mono text-zinc-500">SLA TIMER</span>
-                                <span className="font-mono font-bold text-red-600 dark:text-red-400 flex items-center gap-2">
-                                    <Clock className="h-3 w-3" /> 00:45:12
-                                </span>
-                            </div>
+
                         </div>
 
                         <Separator className="bg-zinc-200 dark:border-zinc-800" />
@@ -1124,7 +1121,7 @@ export default function TriagerReportDetails() {
                                                                         <div key={sev} className="rounded border border-zinc-200 dark:border-zinc-700 p-2.5 text-center bg-zinc-50 dark:bg-zinc-900">
                                                                             <p className="text-[10px] font-bold uppercase mb-1 text-zinc-500 dark:text-zinc-400">{sev}</p>
                                                                             {r?.min || r?.max ? (
-                                                                                <p className="text-xs font-mono font-bold text-zinc-900 dark:text-white">${(r.min||0).toLocaleString()} – ${(r.max||0).toLocaleString()}</p>
+                                                                                <p className="text-xs font-mono font-bold text-zinc-900 dark:text-white">PKR {(r.min||0).toLocaleString()} – PKR {(r.max||0).toLocaleString()}</p>
                                                                             ) : <p className="text-xs text-zinc-400">N/A</p>}
                                                                         </div>
                                                                     );
@@ -1297,7 +1294,8 @@ export default function TriagerReportDetails() {
                 isOpen={cvssModalOpen}
                 onClose={() => setCvssModalOpen(false)}
                 aiVector="CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H" 
-                researcherVector={state.severity.researcherVector || "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:N/I:N/A:N"}
+                researcherVector={state.severity.researcherVector || ""}
+                researcherSeverity={state.severity.level}
                 currentVector={state.severity.vector || "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:N/I:N/A:N"}
                 onSave={handleSeverityUpdate}
             />

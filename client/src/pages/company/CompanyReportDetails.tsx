@@ -1467,7 +1467,8 @@ export default function CompanyReportDetails() {
                 isOpen={cvssModalOpen}
                 onClose={() => setCvssModalOpen(false)}
                 aiVector="CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H" 
-                researcherVector="CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:N/I:N/A:N"
+                researcherVector=""
+                researcherSeverity={reportState.severity.level}
                 currentVector={reportState.severity.vector || "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:N/I:N/A:N"}
                 onSave={handleSeverityUpdate}
             />

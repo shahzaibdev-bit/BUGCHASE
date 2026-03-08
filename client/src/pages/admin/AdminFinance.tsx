@@ -58,7 +58,7 @@ export default function AdminFinance() {
             </div>
             <div className="mt-4">
               <p className="text-sm font-medium text-muted-foreground">Total Liquidity</p>
-              <p className="text-2xl font-bold font-mono text-foreground">${(totalLiquidity / 1000000).toFixed(2)}M</p>
+              <p className="text-2xl font-bold font-mono text-foreground">PKR {(totalLiquidity / 1000000).toFixed(2)}M</p>
             </div>
           </InverseSpotlightCard>
         </InvertedTiltCard>
@@ -72,7 +72,7 @@ export default function AdminFinance() {
             </div>
             <div className="mt-4">
               <p className="text-sm font-medium text-muted-foreground">Total Revenue (YTD)</p>
-              <p className="text-2xl font-bold font-mono text-foreground">${(totalRevenue / 1000).toFixed(0)}K</p>
+              <p className="text-2xl font-bold font-mono text-foreground">PKR {(totalRevenue / 1000).toFixed(0)}K</p>
             </div>
           </InverseSpotlightCard>
         </InvertedTiltCard>
@@ -86,7 +86,7 @@ export default function AdminFinance() {
             </div>
             <div className="mt-4">
               <p className="text-sm font-medium text-muted-foreground">Pending Payouts</p>
-              <p className="text-2xl font-bold font-mono text-foreground">${(pendingPayouts / 1000).toFixed(0)}K</p>
+              <p className="text-2xl font-bold font-mono text-foreground">PKR {(pendingPayouts / 1000).toFixed(0)}K</p>
             </div>
           </InverseSpotlightCard>
         </InvertedTiltCard>
@@ -117,7 +117,7 @@ export default function AdminFinance() {
               <BarChart data={monthlyRevenue}>
                 <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
                 <XAxis dataKey="month" stroke="hsl(var(--muted-foreground))" fontSize={12} tickLine={false} axisLine={false} />
-                <YAxis stroke="hsl(var(--muted-foreground))" fontSize={12} tickFormatter={(v) => `$${v/1000}k`} tickLine={false} axisLine={false} />
+                <YAxis stroke="hsl(var(--muted-foreground))" fontSize={12} tickFormatter={(v) => `PKR ${v/1000}k`} tickLine={false} axisLine={false} />
                 <Tooltip
                   cursor={{ fill: 'hsl(var(--muted)/0.2)' }}
                   contentStyle={{
@@ -128,7 +128,7 @@ export default function AdminFinance() {
                   }}
                   itemStyle={{ color: 'hsl(var(--foreground))' }}
                   labelStyle={{ color: 'hsl(var(--muted-foreground))' }}
-                  formatter={(value: number) => [`$${value.toLocaleString()}`, '']}
+                  formatter={(value: number) => [`PKR ${value.toLocaleString()}`, '']}
                 />
                 <Bar dataKey="revenue" fill="hsl(var(--primary))" radius={[4, 4, 0, 0]} name="Revenue" />
                 <Bar dataKey="payouts" fill="#ef4444" radius={[4, 4, 0, 0]} name="Payouts" />

@@ -15,12 +15,12 @@ import {
 const mockLogs = [
   { id: '1', timestamp: '2024-03-15 14:32:15', type: 'auth', level: 'info', user: 'alex@email.com', action: 'User logged in', details: 'IP: 192.168.1.1' },
   { id: '2', timestamp: '2024-03-15 14:30:22', type: 'report', level: 'info', user: 'h4ck3r@email.com', action: 'Report submitted', details: 'RPT-089 - SQL Injection' },
-  { id: '3', timestamp: '2024-03-15 14:28:45', type: 'payment', level: 'success', user: 'system', action: 'Bounty paid', details: '$5,000 to @elite_hacker' },
+  { id: '3', timestamp: '2024-03-15 14:28:45', type: 'payment', level: 'success', user: 'system', action: 'Bounty paid', details: 'PKR 5,000 to @elite_hacker' },
   { id: '4', timestamp: '2024-03-15 14:25:10', type: 'security', level: 'warning', user: 'unknown', action: 'Failed login attempt', details: 'Multiple attempts from IP: 10.0.0.5' },
   { id: '5', timestamp: '2024-03-15 14:22:33', type: 'admin', level: 'info', user: 'admin@bugchase.com', action: 'User suspended', details: 'User: spam_account' },
   { id: '6', timestamp: '2024-03-15 14:20:00', type: 'report', level: 'info', user: 'triager@bugchase.com', action: 'Report validated', details: 'RPT-088 promoted to High' },
   { id: '7', timestamp: '2024-03-15 14:15:45', type: 'security', level: 'error', user: 'system', action: 'Rate limit exceeded', details: 'API endpoint: /api/submit' },
-  { id: '8', timestamp: '2024-03-15 14:10:22', type: 'payment', level: 'info', user: 'techcorp@company.com', action: 'Escrow topped up', details: '$25,000 added' },
+  { id: '8', timestamp: '2024-03-15 14:10:22', type: 'payment', level: 'info', user: 'techcorp@company.com', action: 'Escrow topped up', details: 'PKR 25,000 added' },
 ];
 
 const typeConfig: Record<string, { icon: React.ReactNode; color: string }> = {

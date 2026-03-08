@@ -750,7 +750,7 @@ export default function ReportDetails() {
                                                              <div key={sev} className="rounded border border-zinc-200 dark:border-zinc-700 p-2.5 text-center bg-zinc-50 dark:bg-zinc-900">
                                                                  <p className="text-[10px] font-bold uppercase mb-1 text-zinc-500 dark:text-zinc-400">{sev}</p>
                                                                  {r?.min || r?.max ? (
-                                                                     <p className="text-xs font-mono font-bold text-zinc-900 dark:text-white">${(r.min||0).toLocaleString()} – ${(r.max||0).toLocaleString()}</p>
+                                                                     <p className="text-xs font-mono font-bold text-zinc-900 dark:text-white">PKR {(r.min||0).toLocaleString()} – PKR {(r.max||0).toLocaleString()}</p>
                                                                  ) : <p className="text-xs text-zinc-400">N/A</p>}
                                                              </div>
                                                          );

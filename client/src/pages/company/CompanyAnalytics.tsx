@@ -82,7 +82,7 @@ export default function CompanyAnalytics() {
     let currentStats = [
         { label: 'Total Reports', value: '108', icon: FileText, trend: '+12%', up: true },
         { label: 'Active Researchers', value: '156', icon: Users, trend: '+8%', up: true },
-        { label: 'Total Bounties Paid', value: '$120.5K', icon: DollarSign, trend: '+23%', up: true },
+        { label: 'Total Bounties Paid', value: 'PKR 120.5K', icon: DollarSign, trend: '+23%', up: true },
         { label: 'Avg Resolution Time', value: '4.2 days', icon: Clock, trend: '-15%', up: false },
     ];
 
@@ -91,7 +91,7 @@ export default function CompanyAnalytics() {
         currentStats = [
             { label: 'Total Reports', value: '85', icon: FileText, trend: '-5%', up: false },
             { label: 'Active Researchers', value: '120', icon: Users, trend: '+2%', up: true },
-            { label: 'Total Bounties Paid', value: '$95.2K', icon: DollarSign, trend: '+10%', up: true },
+            { label: 'Total Bounties Paid', value: 'PKR 95.2K', icon: DollarSign, trend: '+10%', up: true },
             { label: 'Avg Resolution Time', value: '5.1 days', icon: Clock, trend: '+5%', up: false },
         ];
         currentSeverity = currentSeverity.map(s => ({ ...s, count: Math.floor(s.count * 0.8) }));
@@ -109,7 +109,7 @@ export default function CompanyAnalytics() {
          const factor = Math.random() * 0.5 + 0.5;
          currentStats = currentStats.map(s => ({
              ...s, 
-             value: s.label.includes('Paid') ? `$${(120 * factor).toFixed(1)}K` : Math.floor(parseInt(s.value) * factor).toString()
+             value: s.label.includes('Paid') ? `PKR ${(120 * factor).toFixed(1)}K` : Math.floor(parseInt(s.value) * factor).toString()
          }));
     }
 
@@ -117,7 +117,7 @@ export default function CompanyAnalytics() {
     if (selectedDate) {
         currentStats = currentStats.map(s => ({
              ...s, 
-             value: s.label.includes('Paid') ? `$${(Math.random() * 5).toFixed(1)}K` : Math.floor(Math.random() * 10).toString()
+             value: s.label.includes('Paid') ? `PKR ${(Math.random() * 5).toFixed(1)}K` : Math.floor(Math.random() * 10).toString()
         }));
         currentTrend = Array.from({ length: 24 }, (_, i) => ({
              week: `${i}:00`,
@@ -257,12 +257,12 @@ export default function CompanyAnalytics() {
                 <YAxis 
                     stroke="hsl(var(--muted-foreground))" 
                     fontSize={12} 
-                    tickFormatter={(value) => `$${value/1000}k`} 
+                    tickFormatter={(value) => `PKR ${value/1000}k`} 
                     tickLine={false} 
                     axisLine={false}
                 />
                 <Tooltip 
-                    content={<CustomTooltip formatter={(val: any) => `$${val.toLocaleString()}`} />}
+                    content={<CustomTooltip formatter={(val: any) => `PKR ${val.toLocaleString()}`} />}
                 />
                 <Line 
                   type="monotone" 

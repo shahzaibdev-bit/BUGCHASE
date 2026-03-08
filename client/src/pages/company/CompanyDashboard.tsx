@@ -243,7 +243,7 @@ export default function CompanyDashboard() {
             <InverseSpotlightCard className="p-6 border border-zinc-200 dark:border-zinc-800 bg-white/50 dark:bg-zinc-900/50 rounded-xl h-full group hover:border-zinc-400 dark:hover:border-zinc-600 transition-all">
                  <StatContent 
                     label="Bounties Paid" 
-                    value={`$${dashboardData.stats.bountiesPaid.toLocaleString()}`} 
+                    value={`PKR ${dashboardData.stats.bountiesPaid.toLocaleString()}`} 
                     icon={<DollarSign className="h-5 w-5" />} 
                 />
             </InverseSpotlightCard>

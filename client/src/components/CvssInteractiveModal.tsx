@@ -102,6 +102,7 @@ export const CvssInteractiveModal = ({
     onClose, 
     aiVector, 
     researcherVector,
+    researcherSeverity,
     triagerVector,
     currentVector, 
     onSave 
@@ -110,6 +111,7 @@ export const CvssInteractiveModal = ({
     onClose: () => void;
     aiVector?: string; // Optional for Company View
     researcherVector: string;
+    researcherSeverity?: string; // Qualitative level if vector is empty
     triagerVector?: string; // Optional for Company View
     currentVector: string;
     onSave: (vector: string, score: number) => void;
@@ -182,8 +184,21 @@ export const CvssInteractiveModal = ({
         return { label: 'CRITICAL', color: 'text-purple-600 dark:text-purple-400', bg: 'bg-purple-100 dark:bg-purple-900/30' };
     };
 
-    const ScoreCard = ({ title, score, vector, icon: Icon, colorClass, borderClass, onClick }: any) => {
-        const severity = getSeverityLabel(score);
+    const getSeverityLabelFromName = (name: string) => {
+        const lower = name.toLowerCase();
+        if (lower === 'low') return { label: 'LOW', color: 'text-yellow-600 dark:text-yellow-400', bg: 'bg-yellow-100 dark:bg-yellow-900/30' };
+        if (lower === 'medium') return { label: 'MEDIUM', color: 'text-orange-600 dark:text-orange-400', bg: 'bg-orange-100 dark:bg-orange-900/30' };
+        if (lower === 'high') return { label: 'HIGH', color: 'text-red-600 dark:text-red-400', bg: 'bg-red-100 dark:bg-red-900/30' };
+        if (lower === 'critical') return { label: 'CRITICAL', color: 'text-purple-600 dark:text-purple-400', bg: 'bg-purple-100 dark:bg-purple-900/30' };
+        return { label: 'NONE', color: 'text-zinc-500', bg: 'bg-zinc-100 dark:bg-zinc-800' };
+    };
+
+    const ScoreCard = ({ title, score, vector, fallbackSeverity, icon: Icon, colorClass, borderClass, onClick }: any) => {
+        let severity = getSeverityLabel(score);
+        if (score === 0 && fallbackSeverity) {
+            severity = getSeverityLabelFromName(fallbackSeverity);
+        }
+        
         return (
             <div 
                 onClick={onClick}
@@ -195,7 +210,9 @@ export const CvssInteractiveModal = ({
                         <span className={`font-bold text-xs uppercase tracking-wider ${colorClass}`}>{title}</span>
                     </div>
                     <div className="text-right">
-                        <span className={`font-mono font-bold text-2xl ${colorClass} block leading-5`}>{score.toFixed(1)}</span>
+                        <span className={`font-mono font-bold text-2xl ${colorClass} block leading-5`}>
+                            {score === 0 && fallbackSeverity ? 'N/A' : score.toFixed(1)}
+                        </span>
                         <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded ${severity.bg} ${severity.color}`}>
                             {severity.label}
                         </span>
@@ -241,10 +258,11 @@ export const CvssInteractiveModal = ({
                             title="Researcher" 
                             score={researcherScore} 
                             vector={researcherVector} 
+                            fallbackSeverity={researcherSeverity}
                             icon={Bug} 
                             colorClass="text-indigo-600 dark:text-indigo-400" 
                             borderClass="border-indigo-100 dark:border-indigo-900/30 hover:border-indigo-300"
-                            onClick={() => applyVector(researcherVector)}
+                            onClick={researcherVector ? () => applyVector(researcherVector) : undefined}
                          />
 
                          {triagerVector && (
