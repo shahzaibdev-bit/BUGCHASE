@@ -273,33 +273,34 @@ const ProgramDetails = () => {
                 <div className="space-y-6">
                     
                     {/* Primary Action */}
-                    {/* Pass program ID directly to submit page */}
-                    <Link to={`/researcher/submit?program=${program._id}`}>
-                        <Button className="w-full h-14 text-base font-bold uppercase tracking-widest bg-zinc-900 hover:bg-zinc-800 text-white dark:bg-white dark:hover:bg-zinc-200 dark:text-black transition-all shadow-lg hover:shadow-xl hover:-translate-y-1">
+                    <Button asChild className="w-full h-14 text-base font-bold uppercase tracking-widest bg-zinc-900 hover:bg-zinc-800 text-white dark:bg-white dark:hover:bg-zinc-200 dark:text-black transition-all shadow-lg hover:shadow-xl hover:-translate-y-1">
+                        <Link to={`/researcher/submit?program=${program._id}`}>
                             Submit Report
                             <ExternalLink className="ml-2 w-4 h-4" />
-                        </Button>
-                    </Link>
+                        </Link>
+                    </Button>
 
                     {/* Rewards Card */}
-                    <div className="rounded-xl border border-zinc-200 dark:border-white/10 bg-white/60 dark:bg-zinc-900/40 backdrop-blur-sm p-6 space-y-5">
-                         <div className="flex items-center gap-3 border-b border-zinc-200 dark:border-white/10 pb-4">
-                            <Trophy className="w-5 h-5 text-amber-500" />
-                            <h2 className="text-sm font-bold font-mono tracking-wide text-zinc-900 dark:text-white uppercase">REWARDS</h2>
+                    {program.type === 'BBP' && (
+                        <div className="rounded-xl border border-zinc-200 dark:border-white/10 bg-white/60 dark:bg-zinc-900/40 backdrop-blur-sm p-6 space-y-5">
+                             <div className="flex items-center gap-3 border-b border-zinc-200 dark:border-white/10 pb-4">
+                                <Trophy className="w-5 h-5 text-amber-500" />
+                                <h2 className="text-sm font-bold font-mono tracking-wide text-zinc-900 dark:text-white uppercase">REWARDS</h2>
+                            </div>
+                            <div className="space-y-3">
+                                {rewardTiers.map((tier, idx) => (
+                                    <div key={idx} className="flex items-center justify-between p-3 rounded-lg bg-zinc-50 dark:bg-white/5 border border-zinc-100 dark:border-white/5">
+                                        <span className={cn("text-xs font-bold uppercase tracking-wider font-mono", tier.color)}>
+                                            {tier.label}
+                                        </span>
+                                        <span className="text-sm font-bold text-zinc-900 dark:text-white font-mono">
+                                            {tier.amount}
+                                        </span>
+                                    </div>
+                                ))}
+                            </div>
                         </div>
-                        <div className="space-y-3">
-                            {rewardTiers.map((tier, idx) => (
-                                <div key={idx} className="flex items-center justify-between p-3 rounded-lg bg-zinc-50 dark:bg-white/5 border border-zinc-100 dark:border-white/5">
-                                    <span className={cn("text-xs font-bold uppercase tracking-wider font-mono", tier.color)}>
-                                        {tier.label}
-                                    </span>
-                                    <span className="text-sm font-bold text-zinc-900 dark:text-white font-mono">
-                                        {tier.amount}
-                                    </span>
-                                </div>
-                            ))}
-                        </div>
-                    </div>
+                    )}
 
                     {/* Top Researchers Widget - Placeholder until Reports are linked */}
                     <div className="rounded-xl border border-zinc-200 dark:border-white/10 bg-white/60 dark:bg-zinc-900/40 backdrop-blur-sm p-6 space-y-5">

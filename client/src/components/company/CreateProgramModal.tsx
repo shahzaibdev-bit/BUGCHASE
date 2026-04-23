@@ -15,6 +15,7 @@ import CyberpunkEditor from '@/components/ui/CyberpunkEditor';
 import { cn } from '@/lib/utils';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { API_URL } from '@/config';
+import { toast } from '@/hooks/use-toast';
 
 interface VerifiedAsset {
   id: string;
@@ -143,7 +144,63 @@ export const CreateProgramModal = ({ isOpen, onClose, companyName, verifiedAsset
       }
   };
 
-  const nextStep = () => setStep(s => Math.min(s + 1, 5));
+  const validateStep = (currentStep: number) => {
+    if (currentStep === 1) {
+      if (!formData.title.trim()) {
+        toast({ title: 'Validation Error', description: 'Program title is required.', variant: 'destructive' });
+        return false;
+      }
+      const strippedDesc = formData.description.replace(/(<([^>]+)>)/gi, "").trim();
+      if (!strippedDesc) {
+        toast({ title: 'Validation Error', description: 'Program description is required.', variant: 'destructive' });
+        return false;
+      }
+    }
+    
+    if (currentStep === 2) {
+      if (formData.selectedAssets.length === 0) {
+        toast({ title: 'Validation Error', description: 'Please select at least one asset.', variant: 'destructive' });
+        return false;
+      }
+    }
+    
+    if (currentStep === 3) {
+      const strippedRules = formData.rulesOfEngagement.replace(/(<([^>]+)>)/gi, "").trim();
+      if (!strippedRules) {
+        toast({ title: 'Validation Error', description: 'Rules of Engagement are required.', variant: 'destructive' });
+        return false;
+      }
+    }
+    
+    if (currentStep === 4) {
+      if (formData.type === 'BBP') {
+        const severities = ['critical', 'high', 'medium', 'low'];
+        for (const severity of severities) {
+          const range = formData.rewards[severity];
+          if (!range.min || !range.max) {
+             toast({ title: 'Validation Error', description: `Please provide min and max rewards for ${severity} severity.`, variant: 'destructive' });
+             return false;
+          }
+          if (Number(range.min) < 0 || Number(range.max) < 0) {
+             toast({ title: 'Validation Error', description: `Rewards cannot be negative.`, variant: 'destructive' });
+             return false;
+          }
+          if (Number(range.min) > Number(range.max)) {
+             toast({ title: 'Validation Error', description: `Max reward must be >= min reward for ${severity} severity.`, variant: 'destructive' });
+             return false;
+          }
+        }
+      }
+    }
+    
+    return true;
+  };
+
+  const nextStep = () => {
+    if (validateStep(step)) {
+      setStep(s => Math.min(s + 1, 5));
+    }
+  };
   const prevStep = () => setStep(s => Math.max(s - 1, 1));
 
   return (
