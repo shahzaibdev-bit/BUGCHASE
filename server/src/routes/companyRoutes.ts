@@ -1,6 +1,9 @@
 import express from 'express';
 import { protect, restrictTo } from '../middlewares/auth';
 import { inviteMember, getTeamMembers, generateVerificationToken, verifyDomain, getVerifiedAssets, updateAssetStatus, deleteVerifiedAsset, updateAssetScope, createProgram, getCompanyPrograms, getProgramById, deleteProgram, getReportDetails, getCompanyReports, updateReportSeverity, addCompanyComment, suggestBounty, updateReportStatus, awardBounty, generateReportMessage } from '../controllers/companyController';
+import multer from 'multer';
+
+const upload = multer({ storage: multer.memoryStorage() });
 
 const router = express.Router();
 
@@ -25,7 +28,7 @@ router.delete('/programs/:id', deleteProgram);
 router.get('/reports', getCompanyReports);
 router.get('/reports/:id', getReportDetails);
 router.patch('/reports/:id/severity', updateReportSeverity);
-router.post('/reports/:id/comments', addCompanyComment);
+router.post('/reports/:id/comments', upload.array('files', 5), addCompanyComment);
 router.patch('/reports/:id/status', updateReportStatus);
 router.post('/reports/:id/bounty', awardBounty);
 router.post('/reports/:id/suggest-bounty', suggestBounty);

@@ -8,6 +8,8 @@ import catchAsync from '../utils/catchAsync';
 import { sendEmail, inviteMemberTemplate, reportEmailTemplate } from '../services/emailService';
 import { suggestBountyAmount, generateReportMessage as geminiGenerateMessage } from '../services/geminiService';
 import { getIO } from '../services/socketService';
+import { uploadToCloudinary } from '../utils/cloudinary';
+
 
 // ... (inviteMember logic remains unchanged) ...
 
@@ -547,7 +549,7 @@ export const getCompanyReports = catchAsync(async (req: Request, res: Response, 
 });
 
 export const addCompanyComment = catchAsync(async (req: Request, res: Response, next: NextFunction) => {
-    const { content } = req.body;
+    const { content, certificateId } = req.body;
     const { id } = req.params;
 
     const Report = (await import('../models/Report')).default;
@@ -559,11 +561,27 @@ export const addCompanyComment = catchAsync(async (req: Request, res: Response, 
 
     // Permission Check: Verify company owns the program (simplified access check based on getReport/updateReportSeverity)
 
+    const uploadedUrls: string[] = [];
+    if (req.files && Array.isArray(req.files)) {
+        const uploadPromises = req.files.map((file: Express.Multer.File) => {
+            return uploadToCloudinary(file);
+        });
+        const results = await Promise.all(uploadPromises);
+        results.forEach(result => {
+            uploadedUrls.push(result.url);
+        });
+    }
+
     report.comments.push({
         sender: req.user!.id,
-        content,
+        content: content || '',
+        attachments: uploadedUrls,
         createdAt: new Date()
-    });
+    } as any);
+
+    if (certificateId) {
+        report.certificateId = certificateId;
+    }
 
     await report.save();
 
@@ -581,6 +599,7 @@ export const addCompanyComment = catchAsync(async (req: Request, res: Response, 
              authorUsername: req.user!.username,
              role: 'Company',
              content: newComment.content,
+             attachments: newComment.attachments,
              timestamp: newComment.createdAt,
              authorAvatar: req.user!.avatar
         });

@@ -25,6 +25,7 @@ import RulesOfEngagement from "./pages/legal/RulesOfEngagement";
 import LegalImmunity from "./pages/legal/LegalImmunity";
 import LegalFramework from "./pages/legal/LegalFramework";
 
+import VerifyCert from "./pages/public/VerifyCert";
 import PublicProfile from "./pages/PublicProfile";
 
 // Layouts
@@ -126,6 +127,8 @@ const App = () => (
               {/* Standalone Route (No Navbar) */}
               <Route path="/verify-otp" element={<VerifyOtp />} />
               <Route path="/login-required" element={<LoginRequired />} />
+              <Route path="/verify-cert" element={<VerifyCert />} />
+              <Route path="/verify-cert/:id" element={<VerifyCert />} />
 
               {/* Public Profile (Simplified Navbar) */}
               <Route element={<PublicLayout simpleNavbar={true} />}>

@@ -4,6 +4,8 @@ import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import rehypeRaw from 'rehype-raw';
 import { useParams, useNavigate } from 'react-router-dom';
+import { pdf } from '@react-pdf/renderer';
+import { CertificateTemplate } from '@/components/company/CertificateTemplate';
 import { 
   Lock, 
   Unlock, 
@@ -216,8 +218,18 @@ export default function CompanyReportDetails() {
   const [rewardRange, setRewardRange] = useState<{min: number, max: number} | null>(null);
 
   const [isGeneratingContent, setIsGeneratingContent] = useState(false);
+  const [vdpResolveModalOpen, setVdpResolveModalOpen] = useState(false);
+  const [openBountyAfterResolve, setOpenBountyAfterResolve] = useState(false);
+
+  const [isGeneratingCertificate, setIsGeneratingCertificate] = useState(false);
+  const certificateRef = useRef<HTMLDivElement>(null);
+  const [certificateId, setCertificateId] = useState('');
 
   const scrollRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    setCertificateId(`BC-${new Date().getFullYear()}-${Math.random().toString(36).substring(2,7).toUpperCase()}`);
+  }, []);
 
   const reasons = STATUS_REASONS[rejectStatus] || ["Other"];
 
@@ -322,6 +334,11 @@ export default function CompanyReportDetails() {
               status: status
           }));
           fetchReport();
+
+          if (status === 'Resolved' && openBountyAfterResolve) {
+              setBountyModalOpen(true);
+              setOpenBountyAfterResolve(false);
+          }
       } catch (error: any) {
           console.error('Action error:', error);
           toast({ title: 'Error', description: error.message || 'Failed to update report', variant: 'destructive' });
@@ -363,6 +380,81 @@ export default function CompanyReportDetails() {
       } finally {
           setIsSubmitting(false);
       }
+  };
+
+  const handleIssueCertificate = async () => {
+    setIsGeneratingCertificate(true);
+    try {
+      const verifyLink = `${window.location.origin}/verify-cert/${certificateId}`;
+      const doc = <CertificateTemplate 
+        researcherUsername={report?.researcherId?.username || report?.researcherId?.name || "Researcher"}
+        reportTitle={report?.title || "Vulnerability"}
+        targetCompanyName={report?.programId?.companyName || report?.programId?.title || "Target Company"}
+        certificateId={certificateId}
+        verifyUrl={verifyLink}
+      />;
+      
+      const blob = await pdf(doc).toBlob();
+
+      let statusChanged = false;
+      if (String(reportState.status).trim().toLowerCase() !== 'resolved') {
+        const token = localStorage.getItem('token');
+        const resolveRes = await fetch(`${API_URL}/company/reports/${id}/status`, {
+            method: 'PATCH',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${token}`
+            },
+            body: JSON.stringify({
+                status: 'Resolved',
+                note: 'Report resolved and certificate issued.'
+            })
+        });
+        if (resolveRes.ok) {
+            statusChanged = true;
+        } else {
+            console.warn("Failed to update status to resolved.");
+        }
+      }
+
+      const formData = new FormData();
+      formData.append('content', 'We are pleased to award you this Certificate of Appreciation securely issued by BugChase! Please find the attached certificate below.');
+      formData.append('files', blob, `Certificate-${certificateId}.pdf`);
+      formData.append('certificateId', certificateId);
+
+      const token = localStorage.getItem('token');
+      const commentRes = await fetch(`${API_URL}/company/reports/${id}/comments`, {
+          method: 'POST',
+          headers: {
+              'Authorization': `Bearer ${token}`
+          },
+          body: formData
+      });
+
+      if (!commentRes.ok) {
+          throw new Error("Failed to issue certificate");
+      }
+
+      toast({
+          title: "Certificate Issued",
+          description: "The certificate has been generated and sent to the researcher.",
+      });
+
+      setVdpResolveModalOpen(false);
+      
+      // Auto refresh immediately
+      fetchReport();
+      
+    } catch (error: any) {
+      console.error(error);
+      toast({
+          title: "Error Issuing Certificate",
+          description: error.message || "Something went wrong.",
+          variant: "destructive"
+      });
+    } finally {
+      setIsGeneratingCertificate(false);
+    }
   };
 
   // --- Fetch Report ---
@@ -734,24 +826,36 @@ export default function CompanyReportDetails() {
                                 >
                                     <XCircle className="w-4 h-4 mr-2" /> Reject Report
                                 </Button>
-                                <Button 
-                                    size="sm"
-                                    className="bg-zinc-900 text-white dark:bg-white dark:text-black hover:bg-zinc-800 dark:hover:bg-zinc-200"
-                                    onClick={() => setResolveModalOpen(true)}
-                                >
-                                    <CheckCircle className="w-4 h-4 mr-2" /> Mark Resolved
-                                </Button>
-                                {String(reportState.status).trim().toLowerCase() === 'resolved' && (
-                                    <div className="w-full flex justify-start lg:justify-end mt-1">
+                                {report?.programId?.type?.toUpperCase() === 'VDP' ? (
+                                    <Button 
+                                        size="sm"
+                                        className="bg-zinc-900 text-white dark:bg-white dark:text-black hover:bg-zinc-800 dark:hover:bg-zinc-200"
+                                        onClick={() => setVdpResolveModalOpen(true)}
+                                    >
+                                        <CheckCircle className="w-4 h-4 mr-2" /> Resolve Report
+                                    </Button>
+                                ) : (
+                                    <>
                                         <Button 
                                             size="sm"
-                                            className="bg-purple-600 text-white hover:bg-purple-700 font-bold w-full sm:w-auto"
-                                            onClick={() => setBountyModalOpen(true)}
+                                            className="bg-zinc-900 text-white dark:bg-white dark:text-black hover:bg-zinc-800 dark:hover:bg-zinc-200"
+                                            onClick={() => setResolveModalOpen(true)}
                                         >
-                                            <DollarSign className="w-4 h-4 mr-2" /> 
-                                            {Number(reportState.bounty) > 0 ? 'Bounty Awarded' : 'Initiate Bounty'}
+                                            <CheckCircle className="w-4 h-4 mr-2" /> Mark Resolved
                                         </Button>
-                                    </div>
+                                        {String(reportState.status).trim().toLowerCase() === 'resolved' && (
+                                            <div className="w-full flex justify-start lg:justify-end mt-1">
+                                                <Button 
+                                                    size="sm"
+                                                    className="bg-purple-600 text-white hover:bg-purple-700 font-bold w-full sm:w-auto"
+                                                    onClick={() => setBountyModalOpen(true)}
+                                                >
+                                                    <DollarSign className="w-4 h-4 mr-2" /> 
+                                                    {Number(reportState.bounty) > 0 ? 'Bounty Awarded' : 'Initiate Bounty'}
+                                                </Button>
+                                            </div>
+                                        )}
+                                    </>
                                 )}
                             </div>
                         </div>
@@ -1317,6 +1421,66 @@ export default function CompanyReportDetails() {
                 </DialogContent>
             </Dialog>
 
+            {/* VDP RESOLVE MODAL */}
+            <Dialog open={vdpResolveModalOpen} onOpenChange={setVdpResolveModalOpen}>
+                <DialogContent className="max-w-xl bg-white dark:bg-zinc-950 border-zinc-200 dark:border-zinc-800 flex flex-col">
+                    <DialogHeader className="shrink-0">
+                        <DialogTitle className="font-mono text-lg flex items-center gap-2">
+                            <CheckCircle className="w-5 h-5 text-green-500" />
+                            Resolve VDP Report
+                        </DialogTitle>
+                        <DialogDescription>
+                            Choose how you want to resolve this report.
+                        </DialogDescription>
+                    </DialogHeader>
+                    
+                    <div className="space-y-4 py-4 flex-1">
+                        <div 
+                            className="p-4 rounded-lg border-2 cursor-pointer transition-all border-zinc-200 dark:border-zinc-800 hover:border-zinc-300 dark:hover:border-zinc-700"
+                            onClick={() => {
+                                setVdpResolveModalOpen(false);
+                                setResolveModalOpen(true);
+                            }}
+                        >
+                            <h3 className="font-bold text-sm mb-1 flex items-center gap-2">
+                                <MessageSquare className="w-4 h-4" /> Acknowledgment Only
+                            </h3>
+                            <p className="text-xs text-zinc-500">"I just want to thank the researcher." <span className="font-mono font-bold text-zinc-900 dark:text-zinc-100">(Status: Resolved)</span></p>
+                        </div>
+                        
+                        <div 
+                            className="p-4 rounded-lg border-2 cursor-pointer transition-all border-zinc-200 dark:border-zinc-800 hover:border-purple-300 dark:hover:border-purple-700"
+                            onClick={() => {
+                                setVdpResolveModalOpen(false);
+                                if (String(reportState.status).trim().toLowerCase() !== 'resolved') {
+                                    setOpenBountyAfterResolve(true);
+                                    setResolveModalOpen(true);
+                                } else {
+                                    setBountyModalOpen(true);
+                                }
+                            }}
+                        >
+                            <h3 className="font-bold text-sm mb-1 flex items-center gap-2 text-purple-700 dark:text-purple-400">
+                                <Award className="w-4 h-4" /> Exception Bounty
+                            </h3>
+                            <p className="text-xs text-zinc-500">"This find was incredible; I want to pay a custom reward." <span className="font-mono font-bold text-purple-600">(Status: Resolved + Payment)</span></p>
+                        </div>
+                        <div 
+                            className="p-4 rounded-lg border-2 cursor-pointer transition-all border-zinc-200 dark:border-zinc-800 hover:border-blue-300 dark:hover:border-blue-700"
+                            onClick={handleIssueCertificate}
+                        >
+                            <h3 className="font-bold text-sm mb-1 flex items-center gap-2 text-blue-700 dark:text-blue-400">
+                                {isGeneratingCertificate ? <div className="w-4 h-4 rounded-full border-2 border-blue-500 border-t-transparent animate-spin" /> : <FileText className="w-4 h-4" />} 
+                                Issue Certificate
+                            </h3>
+                            <p className="text-xs text-zinc-500">"We want to award a digital Certificate of Appreciation." <span className="font-mono font-bold text-blue-600">(Status: Resolved + Certificate Issued)</span></p>
+                        </div>
+                    </div>
+                </DialogContent>
+            </Dialog>
+
+            {/* Hidden Certificate Generator Container Removed (Now natively processed by @react-pdf) */}
+            
             {/* BOUNTY MODAL */}
             <Dialog open={bountyModalOpen} onOpenChange={setBountyModalOpen}>
                 <DialogContent className="max-w-2xl bg-white dark:bg-zinc-950 border-zinc-200 dark:border-zinc-800 flex flex-col md:max-h-[90vh] overflow-y-auto">

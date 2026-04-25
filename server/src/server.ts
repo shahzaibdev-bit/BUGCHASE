@@ -15,6 +15,7 @@ import companyRoutes from './routes/companyRoutes';
 import adminRoutes from './routes/adminRoutes';
 import triagerRoutes from './routes/triagerRoutes';
 import programRoutes from './routes/programRoutes';
+import publicRoutes from './routes/publicRoutes';
 import { rateLimiter } from './middlewares/rateLimit';
 
 // Load env vars
@@ -58,6 +59,9 @@ app.use('/api/company', companyRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/triager', triagerRoutes);
 app.use('/api/programs', programRoutes);
+
+const strictLimiter = rateLimiter(10, 15 * 60); // 10 requests per 15 minutes
+app.use('/api/public', strictLimiter, publicRoutes);
 
 // Handle Unhandled Routes
 app.all(/(.*)/, (req, res, next) => {

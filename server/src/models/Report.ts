@@ -40,6 +40,13 @@ const reportSchema = new mongoose.Schema({
       url: String,
       type: String
   }],
+
+  // Certificates
+  certificateId: { 
+      type: String, 
+      unique: true, 
+      sparse: true 
+  },
   
   // Comments System
   comments: [{

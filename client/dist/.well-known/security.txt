@@ -10,4 +10,5 @@ Policy: https://bugchase.com/disclosure-policy
 We take security seriously. If you find a vulnerability, please report it to us.
 
 # Verification
-bc-verification=792a43ed56bbfd6ad08fa201153905bf
+bc-verification=ab1d27b3ecd5dd3a8ea004e4dad0cab3
+bc-verification=3da552770d74ca2f21bd0a807a0c1d0a
