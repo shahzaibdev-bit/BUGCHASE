@@ -4,9 +4,18 @@ import { Server as HttpServer } from 'http';
 let io: Server;
 
 export const initSocket = (server: HttpServer) => {
+    const allowedOrigins = [
+        'http://localhost:3000',
+        'http://localhost:5173',
+        'https://bugchase-client.vercel.app'
+    ];
+    if (process.env.CLIENT_URL && !allowedOrigins.includes(process.env.CLIENT_URL)) {
+        allowedOrigins.push(process.env.CLIENT_URL);
+    }
+
     io = new Server(server, {
         cors: {
-            origin: process.env.CLIENT_URL || 'http://localhost:3000',
+            origin: allowedOrigins,
             methods: ['GET', 'POST'],
             credentials: true
         }
