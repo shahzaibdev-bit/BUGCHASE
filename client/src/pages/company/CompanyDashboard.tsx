@@ -1,8 +1,9 @@
 import React, { useState, useMemo } from 'react';
-import { Bug, FileText, DollarSign, TrendingUp, Users, BarChart3, Calendar as CalendarIcon, X } from 'lucide-react';
+import { Bug, FileText, DollarSign, TrendingUp, Users, BarChart3, Calendar as CalendarIcon, X, Ghost } from 'lucide-react';
 import { GlassCard } from '@/components/ui/glass-card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { Skeleton } from '@/components/ui/skeleton';
 import { Calendar } from '@/components/ui/calendar';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import {
@@ -24,83 +25,69 @@ export default function CompanyDashboard() {
   const [selectedMonth, setSelectedMonth] = useState<string>('all');
   const [selectedDate, setSelectedDate] = useState<Date | undefined>(undefined);
 
-  // Global Dashboard Data Simulation
-  const dashboardData = useMemo(() => {
-    let severity = [...chartData.severityDistribution];
-    let trends = [...chartData.monthlyReports];
-    let trendsLabel = 'Monthly Trends';
-    let stats = {
-        totalReports: 142,
-        openReports: 23,
-        bountiesPaid: 45200,
-        researchers: 89,
-        trend: 12
-    };
-    let recentReports = [...mockReports];
+  const [isLoading, setIsLoading] = useState(true);
+  const [rawData, setRawData] = useState<any>(null);
 
-    // 1. Year Filter (Mock Simulation)
+  React.useEffect(() => {
+    const fetchAnalytics = async () => {
+      try {
+        setIsLoading(true);
+        const res = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:5000/api'}/company/analytics`, {
+          headers: {
+            'Authorization': `Bearer ${localStorage.getItem('token')}`
+          }
+        });
+        const data = await res.json();
+        if (data.status === 'success') {
+          setRawData(data.data);
+        }
+      } catch (err) {
+        console.error('Failed to fetch analytics', err);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+    fetchAnalytics();
+  }, []);
+
+  // Global Dashboard Data Mapping
+  const dashboardData = useMemo(() => {
+    if (!rawData) {
+      return {
+        severity: [],
+        trends: [],
+        trendsLabel: 'Monthly Trends',
+        stats: { totalReports: 0, openReports: 0, bountiesPaid: 0, researchers: 0, trend: 0 },
+        recentReports: []
+      };
+    }
+
+    let severity = rawData.severityData.map((s: any) => ({ name: s.name, value: s.count }));
+    let trends = [...rawData.trendsData];
+    let trendsLabel = 'Monthly Trends';
+    let stats = { ...rawData.stats, trend: 0 };
+    let recentReports = [...rawData.recentReports];
+
+    // 1. Year Filter (Simple mock fallback to keep UI interactive)
     if (selectedYear === '2023') {
-        // Scramble data for "2023"
-        severity = severity.map(s => ({ ...s, value: Math.floor(s.value * 0.7) }));
-        trends = trends.map(t => ({ ...t, reports: Math.floor(t.reports * 0.8) }));
-        stats = {
-            totalReports: 98,
-            openReports: 15,
-            bountiesPaid: 32100,
-            researchers: 65,
-            trend: -5
-        };
-        recentReports = recentReports.slice(2); 
+        severity = severity.map((s: any) => ({ ...s, value: Math.floor(s.value * 0.7) }));
+        trends = trends.map((t: any) => ({ ...t, reports: Math.floor(t.reports * 0.8), amount: Math.floor(t.amount * 0.8) }));
+        stats.totalReports = Math.floor(stats.totalReports * 0.7);
+        stats.bountiesPaid = Math.floor(stats.bountiesPaid * 0.8);
     }
 
     // 2. Month Filter
     if (selectedMonth !== 'all') {
-         // Create daily data
-         const daysInMonth = 30;
-         trends = Array.from({ length: daysInMonth }, (_, i) => ({
-            month: `${i + 1}`,
-            reports: Math.floor(Math.random() * 15),
-            bounties: Math.floor(Math.random() * 5000)
-        }));
-        trendsLabel = `Daily Trends (${selectedMonth} ${selectedYear})`;
-        
-        // Randomize Stats for the month
-        stats = {
-            totalReports: Math.floor(stats.totalReports / 12) + Math.floor(Math.random() * 10),
-            openReports: Math.floor(Math.random() * 10),
-            bountiesPaid: Math.floor(stats.bountiesPaid / 12),
-            researchers: Math.floor(stats.researchers * 0.8),
-            trend: Math.floor(Math.random() * 20) - 10
-        };
-         recentReports = recentReports.sort(() => 0.5 - Math.random()).slice(0, 3);
+         trendsLabel = `Daily Trends (${selectedMonth} ${selectedYear})`;
     }
 
     // 3. Date Filter (Specific Day)
     if (selectedDate) {
-         // Hourly trends
-         const hours = 24;
-         trends = Array.from({ length: hours }, (_, i) => ({
-             month: `${i}:00`,
-             reports: Math.floor(Math.random() * 5),
-             bounties: Math.floor(Math.random() * 1000)
-         }));
          trendsLabel = `Hourly Trends (${format(selectedDate, 'MMM d, yyyy')})`;
-         
-         // Aggressive Jitter
-         severity = severity.map(s => ({ ...s, value: Math.floor(s.value * 0.2 + Math.random() * 5) }));
-         
-          stats = {
-            totalReports: Math.floor(Math.random() * 5),
-            openReports: Math.floor(Math.random() * 3),
-            bountiesPaid: Math.floor(Math.random() * 2000),
-            researchers: Math.floor(Math.random() * 5),
-            trend: 0
-        };
-         recentReports = recentReports.slice(0, 2);
     }
 
     return { severity, trends, trendsLabel, stats, recentReports };
-  }, [selectedYear, selectedMonth, selectedDate]);
+  }, [rawData, selectedYear, selectedMonth, selectedDate]);
 
 
   // Reusable Filter Component
@@ -213,7 +200,32 @@ export default function CompanyDashboard() {
         <ChartFilters />
       </div>
 
-      {/* Top Stats Cards with Tilt & Spotlight */}
+      {isLoading ? (
+          <div className="space-y-6">
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+                  {Array.from({ length: 4 }).map((_, i) => (
+                      <Skeleton key={i} className="h-32 w-full rounded-xl" />
+                  ))}
+              </div>
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                  <Skeleton className="h-80 w-full rounded-xl" />
+                  <Skeleton className="h-80 w-full rounded-xl" />
+              </div>
+              <Skeleton className="h-64 w-full rounded-xl" />
+          </div>
+      ) : dashboardData.stats.totalReports === 0 ? (
+          <div className="flex flex-col items-center justify-center py-20 text-center">
+              <div className="w-20 h-20 bg-muted/30 rounded-full flex items-center justify-center mb-6">
+                  <Ghost className="h-10 w-10 text-muted-foreground" />
+              </div>
+              <h2 className="text-2xl font-bold font-mono text-foreground mb-2">No Reports Yet</h2>
+              <p className="text-muted-foreground max-w-md mx-auto">
+                  Your bug bounty program doesn't have any submitted reports yet. Once researchers start testing and submitting vulnerabilities, your analytics will appear here.
+              </p>
+          </div>
+      ) : (
+          <>
+            {/* Top Stats Cards with Tilt & Spotlight */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
          {/* Total Reports */}
          <InvertedTiltCard>
@@ -311,6 +323,8 @@ export default function CompanyDashboard() {
           )}
         </div>
       </GlassCard>
+      </>
+      )}
     </div>
   );
 }

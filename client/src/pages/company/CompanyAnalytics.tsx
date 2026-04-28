@@ -1,8 +1,9 @@
 import React, { useState, useMemo } from 'react';
-import { TrendingUp, TrendingDown, Clock, DollarSign, Users, FileText, Calendar as CalendarIcon, X } from 'lucide-react';
+import { TrendingUp, TrendingDown, Clock, DollarSign, Users, FileText, Calendar as CalendarIcon, X, Ghost } from 'lucide-react';
 import { GlassCard } from '@/components/ui/glass-card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { Skeleton } from '@/components/ui/skeleton';
 import { Calendar } from '@/components/ui/calendar';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import {
@@ -72,61 +73,84 @@ export default function CompanyAnalytics() {
   const [selectedMonth, setSelectedMonth] = useState<string>('all');
   const [selectedDate, setSelectedDate] = useState<Date | undefined>(undefined);
 
+  const [isLoading, setIsLoading] = useState(true);
+  const [rawData, setRawData] = useState<any>(null);
+
+  React.useEffect(() => {
+    const fetchAnalytics = async () => {
+      try {
+        setIsLoading(true);
+        const res = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:5000/api'}/company/analytics`, {
+          headers: {
+            'Authorization': `Bearer ${localStorage.getItem('token')}`
+          }
+        });
+        const data = await res.json();
+        if (data.status === 'success') {
+          setRawData(data.data);
+        }
+      } catch (err) {
+        console.error('Failed to fetch analytics', err);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+    fetchAnalytics();
+  }, []);
+
   // Derived Data based on filters
   const { stats, severityData, payoutsData, trendData } = useMemo(() => {
-    // Clone initial data
-    let currentSeverity = [...INITIAL_SEVERITY];
-    let currentPayouts = [...INITIAL_PAYOUTS];
-    let currentTrend = [...INITIAL_TREND];
+    if (!rawData) {
+        return {
+            stats: [
+                { label: 'Total Reports', value: '0', icon: FileText, trend: '0%', up: true },
+                { label: 'Active Researchers', value: '0', icon: Users, trend: '0%', up: true },
+                { label: 'Total Bounties Paid', value: 'PKR 0', icon: DollarSign, trend: '0%', up: true },
+                { label: 'Avg Resolution Time', value: '0 days', icon: Clock, trend: '0%', up: false },
+            ],
+            severityData: [],
+            payoutsData: [],
+            trendData: []
+        };
+    }
+
+    let currentSeverity = [...rawData.severityData];
+    let currentPayouts = [...rawData.trendsData];
+    let currentTrend = [...rawData.trendsData];
     
     let currentStats = [
-        { label: 'Total Reports', value: '108', icon: FileText, trend: '+12%', up: true },
-        { label: 'Active Researchers', value: '156', icon: Users, trend: '+8%', up: true },
-        { label: 'Total Bounties Paid', value: 'PKR 120.5K', icon: DollarSign, trend: '+23%', up: true },
-        { label: 'Avg Resolution Time', value: '4.2 days', icon: Clock, trend: '-15%', up: false },
+        { label: 'Total Reports', value: rawData.stats.totalReports.toString(), icon: FileText, trend: '+0%', up: true },
+        { label: 'Active Researchers', value: rawData.stats.researchers.toString(), icon: Users, trend: '+0%', up: true },
+        { label: 'Total Bounties Paid', value: `PKR ${rawData.stats.bountiesPaid.toLocaleString()}`, icon: DollarSign, trend: '+0%', up: true },
+        { label: 'Avg Resolution Time', value: 'N/A', icon: Clock, trend: '0%', up: false },
     ];
 
     // 1. Year Filter
     if (selectedYear === '2023') {
-        currentStats = [
-            { label: 'Total Reports', value: '85', icon: FileText, trend: '-5%', up: false },
-            { label: 'Active Researchers', value: '120', icon: Users, trend: '+2%', up: true },
-            { label: 'Total Bounties Paid', value: 'PKR 95.2K', icon: DollarSign, trend: '+10%', up: true },
-            { label: 'Avg Resolution Time', value: '5.1 days', icon: Clock, trend: '+5%', up: false },
-        ];
-        currentSeverity = currentSeverity.map(s => ({ ...s, count: Math.floor(s.count * 0.8) }));
-        currentPayouts = currentPayouts.map(p => ({ ...p, amount: Math.floor(p.amount * 0.9) }));
+        currentSeverity = currentSeverity.map((s: any) => ({ ...s, count: Math.floor(s.count * 0.8) }));
+        currentPayouts = currentPayouts.map((p: any) => ({ ...p, amount: Math.floor(p.amount * 0.9) }));
+        currentStats[0].value = Math.floor(parseInt(currentStats[0].value) * 0.8).toString();
     }
 
     // 2. Month Filter
     if (selectedMonth !== 'all') {
-         // Generate daily trend for the month
-         currentTrend = Array.from({ length: 15 }, (_, i) => ({
-             week: `Day ${i * 2 + 1}`,
-             reports: Math.floor(Math.random() * 8) + 2
-         }));
-         
          const factor = Math.random() * 0.5 + 0.5;
-         currentStats = currentStats.map(s => ({
+         currentStats = currentStats.map((s: any) => ({
              ...s, 
-             value: s.label.includes('Paid') ? `PKR ${(120 * factor).toFixed(1)}K` : Math.floor(parseInt(s.value) * factor).toString()
+             value: s.label.includes('Paid') ? s.value : Math.floor(parseInt(s.value) * factor).toString()
          }));
     }
 
     // 3. Date Filter
     if (selectedDate) {
-        currentStats = currentStats.map(s => ({
+        currentStats = currentStats.map((s: any) => ({
              ...s, 
-             value: s.label.includes('Paid') ? `PKR ${(Math.random() * 5).toFixed(1)}K` : Math.floor(Math.random() * 10).toString()
-        }));
-        currentTrend = Array.from({ length: 24 }, (_, i) => ({
-             week: `${i}:00`,
-             reports: Math.floor(Math.random() * 3)
+             value: s.label.includes('Paid') ? s.value : Math.floor(Math.random() * 10).toString()
         }));
     }
 
     return { stats: currentStats, severityData: currentSeverity, payoutsData: currentPayouts, trendData: currentTrend };
-  }, [selectedYear, selectedMonth, selectedDate]);
+  }, [rawData, selectedYear, selectedMonth, selectedDate]);
 
   return (
     <div className="space-y-6 animate-fade-in font-sans pb-20">
@@ -201,7 +225,35 @@ export default function CompanyAnalytics() {
         </div>
       </div>
 
-      {/* Stats Grid with Tilt & Spotlight */}
+      {isLoading ? (
+          <div className="space-y-6">
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                  {Array.from({ length: 4 }).map((_, i) => (
+                      <Skeleton key={i} className="h-28 w-full rounded-xl" />
+                  ))}
+              </div>
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                  <Skeleton className="h-80 w-full rounded-xl" />
+                  <Skeleton className="h-80 w-full rounded-xl" />
+              </div>
+              <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                  <Skeleton className="h-64 w-full rounded-xl lg:col-span-2" />
+                  <Skeleton className="h-64 w-full rounded-xl" />
+              </div>
+          </div>
+      ) : rawData?.stats?.totalReports === 0 ? (
+          <div className="flex flex-col items-center justify-center py-20 text-center">
+              <div className="w-20 h-20 bg-muted/30 rounded-full flex items-center justify-center mb-6">
+                  <Ghost className="h-10 w-10 text-muted-foreground" />
+              </div>
+              <h2 className="text-2xl font-bold font-mono text-foreground mb-2">No Analytics Data</h2>
+              <p className="text-muted-foreground max-w-md mx-auto">
+                  Your security program has not received any reports yet. Once reports are submitted and bounties are paid out, detailed analytics will appear here.
+              </p>
+          </div>
+      ) : (
+          <>
+            {/* Stats Grid with Tilt & Spotlight */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         {stats.map((stat, index) => (
           <InvertedTiltCard key={index} className="h-full rounded-xl">
@@ -336,6 +388,8 @@ export default function CompanyAnalytics() {
           </div>
         </GlassCard>
       </div>
+      </>
+      )}
     </div>
   );
 }

@@ -72,6 +72,62 @@ body { margin: 0; padding: 0; background-color: #000000; }
   return juice(html);
 };
 
+export const cardDeletionOtpTemplate = (otp: string) => {
+  const html = `
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>BugChase - Payment Method Removal</title>
+<style>
+body { margin: 0; padding: 0; background-color: #000000; }
+.wrapper { width: 100%; table-layout: fixed; background-color: #000000; padding-bottom: 40px; }
+.container { background-color: #09090b; margin: 0 auto; width: 100%; max-width: 800px; border: 1px solid #27272a; border-radius: 8px; overflow: hidden; }
+.header { background-color: #18181b; padding: 20px; text-align: center; border-bottom: 1px solid #27272a; }
+.logo { color: #ffffff; font-family: 'Courier New', Courier, monospace; font-weight: bold; font-size: 20px; letter-spacing: 1px; text-transform: uppercase; text-decoration: none; }
+.content { padding: 40px 20px; text-align: center; font-family: 'Courier New', Courier, monospace; }
+.title { font-size: 24px; margin: 0 0 20px; color: #ffffff; }
+.text { font-size: 16px; color: #a1a1aa; line-height: 1.5; margin: 0 0 30px; }
+.otp-box { background-color: #18181b; border: 1px solid #ef4444; border-radius: 8px; padding: 20px; text-align: center; margin-bottom: 30px; display: inline-block; min-width: 200px; }
+.otp { font-size: 36px; letter-spacing: 8px; font-weight: bold; color: #ef4444; margin: 0; }
+.warning { background-color: #1a0000; border: 1px solid #7f1d1d; border-radius: 8px; padding: 16px; margin-bottom: 24px; color: #fca5a5; font-size: 13px; line-height: 1.5; }
+.footer { padding: 20px; text-align: center; color: #52525b; font-size: 12px; font-family: 'Courier New', Courier, monospace; border-top: 1px solid #27272a; background-color: #09090b; }
+@media only screen and (max-width: 800px) {
+    .content { padding: 30px 15px; }
+    .otp { font-size: 28px; }
+}
+</style>
+</head>
+<body>
+<div class="wrapper">
+    <div style="height: 40px;"></div>
+    <div class="container">
+      <div class="header">
+        <a href="#" class="logo">BugChase Security</a>
+      </div>
+      <div class="content">
+        <h1 class="title">Payment Method Removal</h1>
+        <p class="text">You have requested to remove a linked payment method from your BugChase account. Use the code below to confirm this action.</p>
+        <div class="otp-box">
+          <div class="otp">${otp}</div>
+        </div>
+        <div class="warning">
+          ⚠️ If you did not request this, please ignore this email and contact our support team immediately. This code is valid for 10 minutes.
+        </div>
+        <p class="text" style="font-size: 13px; margin-bottom: 0;">This is a sensitive action. Once the card is removed, it cannot be undone.</p>
+      </div>
+      <div class="footer">
+        &copy; ${new Date().getFullYear()} BugChase. All rights reserved.
+      </div>
+    </div>
+</div>
+</body>
+</html>
+  `;
+  return juice(html);
+};
+
 export const inviteMemberTemplate = (name: string, email: string, username: string, password: string, loginUrl: string, expertise: string[] = []) => {
   const skillsList = expertise.length > 0 ? expertise.map(s => `<span style="background: #27272a; color: #fff; padding: 2px 6px; border-radius: 4px; border: 1px solid #3f3f46; font-size: 10px; margin-right: 4px; text-transform: uppercase;">${s}</span>`).join('') : '<span style="color: #52525b; font-style: italic;">General Support</span>';
 
@@ -591,3 +647,156 @@ export const threadNotificationTemplate = (
   link
 });
 
+export const walletTopUpTemplate = (companyName: string, amount: number, newBalance: number) => {
+  const html = `
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Wallet Top-Up Successful</title>
+<style>
+body { margin: 0; padding: 0; background-color: #000000; font-family: 'Courier New', Courier, monospace; }
+.wrapper { width: 100%; table-layout: fixed; background-color: #000000; padding: 40px 0; }
+.container { background-color: #09090b; margin: 0 auto; width: 100%; max-width: 620px; border: 1px solid #27272a; border-radius: 10px; overflow: hidden; }
+.header { background-color: #09090b; padding: 24px 32px; border-bottom: 1px solid #27272a; }
+.logo { color: #ffffff; font-weight: bold; font-size: 18px; letter-spacing: 2px; text-transform: uppercase; text-decoration: none; }
+.logo-dot { color: #71717a; }
+.hero { background: linear-gradient(135deg, #18181b 0%, #09090b 100%); padding: 40px 32px; border-bottom: 1px solid #27272a; }
+.hero-label { font-size: 11px; color: #22c55e; letter-spacing: 2px; text-transform: uppercase; margin-bottom: 12px; font-weight: bold; }
+.hero-title { font-size: 22px; font-weight: bold; color: #ffffff; line-height: 1.4; margin: 0; }
+.content { padding: 32px; }
+.greeting { font-size: 14px; color: #a1a1aa; line-height: 1.7; margin-bottom: 28px; }
+.greeting strong { color: #ffffff; }
+.details-table { width: 100%; border-collapse: collapse; background: #18181b; border: 1px solid #27272a; border-radius: 8px; overflow: hidden; margin-bottom: 24px; }
+.detail-label { padding: 12px 16px; font-size: 11px; color: #71717a; text-transform: uppercase; letter-spacing: 1px; width: 40%; border-bottom: 1px solid #27272a; }
+.detail-value { padding: 12px 16px; font-size: 14px; color: #e4e4e7; font-weight: 600; border-bottom: 1px solid #27272a; font-family: monospace; }
+.footer { padding: 24px 32px; text-align: center; color: #52525b; font-size: 11px; border-top: 1px solid #27272a; background: #09090b; line-height: 1.7; }
+</style>
+</head>
+<body>
+<div class="wrapper">
+  <div class="container">
+    <div class="header">
+      <a href="#" class="logo">BugChase<span class="logo-dot">.</span>Security</a>
+    </div>
+
+    <div class="hero">
+      <div class="hero-label">Transaction Success</div>
+      <h1 class="hero-title">Wallet Top-Up Confirmed</h1>
+    </div>
+
+    <div class="content">
+      <p class="greeting">
+        Hi <strong>${companyName}</strong>,<br/><br/>
+        We successfully processed your payment. Your BugChase escrow wallet has been credited and is ready to be used for bounty payouts.
+      </p>
+
+      <table class="details-table">
+        <tr>
+          <td class="detail-label">Amount Added</td>
+          <td class="detail-value" style="color: #22c55e;">+ PKR ${amount.toLocaleString()}</td>
+        </tr>
+        <tr>
+          <td class="detail-label">New Wallet Balance</td>
+          <td class="detail-value">PKR ${newBalance.toLocaleString()}</td>
+        </tr>
+        <tr>
+          <td class="detail-label">Date</td>
+          <td class="detail-value">${new Date().toLocaleString()}</td>
+        </tr>
+      </table>
+    </div>
+
+    <div class="footer">
+      &copy; ${new Date().getFullYear()} BugChase Security Platform. All rights reserved.<br/>
+      This is an automated notification regarding your account balance.
+    </div>
+  </div>
+</div>
+</body>
+</html>
+  `;
+  return juice(html);
+};
+
+export const payoutSuccessTemplate = (name: string, pkrAmount: number, newBalance: number, methodDesc: string) => {
+  const html = `
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Withdrawal Successful</title>
+<style>
+body { margin: 0; padding: 0; background-color: #000000; font-family: 'Courier New', Courier, monospace; }
+.wrapper { width: 100%; background-color: #000000; padding: 40px 0; }
+.container { background-color: #09090b; margin: 0 auto; width: 100%; max-width: 600px; border: 1px solid #27272a; border-radius: 8px; overflow: hidden; }
+.header { background-color: #18181b; padding: 20px; text-align: center; border-bottom: 1px solid #27272a; }
+.logo { color: #10b981; font-weight: bold; font-size: 20px; letter-spacing: 1px; text-transform: uppercase; text-decoration: none; }
+.content { padding: 40px 30px; text-align: left; }
+.title { font-size: 20px; color: #ffffff; margin-top: 0; margin-bottom: 20px; text-align: center; }
+.message { font-size: 14px; color: #a1a1aa; line-height: 1.6; margin-bottom: 30px; }
+.highlight { color: #ffffff; font-weight: bold; }
+.details-box { background-color: #18181b; border: 1px dashed #3f3f46; border-radius: 6px; padding: 20px; margin-bottom: 30px; }
+.detail-row { display: flex; justify-content: space-between; margin-bottom: 10px; font-size: 14px; }
+.detail-label { color: #71717a; text-transform: uppercase; letter-spacing: 1px; font-size: 12px; }
+.detail-value { color: #ffffff; font-weight: bold; }
+.footer { padding: 20px; text-align: center; color: #52525b; font-size: 12px; border-top: 1px solid #27272a; background-color: #09090b; }
+table { width: 100%; border-collapse: collapse; }
+td { padding: 8px 0; }
+.text-right { text-align: right; }
+</style>
+</head>
+<body>
+<div class="wrapper">
+  <div class="container">
+    <div class="header">
+      <a href="#" class="logo">BugChase Ledger</a>
+    </div>
+    
+    <div class="content">
+      <h1 class="title">Withdrawal Processed</h1>
+      
+      <p class="message">
+        Hello <span class="highlight">${name}</span>,<br><br>
+        Your withdrawal request has been successfully processed. The funds have been transferred to your connected payout method.
+      </p>
+
+      <div class="details-box">
+        <table>
+          <tr>
+            <td class="detail-label">Amount Withdrawn</td>
+            <td class="detail-value text-right" style="color: #10b981;">PKR ${pkrAmount.toLocaleString()}</td>
+          </tr>
+          <tr>
+            <td class="detail-label">Destination</td>
+            <td class="detail-value text-right">${methodDesc}</td>
+          </tr>
+          <tr>
+            <td class="detail-label" style="padding-top: 15px; border-top: 1px dashed #3f3f46;">Remaining Balance</td>
+            <td class="detail-value text-right" style="padding-top: 15px; border-top: 1px dashed #3f3f46;">PKR ${newBalance.toLocaleString()}</td>
+          </tr>
+          <tr>
+            <td class="detail-label">Transaction Time</td>
+            <td class="detail-value text-right" style="font-size: 12px; font-weight: normal;">${new Date().toLocaleString()}</td>
+          </tr>
+        </table>
+      </div>
+
+      <p class="message" style="font-size: 12px; text-align: center;">
+        Transfers typically take 1-3 business days to reflect in your account depending on your financial institution.
+      </p>
+    </div>
+
+    <div class="footer">
+      &copy; ${new Date().getFullYear()} BugChase Security Platform. All rights reserved.<br/>
+      This is an automated notification regarding your account balance.
+    </div>
+  </div>
+</div>
+</body>
+</html>
+  `;
+  return juice(html);
+};

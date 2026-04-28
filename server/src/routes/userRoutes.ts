@@ -1,7 +1,20 @@
 import express from 'express';
 import multer from 'multer';
 import { protect } from '../middlewares/authMiddleware';
-import { getPublicProfile, updateKYCStatus, updateMe, uploadAvatar, getMe, getWalletData } from '../controllers/userController';
+import { 
+    getPublicProfile, 
+    updateKYCStatus, 
+    updateMe, 
+    uploadAvatar, 
+    getMe, 
+    getWalletData,
+    setupPayoutMethod,
+    getPayoutMethods,
+    requestPayout,
+    requestPayoutMethodOtp,
+    verifyPayoutMethodOtp,
+    removePayoutMethod
+} from '../controllers/userController';
 import { rateLimiter } from '../middlewares/rateLimit';
 
 const router = express.Router();
@@ -32,5 +45,13 @@ router.patch('/updateMe', protect, updateMe);
 router.post('/upload-avatar', protect, uploadLimiter, upload.single('avatar'), uploadAvatar);
 router.get('/me', protect, getMe);
 router.get('/wallet', protect, getWalletData);
+
+// Payout Routes
+router.post('/payout-setup', protect, setupPayoutMethod);
+router.get('/payout-methods', protect, getPayoutMethods);
+router.post('/withdraw', protect, requestPayout);
+router.post('/payout-methods/otp', protect, requestPayoutMethodOtp);
+router.post('/payout-methods/verify-otp', protect, verifyPayoutMethodOtp);
+router.delete('/payout-methods/:id', protect, removePayoutMethod);
 
 export default router;

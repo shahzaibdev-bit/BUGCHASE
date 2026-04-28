@@ -13,11 +13,11 @@ const badgeVariants = cva(
         destructive: "border-transparent bg-destructive text-destructive-foreground hover:bg-destructive/80",
         outline: "text-foreground",
         // Severity badges
-        critical: "border-red-500/30 bg-red-500/20 text-red-400",
-        high: "border-orange-500/30 bg-orange-500/20 text-orange-400",
-        medium: "border-yellow-500/30 bg-yellow-500/20 text-yellow-400",
-        low: "border-blue-500/30 bg-blue-500/20 text-blue-400",
-        info: "border-gray-500/30 bg-gray-500/20 text-gray-400",
+        critical: "border-transparent bg-red-500 text-white",
+        high: "border-transparent bg-orange-500 text-white",
+        medium: "border-transparent bg-yellow-500 text-white",
+        low: "border-transparent bg-green-500 text-white",
+        info: "border-transparent bg-zinc-500 text-white",
         // Status badges
         success: "border-transparent bg-white/10 text-white",
         warning: "border-transparent bg-yellow-500/20 text-yellow-400",

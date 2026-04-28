@@ -3,12 +3,43 @@ import bcrypt from 'bcrypt';
 import crypto from 'crypto';
 import User from '../models/User';
 import Program from '../models/Program';
+import Report from '../models/Report';
 import AppError from '../utils/AppError';
 import catchAsync from '../utils/catchAsync';
-import { sendEmail, inviteMemberTemplate, reportEmailTemplate } from '../services/emailService';
+import { sendEmail, inviteMemberTemplate, reportEmailTemplate, walletTopUpTemplate, otpTemplate, cardDeletionOtpTemplate } from '../services/emailService';
 import { suggestBountyAmount, generateReportMessage as geminiGenerateMessage } from '../services/geminiService';
 import { getIO } from '../services/socketService';
 import { uploadToCloudinary } from '../utils/cloudinary';
+import Stripe from 'stripe';
+import Transaction from '../models/Transaction';
+import redisClient from '../config/redis';
+
+const stripe = new Stripe(process.env.STRIPE_SECRET_KEY as string, {
+    apiVersion: '2026-04-22.dahlia',
+});
+
+const getOrCreateStripeCustomer = async (userId: string) => {
+    const user = await User.findById(userId);
+    if (!user) throw new Error('User not found');
+
+    if (user.stripeCustomerId) {
+        return user.stripeCustomerId;
+    }
+
+    const customer = await stripe.customers.create({
+        email: user.email,
+        name: user.name,
+        metadata: {
+            userId: user._id.toString()
+        }
+    });
+
+    user.stripeCustomerId = customer.id;
+    await user.save();
+
+    return customer.id;
+};
+
 
 
 // ... (inviteMember logic remains unchanged) ...
@@ -535,7 +566,7 @@ export const getCompanyReports = catchAsync(async (req: Request, res: Response, 
             program: prog?.title || 'Unknown Program',
             researcher: r.researcherId?.username || 'Unknown',
             submittedAt: r.createdAt,
-            bounty: 0 // Placeholder until bounty logic is solid
+            bounty: r.bounty || 0
         };
     });
 
@@ -980,20 +1011,35 @@ export const awardBounty = catchAsync(async (req: Request, res: Response, next: 
         return next(new AppError('Bounty can only be awarded for Resolved reports', 400));
     }
 
-    if (bounty === undefined || isNaN(Number(bounty)) || Number(bounty) <= 0) {
+    const bountyAmount = Number(bounty);
+    if (!bounty || isNaN(bountyAmount) || bountyAmount <= 0) {
         return next(new AppError('Invalid bounty amount', 400));
     }
 
-    (report as any).bounty = Number(bounty);
+    const fee = bountyAmount * 0.05;
+    const totalCost = bountyAmount + fee;
 
-    // Credit wallet
-    const User = (await import('../models/User')).default;
+    const company = await User.findById(req.user!.id);
+    if (!company) return next(new AppError('Company not found', 404));
+
+    if ((company.walletBalance || 0) < totalCost) {
+        return next(new AppError(`Insufficient balance. You need PKR ${totalCost.toFixed(2)} (bounty + 5% platform fee). Please top up your wallet.`, 400));
+    }
+
+    company.walletBalance = (company.walletBalance || 0) - totalCost;
+    await company.save();
+
     await User.findByIdAndUpdate(report.researcherId, {
-        $inc: {
-            walletBalance: (report as any).bounty,
-            reputationScore: Math.floor((report as any).bounty / 10)
-        }
+        $inc: { walletBalance: bountyAmount, reputationScore: Math.floor(bountyAmount / 10) }
     });
+
+    (report as any).bounty = bountyAmount;
+
+    await Transaction.insertMany([
+        { user: company._id, type: 'bounty_payment', amount: -totalCost, relatedReport: report._id, status: 'completed' },
+        { user: company._id, type: 'platform_fee', amount: fee, relatedReport: report._id, status: 'completed' },
+        { user: report.researcherId, type: 'bounty_earned', amount: bountyAmount, relatedReport: report._id, status: 'completed' }
+    ]);
 
     // Add Timeline Event
     const newComment = {
@@ -1061,4 +1107,320 @@ export const awardBounty = catchAsync(async (req: Request, res: Response, next: 
             console.error('Failed to send bounty email:', err);
         }
     })();
+});
+
+export const createTopUpIntent = catchAsync(async (req: Request, res: Response, next: NextFunction) => {
+    const { amount, paymentMethodId } = req.body;
+    if (!amount || isNaN(Number(amount)) || Number(amount) <= 0) {
+        return next(new AppError('Please provide a valid top-up amount', 400));
+    }
+    const pkrAmount = Math.round(Number(amount));
+    const customerId = await getOrCreateStripeCustomer(req.user!.id);
+
+    // Convert PKR to USD (Assuming 1 USD = 280 PKR for test environment)
+    const conversionRate = 280;
+    const usdAmountCents = Math.round((pkrAmount / conversionRate) * 100);
+
+    const intentOptions: any = {
+        amount: usdAmountCents, // Actual USD charge in cents
+        currency: 'usd',
+        customer: customerId,
+        metadata: { userId: req.user!.id, pkrAmount: pkrAmount.toString() },
+        payment_method_types: ['card']
+    };
+
+
+    if (paymentMethodId) {
+        intentOptions.payment_method = paymentMethodId;
+        intentOptions.off_session = false;
+        intentOptions.confirm = true;
+    }
+
+    const paymentIntent = await stripe.paymentIntents.create(intentOptions);
+
+    let newBalance;
+    if (paymentIntent.status === 'succeeded') {
+        const updatedUser = await User.findByIdAndUpdate(req.user!.id, { $inc: { walletBalance: pkrAmount } }, { new: true });
+        newBalance = updatedUser?.walletBalance;
+
+        await Transaction.create({
+            user: req.user!.id,
+            type: 'topup',
+            amount: pkrAmount,
+            currency: 'PKR',
+            stripePaymentIntentId: paymentIntent.id,
+            status: 'completed'
+        });
+
+        if (updatedUser) {
+            await sendEmail(updatedUser.email, 'Wallet Top-Up Successful', walletTopUpTemplate(updatedUser.name, pkrAmount, updatedUser.walletBalance));
+        }
+    }
+
+    res.status(200).json({ 
+        status: 'success', 
+        clientSecret: paymentIntent.client_secret,
+        requiresAction: paymentIntent.status === 'requires_action',
+        paymentIntentId: paymentIntent.id,
+        data: { newBalance }
+    });
+});
+
+
+
+export const confirmTopUp = catchAsync(async (req: Request, res: Response, next: NextFunction) => {
+    const { paymentIntentId } = req.body;
+    if (!paymentIntentId) return next(new AppError('Payment Intent ID is required', 400));
+
+    const paymentIntent = await stripe.paymentIntents.retrieve(paymentIntentId);
+    if (paymentIntent.status !== 'succeeded') return next(new AppError('Payment not successful', 400));
+
+    const existing = await Transaction.findOne({ stripePaymentIntentId: paymentIntentId });
+    if (existing) return next(new AppError('Payment already processed', 400));
+
+    const pkrAmount = parseInt(paymentIntent.metadata?.pkrAmount || '0') || (paymentIntent.amount / 100);
+
+    const updatedUser = await User.findByIdAndUpdate(req.user!.id, { $inc: { walletBalance: pkrAmount } }, { new: true });
+
+    const transaction = await Transaction.create({
+        user: req.user!.id,
+        type: 'topup',
+        amount: pkrAmount,
+        currency: 'PKR',
+        stripePaymentIntentId: paymentIntentId,
+        status: 'completed'
+    });
+
+    if (updatedUser) {
+        await sendEmail(updatedUser.email, 'Wallet Top-Up Successful', walletTopUpTemplate(updatedUser.name, pkrAmount, updatedUser.walletBalance));
+    }
+
+    res.status(200).json({ status: 'success', data: { transaction, newBalance: updatedUser?.walletBalance } });
+});
+
+export const getWalletTransactions = catchAsync(async (req: Request, res: Response, next: NextFunction) => {
+    const page = parseInt(req.query.page as string) || 1;
+    const limit = parseInt(req.query.limit as string) || 20;
+    const skip = (page - 1) * limit;
+
+    const [transactions, total] = await Promise.all([
+        Transaction.find({ user: req.user!.id })
+            .sort({ createdAt: -1 })
+            .skip(skip)
+            .limit(limit)
+            .populate('relatedReport', 'title'),
+        Transaction.countDocuments({ user: req.user!.id })
+    ]);
+
+    res.status(200).json({
+        status: 'success',
+        data: { transactions, total, page, totalPages: Math.ceil(total / limit) }
+    });
+});
+
+export const createSetupIntent = catchAsync(async (req: Request, res: Response, next: NextFunction) => {
+    const customerId = await getOrCreateStripeCustomer(req.user!.id);
+
+    const setupIntent = await stripe.setupIntents.create({
+        customer: customerId,
+        metadata: {
+            userId: req.user!.id
+        },
+        payment_method_types: ['card']
+    });
+
+
+    res.status(200).json({
+        status: 'success',
+        clientSecret: setupIntent.client_secret
+    });
+});
+
+export const getPaymentMethods = catchAsync(async (req: Request, res: Response, next: NextFunction) => {
+    const customerId = await getOrCreateStripeCustomer(req.user!.id);
+
+    const paymentMethods = await stripe.paymentMethods.list({
+        customer: customerId,
+        type: 'card',
+    });
+
+    res.status(200).json({
+        status: 'success',
+        data: {
+            paymentMethods: paymentMethods.data
+        }
+    });
+});
+
+/** Request OTP to authorize payment method deletion */
+export const requestPaymentMethodOtp = catchAsync(async (req: Request, res: Response, next: NextFunction) => {
+    const user = await User.findById(req.user!._id);
+    if (!user) return next(new AppError('User not found', 404));
+
+    const otp = Math.floor(100000 + Math.random() * 900000).toString();
+    await redisClient.set(`payment_otp:${user.email}`, otp, 'EX', 600);
+
+    try {
+        await sendEmail(user.email, 'Payment Method Removal - BugChase', cardDeletionOtpTemplate(otp));
+    } catch (error) {
+        console.error('Email Send Error:', error);
+        return next(new AppError('There was an error sending the email. Try again later!', 500));
+    }
+
+    res.status(200).json({ status: 'success', message: 'Verification code sent to your email' });
+});
+
+/** Verify OTP for payment method deletion */
+export const verifyPaymentMethodOtp = catchAsync(async (req: Request, res: Response, next: NextFunction) => {
+    const { otp } = req.body;
+    if (!otp) return next(new AppError('OTP is required', 400));
+
+    const user = await User.findById(req.user!._id);
+    if (!user) return next(new AppError('User not found', 404));
+
+    const storedOtp = await redisClient.get(`payment_otp:${user.email}`);
+    if (!storedOtp || storedOtp !== otp) {
+        return next(new AppError('Invalid or expired verification code', 400));
+    }
+
+    await redisClient.del(`payment_otp:${user.email}`);
+    res.status(200).json({ status: 'success', message: 'Identity verified successfully' });
+});
+
+export const detachPaymentMethod = catchAsync(async (req: Request, res: Response, next: NextFunction) => {
+    const { paymentMethodId } = req.params;
+
+    if (!paymentMethodId) {
+        return next(new AppError('Payment Method ID is required', 400));
+    }
+
+    // Security check: verify the PM belongs to this company's customer
+    const customerId = await getOrCreateStripeCustomer(req.user!.id);
+    const pm = await stripe.paymentMethods.retrieve(paymentMethodId);
+    if (pm.customer !== customerId) {
+        return next(new AppError('You do not have permission to remove this card', 403));
+    }
+
+    await stripe.paymentMethods.detach(paymentMethodId);
+
+    res.status(200).json({
+        status: 'success',
+        message: 'Payment method detached successfully'
+    });
+});
+
+export const getCompanyAnalytics = catchAsync(async (req: Request, res: Response, next: NextFunction) => {
+    const companyId = req.user!.parentCompany || req.user!.id;
+    
+    const programs = await Program.find({ companyId });
+    const programIds = programs.map(p => p._id.toString());
+    
+    if (programIds.length === 0) {
+        return res.status(200).json({
+            status: 'success',
+            data: {
+                stats: {
+                    totalReports: 0,
+                    openReports: 0,
+                    bountiesPaid: 0,
+                    researchers: 0
+                },
+                severityData: [],
+                trendsData: [],
+                recentReports: []
+            }
+        });
+    }
+
+    const reports = await Report.find({ programId: { $in: programIds } }).sort({ createdAt: -1 });
+    
+    let totalReports = reports.length;
+    let openReports = 0;
+    let bountiesPaid = 0;
+    const researchersSet = new Set<string>();
+    
+    const severityCount = {
+        Critical: 0,
+        High: 0,
+        Medium: 0,
+        Low: 0,
+        None: 0
+    };
+    
+    const trendsMap: Record<string, { reports: number, bounties: number }> = {};
+    
+    reports.forEach(report => {
+        if (!['Resolved', 'Paid', 'Closed', 'Spam', 'Duplicate', 'NA', 'Out-of-Scope'].includes(report.status)) {
+            openReports++;
+        }
+        
+        if (report.bounty) {
+            bountiesPaid += report.bounty;
+        }
+        
+        if (report.researcherId) {
+            researchersSet.add(report.researcherId.toString());
+        }
+        
+        if (report.severity && severityCount[report.severity as keyof typeof severityCount] !== undefined) {
+            severityCount[report.severity as keyof typeof severityCount]++;
+        }
+        
+        // Month key like "2024-03"
+        const date = new Date((report as any).createdAt);
+        const monthKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
+        
+        if (!trendsMap[monthKey]) {
+            trendsMap[monthKey] = { reports: 0, bounties: 0 };
+        }
+        trendsMap[monthKey].reports++;
+        if (report.bounty) trendsMap[monthKey].bounties += report.bounty;
+    });
+    
+    const severityData = [
+        { name: 'Critical', count: severityCount.Critical, color: '#ef4444' },
+        { name: 'High', count: severityCount.High, color: '#f97316' },
+        { name: 'Medium', count: severityCount.Medium, color: '#eab308' },
+        { name: 'Low', count: severityCount.Low, color: '#22c55e' }
+    ];
+    
+    const sortedMonths = Object.keys(trendsMap).sort();
+    const trendsData = sortedMonths.map(month => {
+        // e.g. "2024-03"
+        const year = month.split('-')[0];
+        const monthIndex = parseInt(month.split('-')[1]) - 1;
+        const d = new Date(parseInt(year), monthIndex, 1);
+        const monthName = d.toLocaleString('default', { month: 'short' });
+        return {
+            month: monthName,
+            week: monthName, 
+            reports: trendsMap[month].reports,
+            amount: trendsMap[month].bounties
+        };
+    });
+    
+    const recentReports = reports.slice(0, 5).map(r => ({
+        id: r._id,
+        title: r.title,
+        severity: r.severity.toLowerCase(),
+        status: r.status.toLowerCase(),
+        createdAt: (r as any).createdAt
+    }));
+    
+    res.status(200).json({
+        status: 'success',
+        data: {
+            stats: {
+                totalReports,
+                openReports,
+                bountiesPaid,
+                researchers: researchersSet.size,
+                reportsTrend: 0,
+                bountiesTrend: 0
+            },
+            severityData,
+            trendsData,
+            recentReports
+        }
+    });
 });

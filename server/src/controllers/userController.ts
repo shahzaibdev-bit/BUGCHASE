@@ -24,6 +24,15 @@ export const getPublicProfile = catchAsync(async (req: Request, res: Response, n
   });
 });
 
+import Stripe from 'stripe';
+import Transaction from '../models/Transaction';
+import { sendEmail, payoutSuccessTemplate, otpTemplate, cardDeletionOtpTemplate } from '../services/emailService';
+import redisClient from '../config/redis';
+
+const stripe = new Stripe(process.env.STRIPE_SECRET_KEY as string, {
+    apiVersion: '2023-10-16' as any,
+});
+
 /** Return the current authenticated user's own profile */
 export const getMe = catchAsync(async (req: Request, res: Response, next: NextFunction) => {
   const user = await User.findById(req.user!._id).select('-password');
@@ -49,14 +58,35 @@ export const getWalletData = catchAsync(async (req: Request, res: Response, next
   .sort({ updatedAt: -1 })
   .limit(50);
 
-  const transactions = resolvedReports.map((r: any) => ({
+  const bountyTransactions = resolvedReports.map((r: any) => ({
       id: `BNT-${String(r._id).slice(-6).toUpperCase()}`,
       date: new Date(r.updatedAt).toLocaleString(),
       desc: `Security Reward: ${r.title}`,
       amount: `+${r.bounty.toLocaleString()}`,
       status: 'CLEARED',
+      timestamp: new Date(r.updatedAt).getTime(),
       reportId: r._id
   }));
+
+  // Fetch real withdrawal transactions
+  const withdrawalRecords = await Transaction.find({
+      user: req.user!._id,
+      type: 'withdrawal'
+  }).sort({ createdAt: -1 }).limit(50);
+
+  const withdrawalTransactions = withdrawalRecords.map(w => ({
+      id: `WDR-${String(w._id).slice(-6).toUpperCase()}`,
+      date: new Date(w.createdAt).toLocaleString(),
+      desc: w.description || 'Wallet Withdrawal',
+      amount: `-${w.amount.toLocaleString()}`,
+      status: w.status === 'completed' ? 'CLEARED' : 'PENDING',
+      timestamp: new Date(w.createdAt).getTime()
+  }));
+
+  // Merge and sort
+  const transactions = [...bountyTransactions, ...withdrawalTransactions]
+      .sort((a, b) => b.timestamp - a.timestamp)
+      .slice(0, 50);
 
   res.status(200).json({
       status: 'success',
@@ -66,6 +96,209 @@ export const getWalletData = catchAsync(async (req: Request, res: Response, next
           transactions
       }
   });
+});
+
+/** Setup Payout Method via Stripe SetupIntent */
+export const setupPayoutMethod = catchAsync(async (req: Request, res: Response, next: NextFunction) => {
+    const user = await User.findById(req.user!._id);
+    if (!user) return next(new AppError('User not found', 404));
+
+    let customerId = user.stripeCustomerId;
+
+    if (!customerId) {
+        const customer = await stripe.customers.create({
+            email: user.email,
+            name: user.name,
+            metadata: { userId: user.id }
+        });
+        customerId = customer.id;
+        user.stripeCustomerId = customerId;
+        await user.save({ validateBeforeSave: false });
+    }
+
+    const setupIntent = await stripe.setupIntents.create({
+        customer: customerId,
+        payment_method_types: ['card'],
+        usage: 'off_session'
+    });
+
+    res.status(200).json({
+        status: 'success',
+        clientSecret: setupIntent.client_secret
+    });
+});
+
+/** List all attached payout methods for the user */
+export const getPayoutMethods = catchAsync(async (req: Request, res: Response, next: NextFunction) => {
+    const user = await User.findById(req.user!._id);
+    if (!user) return next(new AppError('User not found', 404));
+
+    if (!user.stripeCustomerId) {
+        return res.status(200).json({ status: 'success', data: { methods: [] } });
+    }
+
+    const paymentMethods = await stripe.paymentMethods.list({
+        customer: user.stripeCustomerId,
+        type: 'card'
+    });
+
+    const formattedMethods = paymentMethods.data.map(pm => ({
+        id: pm.id,
+        brand: pm.card?.brand,
+        last4: pm.card?.last4,
+        expMonth: pm.card?.exp_month,
+        expYear: pm.card?.exp_year,
+        isDefault: false
+    }));
+
+    res.status(200).json({
+        status: 'success',
+        data: { methods: formattedMethods }
+    });
+});
+
+/** Request a withdrawal to a specific payment method */
+export const requestPayout = catchAsync(async (req: Request, res: Response, next: NextFunction) => {
+    const { amount, paymentMethodId } = req.body;
+    const withdrawAmount = Number(amount);
+
+    if (!withdrawAmount || withdrawAmount <= 0) {
+        return next(new AppError('Invalid withdrawal amount', 400));
+    }
+
+    const user = await User.findById(req.user!._id);
+    if (!user) return next(new AppError('User not found', 404));
+
+    if ((user.walletBalance || 0) < withdrawAmount) {
+        return next(new AppError('Insufficient wallet balance', 400));
+    }
+
+    if (!paymentMethodId || !user.stripeCustomerId) {
+        return next(new AppError('Valid payment method required', 400));
+    }
+
+    // Verify payment method belongs to user
+    try {
+        const pm = await stripe.paymentMethods.retrieve(paymentMethodId);
+        if (pm.customer !== user.stripeCustomerId) {
+            return next(new AppError('Payment method does not belong to you', 403));
+        }
+    } catch (e) {
+        return next(new AppError('Invalid payment method', 400));
+    }
+
+    // Deduct balance securely
+    const updatedUser = await User.findOneAndUpdate(
+        { _id: user._id, walletBalance: { $gte: withdrawAmount } },
+        { $inc: { walletBalance: -withdrawAmount } },
+        { new: true }
+    );
+
+    if (!updatedUser) {
+        return next(new AppError('Transaction failed due to insufficient funds or concurrent update', 400));
+    }
+
+    // Create withdrawal transaction
+    await Transaction.create({
+        user: updatedUser._id,
+        type: 'withdrawal',
+        amount: withdrawAmount,
+        currency: 'PKR',
+        status: 'completed', // Simulated success
+        description: 'Withdrawal to connected card ending in ' + paymentMethodId.slice(-4),
+        stripePaymentMethodId: paymentMethodId
+    });
+
+    // Send email notification
+    try {
+        await sendEmail(
+            updatedUser.email, 
+            'BugChase Wallet Withdrawal Processed', 
+            payoutSuccessTemplate(updatedUser.name, withdrawAmount, updatedUser.walletBalance || 0, 'Card ending in ' + paymentMethodId.slice(-4))
+        );
+    } catch (err) {
+        console.error('Failed to send withdrawal email:', err);
+        // Do not fail the request if email fails, funds are already withdrawn
+    }
+
+    res.status(200).json({
+        status: 'success',
+        message: 'Withdrawal processed successfully',
+        data: { newBalance: updatedUser.walletBalance }
+    });
+});
+
+/** Request OTP to view/manage payment methods */
+export const requestPayoutMethodOtp = catchAsync(async (req: Request, res: Response, next: NextFunction) => {
+    const user = await User.findById(req.user!._id);
+    if (!user) return next(new AppError('User not found', 404));
+
+    // Generate 6-digit OTP
+    const otp = Math.floor(100000 + Math.random() * 900000).toString();
+
+    // Store in Redis with 10 min expiry
+    await redisClient.set(`payout_otp:${user.email}`, otp, 'EX', 600);
+
+    // Send Email
+    try {
+        await sendEmail(user.email, 'Payment Method Removal - BugChase', cardDeletionOtpTemplate(otp));
+    } catch (error) {
+        console.error('Email Send Error:', error);
+        return next(new AppError('There was an error sending the email. Try again later!', 500));
+    }
+
+    res.status(200).json({
+        status: 'success',
+        message: 'Verification code sent to your email'
+    });
+});
+
+/** Verify OTP to unlock payment method details */
+export const verifyPayoutMethodOtp = catchAsync(async (req: Request, res: Response, next: NextFunction) => {
+    const { otp } = req.body;
+    if (!otp) return next(new AppError('OTP is required', 400));
+
+    const user = await User.findById(req.user!._id);
+    if (!user) return next(new AppError('User not found', 404));
+
+    const storedOtp = await redisClient.get(`payout_otp:${user.email}`);
+
+    if (!storedOtp || storedOtp !== otp) {
+        return next(new AppError('Invalid or expired verification code', 400));
+    }
+
+    // Clear OTP upon success
+    await redisClient.del(`payout_otp:${user.email}`);
+
+    res.status(200).json({
+        status: 'success',
+        message: 'Identity verified successfully'
+    });
+});
+
+/** Remove a payment method from Stripe */
+export const removePayoutMethod = catchAsync(async (req: Request, res: Response, next: NextFunction) => {
+    const { id } = req.params;
+    if (!id) return next(new AppError('Payment method ID is required', 400));
+
+    const user = await User.findById(req.user!._id);
+    if (!user || !user.stripeCustomerId) return next(new AppError('User or customer not found', 404));
+
+    try {
+        const pm = await stripe.paymentMethods.retrieve(id);
+        if (pm.customer !== user.stripeCustomerId) {
+            return next(new AppError('You do not have permission to remove this card', 403));
+        }
+
+        await stripe.paymentMethods.detach(id);
+    } catch (error: any) {
+        return next(new AppError(error.message || 'Failed to remove payment method', 400));
+    }
+
+    res.status(200).json({
+        status: 'success',
+        message: 'Payment method removed successfully'
+    });
 });
 
 

@@ -19,6 +19,8 @@ export interface User {
   companyRole?: 'admin' | 'manager' | 'viewer' | 'custom';
   permissions?: string[];
   status?: 'Active' | 'Suspended' | 'Banned';
+  walletBalance?: number;
+  reputationScore?: number;
 }
 
 export interface TeamMember extends User {
