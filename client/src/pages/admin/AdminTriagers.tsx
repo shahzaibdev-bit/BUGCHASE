@@ -21,6 +21,7 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { TriagerOnboardingModal } from '@/components/admin/TriagerOnboardingModal';
 import { InverseSpotlightCard } from '@/components/InverseSpotlightCard';
 import { API_URL } from '@/config';
+import { useNavigate } from 'react-router-dom';
 
 // Expertise Icon Map
 const EXPERTISE_ICONS: Record<string, React.ReactNode> = {
@@ -76,6 +77,7 @@ const MOCK_TRIAGERS = [
 ];
 
 export default function AdminTriagers() {
+  const navigate = useNavigate();
   const [isOnboardingOpen, setIsOnboardingOpen] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const [triagers, setTriagers] = useState<any[]>([]);
@@ -154,7 +156,11 @@ export default function AdminTriagers() {
              <div className="text-center py-10 font-mono text-zinc-500">No personnel found.</div>
          ) : (
              filteredTriagers.map((triager) => (
-             <InverseSpotlightCard key={triager._id} className="p-0 overflow-hidden bg-white dark:bg-black/40 border border-zinc-200 dark:border-zinc-800 rounded-2xl">
+            <InverseSpotlightCard
+              key={triager._id}
+              className="p-0 overflow-hidden bg-white dark:bg-black/40 border border-zinc-200 dark:border-zinc-800 rounded-2xl cursor-pointer"
+              onClick={() => navigate(`/admin/triagers/${triager._id}`)}
+            >
                  <div className="p-4 flex flex-col md:flex-row items-start md:items-center gap-6">
                      {/* Identity */}
                     <div className="flex items-center gap-4 min-w-[250px]">
@@ -200,7 +206,15 @@ export default function AdminTriagers() {
                              <div className="text-xs text-muted-foreground font-mono uppercase">Reports Closed</div>
                              <div className="font-bold text-xl text-foreground font-mono">{triager.reportsProcessed || 0}</div>
                          </div>
-                         <Button variant="ghost" size="icon" className="hover:bg-zinc-100 dark:hover:bg-zinc-800">
+                         <Button
+                           variant="ghost"
+                           size="icon"
+                           className="hover:bg-zinc-100 dark:hover:bg-zinc-800"
+                           onClick={(e) => {
+                             e.stopPropagation();
+                             navigate(`/admin/triagers/${triager._id}`);
+                           }}
+                         >
                              <MoreVertical className="h-4 w-4 text-zinc-500" />
                          </Button>
                      </div>

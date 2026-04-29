@@ -38,10 +38,12 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 Object.defineProperty(exports, "__esModule", { value: true });
 const express_1 = __importDefault(require("express"));
 const dotenv_1 = __importDefault(require("dotenv"));
+const mongoose_1 = __importDefault(require("mongoose"));
 const cors_1 = __importDefault(require("cors"));
 const helmet_1 = __importDefault(require("helmet"));
 const cookie_parser_1 = __importDefault(require("cookie-parser"));
 const db_1 = __importDefault(require("./config/db"));
+const programModerationService_1 = require("./services/programModerationService");
 const error_1 = __importDefault(require("./middlewares/error"));
 const AppError_1 = __importDefault(require("./utils/AppError"));
 const authRoutes_1 = __importDefault(require("./routes/authRoutes"));
@@ -51,19 +53,34 @@ const companyRoutes_1 = __importDefault(require("./routes/companyRoutes"));
 const adminRoutes_1 = __importDefault(require("./routes/adminRoutes"));
 const triagerRoutes_1 = __importDefault(require("./routes/triagerRoutes"));
 const programRoutes_1 = __importDefault(require("./routes/programRoutes"));
+const publicRoutes_1 = __importDefault(require("./routes/publicRoutes"));
 const rateLimit_1 = require("./middlewares/rateLimit");
 // Load env vars
 dotenv_1.default.config(); // Reload env
 // Connect to Database
 (0, db_1.default)();
+const PROGRAM_BAN_CHECK_MS = 60 * 1000;
+setInterval(() => {
+    if (mongoose_1.default.connection.readyState === 1) {
+        (0, programModerationService_1.releaseExpiredProgramBans)().catch((err) => console.error('releaseExpiredProgramBans', err));
+    }
+}, PROGRAM_BAN_CHECK_MS);
 const app = (0, express_1.default)();
 // Trust Proxy for Vercel
 app.set('trust proxy', 1);
 // Set security HTTP headers
 app.use((0, helmet_1.default)());
 // Cross-Origin Resource Sharing
+const allowedOrigins = [
+    'http://localhost:3000',
+    'http://localhost:5173',
+    'https://bugchase-client.vercel.app'
+];
+if (process.env.CLIENT_URL && !allowedOrigins.includes(process.env.CLIENT_URL)) {
+    allowedOrigins.push(process.env.CLIENT_URL);
+}
 app.use((0, cors_1.default)({
-    origin: process.env.CLIENT_URL,
+    origin: allowedOrigins,
     credentials: true,
 }));
 // Body parser, reading data from body into req.body
@@ -84,6 +101,8 @@ app.use('/api/company', companyRoutes_1.default);
 app.use('/api/admin', adminRoutes_1.default);
 app.use('/api/triager', triagerRoutes_1.default);
 app.use('/api/programs', programRoutes_1.default);
+const strictLimiter = (0, rateLimit_1.rateLimiter)(10, 15 * 60); // 10 requests per 15 minutes
+app.use('/api/public', strictLimiter, publicRoutes_1.default);
 // Handle Unhandled Routes
 app.all(/(.*)/, (req, res, next) => {
     next(new AppError_1.default(`Can't find ${req.originalUrl} on this server!`, 404));

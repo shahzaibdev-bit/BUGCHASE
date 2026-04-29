@@ -65,6 +65,14 @@ export const StepReview = ({ data, updateData }: StepReviewProps) => {
                     <p className="text-zinc-900 dark:text-white font-bold">{data.title || '-'}</p>
                 </div>
 
+                {/* Vulnerable Endpoint (Rich Text) */}
+                <div className="p-6">
+                    <h4 className="text-xs font-mono font-bold text-zinc-500 uppercase mb-2">Vulnerable endpoint</h4>
+                    <div className="text-zinc-700 dark:text-zinc-300 leading-relaxed bg-white dark:bg-black/20 p-4 rounded-lg border border-zinc-200 dark:border-white/5 font-mono text-sm break-words">
+                        {data.vulnerableEndpoint || '-'}
+                    </div>
+                </div>
+
                 {/* Impact (Rich Text) */}
                 <div className="p-6">
                     <h4 className="text-xs font-mono font-bold text-zinc-500 uppercase mb-2">Impact</h4>

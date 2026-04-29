@@ -16,8 +16,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { Input } from '@/components/ui/input';
 import { AlertTriangle, Ban } from 'lucide-react';
+import CyberpunkEditor from '@/components/ui/CyberpunkEditor';
 
 interface UserActionDialogProps {
   isOpen: boolean;
@@ -53,9 +53,15 @@ export function UserActionDialog({ isOpen, onClose, onConfirm, title, actionType
 
   const reasons = actionType === 'ban' ? BAN_REASONS : SUSPENSION_REASONS;
   const isDanger = actionType === 'ban';
+  const htmlToText = (html: string) => {
+    if (!html) return '';
+    const container = document.createElement('div');
+    container.innerHTML = html;
+    return (container.textContent || container.innerText || '').replace(/\u00a0/g, ' ').trim();
+  };
 
   const handleConfirm = async () => {
-    const finalReason = reason === 'Other' ? customReason : reason;
+    const finalReason = reason === 'Other' ? htmlToText(customReason) : reason;
     if (!finalReason) return;
     
     setIsSubmitting(true);
@@ -68,7 +74,7 @@ export function UserActionDialog({ isOpen, onClose, onConfirm, title, actionType
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="sm:max-w-[425px] bg-zinc-950 border-zinc-800 text-zinc-100">
+      <DialogContent className="sm:max-w-[425px]">
         <DialogHeader>
           <div className="flex items-center gap-2 mb-2">
             <div className={`p-2 rounded-full ${isDanger ? 'bg-red-500/10' : 'bg-yellow-500/10'}`}>
@@ -82,22 +88,22 @@ export function UserActionDialog({ isOpen, onClose, onConfirm, title, actionType
               {title}
             </DialogTitle>
           </div>
-          <DialogDescription className="text-zinc-400">
-            You are about to <strong>{actionType}</strong> the user <span className="text-white font-mono">{userName}</span>.
+          <DialogDescription>
+            You are about to <strong>{actionType}</strong> the user <span className="text-foreground font-mono">{userName}</span>.
             This action will restrict their access. Please provide a reason.
           </DialogDescription>
         </DialogHeader>
 
         <div className="grid gap-4 py-4">
           <div className="space-y-2">
-            <label className="text-xs font-mono uppercase text-zinc-500 tracking-wider">Reason</label>
+            <label className="text-xs font-mono uppercase text-muted-foreground tracking-wider">Reason</label>
             <Select value={reason} onValueChange={setReason}>
-              <SelectTrigger className="bg-zinc-900/50 border-zinc-800 focus:ring-0 focus:ring-offset-0 font-mono text-sm">
+              <SelectTrigger className="font-mono text-sm">
                 <SelectValue placeholder="Select a reason" />
               </SelectTrigger>
-              <SelectContent className="bg-zinc-900 border-zinc-800">
+              <SelectContent>
                 {reasons.map((r) => (
-                  <SelectItem key={r} value={r} className="font-mono text-sm focus:bg-zinc-800 focus:text-zinc-100">
+                  <SelectItem key={r} value={r} className="font-mono text-sm">
                     {r}
                   </SelectItem>
                 ))}
@@ -107,13 +113,14 @@ export function UserActionDialog({ isOpen, onClose, onConfirm, title, actionType
 
           {reason === 'Other' && (
             <div className="space-y-2 animate-in fade-in slide-in-from-top-2">
-              <label className="text-xs font-mono uppercase text-zinc-500 tracking-wider">Specific Reason</label>
-              <Input
-                value={customReason}
-                onChange={(e) => setCustomReason(e.target.value)}
-                placeholder="Enter specific reason..."
-                className="bg-zinc-900/50 border-zinc-800 focus-visible:ring-0 focus-visible:ring-offset-0 font-mono text-sm"
-              />
+              <label className="text-xs font-mono uppercase text-muted-foreground tracking-wider">Specific Reason</label>
+              <div className="rounded-lg border border-zinc-200 dark:border-zinc-800 overflow-hidden">
+                <CyberpunkEditor
+                  content={customReason}
+                  onChange={setCustomReason}
+                  placeholder="Enter specific reason..."
+                />
+              </div>
             </div>
           )}
         </div>
@@ -122,7 +129,7 @@ export function UserActionDialog({ isOpen, onClose, onConfirm, title, actionType
           <Button
             variant="ghost"
             onClick={onClose}
-            className="hover:bg-zinc-900 hover:text-white font-mono uppercase text-xs"
+            className="font-mono uppercase text-xs"
           >
             Cancel
           </Button>

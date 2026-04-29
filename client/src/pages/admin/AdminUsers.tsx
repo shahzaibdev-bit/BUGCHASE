@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
-import { Search, Filter, MoreVertical, Ban, CheckCircle, Mail, Shield, User, AlertTriangle, Building2 } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
+import { Search, Filter, MoreVertical, Ban, CheckCircle, Mail, Shield, User, AlertTriangle, Building2, Trash2 } from 'lucide-react';
 import { GlassCard } from '@/components/ui/glass-card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -21,6 +22,15 @@ import {
   DropdownMenuTrigger,
   DropdownMenuSeparator,
 } from '@/components/ui/dropdown-menu';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
+import CyberpunkEditor from '@/components/ui/CyberpunkEditor';
 import { UserActionDialog } from '@/components/admin/UserActionDialog';
 import { toast } from 'sonner';
 import { API_URL } from '@/config';
@@ -42,6 +52,7 @@ const statusColors: Record<string, string> = {
 };
 
 export default function AdminUsers() {
+  const navigate = useNavigate();
   const [users, setUsers] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
@@ -58,6 +69,16 @@ export default function AdminUsers() {
     user: null,
     type: 'suspend'
   });
+  const [emailDialog, setEmailDialog] = useState<{
+    isOpen: boolean;
+    user: any | null;
+  }>({
+    isOpen: false,
+    user: null,
+  });
+  const [emailSubject, setEmailSubject] = useState('');
+  const [emailMessage, setEmailMessage] = useState('');
+  const [isSendingEmail, setIsSendingEmail] = useState(false);
 
   const fetchUsers = async () => {
     // ... same content ...
@@ -71,6 +92,7 @@ export default function AdminUsers() {
             setUsers(data.data.users.map((u: any) => ({
                 id: u._id,
                 name: u.name,
+                username: u.username,
                 email: u.email,
                 role: u.role,
                 status: u.status,
@@ -127,6 +149,75 @@ export default function AdminUsers() {
       });
   };
 
+  const openEmailDialog = (user: any) => {
+      setEmailDialog({ isOpen: true, user });
+      setEmailSubject(`Important account notice for ${user.name}`);
+      setEmailMessage(`<p>Hello ${user.name},</p><p>This is an important message from the BugChase admin team.</p><p>Regards,<br/>BugChase Admin Team</p>`);
+  };
+
+  const handleSendEmail = async () => {
+      if (!emailDialog.user) return;
+      const container = document.createElement('div');
+      container.innerHTML = emailMessage || '';
+      const emailBodyText = (container.textContent || container.innerText || '').replace(/\u00a0/g, ' ').trim();
+      if (!emailSubject.trim() || !emailBodyText) {
+          toast.error('Subject and message are required');
+          return;
+      }
+      try {
+          setIsSendingEmail(true);
+          const token = localStorage.getItem('token');
+          const res = await fetch(`${API_URL}/admin/users/${emailDialog.user.id}/email`, {
+              method: 'POST',
+              headers: {
+                  'Content-Type': 'application/json',
+                  'Authorization': `Bearer ${token}`
+              },
+              body: JSON.stringify({
+                  subject: emailSubject.trim(),
+                  message: emailBodyText,
+              })
+          });
+          const payload = await res.json();
+          if (!res.ok) throw new Error(payload.message || 'Failed to send email');
+          toast.success('Email sent successfully');
+          setEmailDialog({ isOpen: false, user: null });
+      } catch (error: any) {
+          toast.error(error.message || 'Failed to send email');
+      } finally {
+          setIsSendingEmail(false);
+      }
+  };
+
+  const handleViewPublicProfile = (user: any) => {
+      const username = String(user.username || '').trim();
+      if (!username) {
+          toast.error('This user has no public username/profile yet');
+          return;
+      }
+      window.open(`/h/${encodeURIComponent(username)}`, '_blank');
+  };
+
+  const handleDeleteUser = async (userId: string, userName: string) => {
+      const confirmed = window.confirm(`Delete ${userName} permanently from database? This action cannot be undone.`);
+      if (!confirmed) return;
+      try {
+          const token = localStorage.getItem('token');
+          const res = await fetch(`${API_URL}/admin/users/${userId}`, {
+              method: 'DELETE',
+              headers: { 'Authorization': `Bearer ${token}` }
+          });
+          const payload = await res.json();
+          if (!res.ok) {
+              throw new Error(payload.message || 'Failed to delete user');
+          }
+          setUsers(prev => prev.filter(u => u.id !== userId));
+          toast.success('User deleted permanently');
+      } catch (error: any) {
+          toast.error(error.message || 'Failed to delete user');
+      }
+  };
+
   const handleConfirmAction = async (reason: string) => {
       if (!actionDialog.user) return;
       const status = actionDialog.type === 'suspend' ? 'Suspended' : 'Banned';
@@ -140,8 +231,8 @@ export default function AdminUsers() {
     // ... same filter logic ...
     const matchesSearch = (user.name || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
                          (user.email || '').toLowerCase().includes(searchTerm.toLowerCase());
-    const matchesRole = roleFilter === 'all' || user.role === roleFilter;
-    const matchesStatus = statusFilter === 'all' || (user.status || 'Active') === statusFilter; 
+    const matchesRole = roleFilter === 'all' || (user.role || '').toLowerCase() === roleFilter.toLowerCase();
+    const matchesStatus = statusFilter === 'all' || (user.status || 'Active').toLowerCase() === statusFilter.toLowerCase(); 
     return matchesSearch && matchesRole && matchesStatus;
   });
 
@@ -205,13 +296,13 @@ export default function AdminUsers() {
                                 </Button>
                               </DropdownMenuTrigger>
                               <DropdownMenuContent align="end" className="bg-background border-border">
-                                <DropdownMenuItem className="focus:bg-muted font-mono text-xs" onClick={() => window.open(`mailto:${user.email}`)}>
+                                <DropdownMenuItem className="focus:bg-muted font-mono text-xs" onClick={() => openEmailDialog(user)}>
                                   <Mail className="h-3 w-3 mr-2" />
-                                  SEND_EMAIL
+                                  Send Email
                                 </DropdownMenuItem>
-                                <DropdownMenuItem className="focus:bg-muted font-mono text-xs" onClick={() => window.open(`/p/${user.name}`, '_blank')}>
+                                <DropdownMenuItem className="focus:bg-muted font-mono text-xs" onClick={() => handleViewPublicProfile(user)}>
                                   <User className="h-3 w-3 mr-2" />
-                                  VIEW_PROFILE
+                                  View Profile
                                 </DropdownMenuItem>
                                 <DropdownMenuSeparator className="bg-border" />
                                 {(!user.status || user.status.toLowerCase() === 'active') && (
@@ -220,7 +311,7 @@ export default function AdminUsers() {
                                     onClick={() => openActionDialog(user, 'suspend')}
                                   >
                                     <AlertTriangle className="h-3 w-3 mr-2" />
-                                    SUSPEND_USER
+                                    Suspend User
                                   </DropdownMenuItem>
                                 )}
                                 {user.status?.toLowerCase() !== 'banned' && (
@@ -229,7 +320,7 @@ export default function AdminUsers() {
                                     onClick={() => openActionDialog(user, 'ban')}
                                   >
                                     <Ban className="h-3 w-3 mr-2" />
-                                    BAN_USER
+                                    Ban User
                                   </DropdownMenuItem>
                                 )}
                                 {user.status?.toLowerCase() === 'suspended' && (
@@ -238,7 +329,7 @@ export default function AdminUsers() {
                                     onClick={() => handleUpdateStatus(user.id, 'Active')}
                                   >
                                     <CheckCircle className="h-3 w-3 mr-2" />
-                                    UNSUSPEND_USER
+                                    Unsuspend User
                                   </DropdownMenuItem>
                                 )}
                                 {user.status?.toLowerCase() === 'banned' && (
@@ -247,9 +338,17 @@ export default function AdminUsers() {
                                     onClick={() => handleUpdateStatus(user.id, 'Active')}
                                   >
                                     <CheckCircle className="h-3 w-3 mr-2" />
-                                    UNBAN_USER
+                                    Unban User
                                   </DropdownMenuItem>
                                 )}
+                                <DropdownMenuSeparator className="bg-border" />
+                                <DropdownMenuItem
+                                  className="text-red-600 focus:bg-red-500/10 focus:text-red-600 font-mono text-xs"
+                                  onClick={() => handleDeleteUser(user.id, user.name)}
+                                >
+                                  <Trash2 className="h-3 w-3 mr-2" />
+                                  Delete User
+                                </DropdownMenuItem>
                               </DropdownMenuContent>
                             </DropdownMenu>
                          </div>
@@ -316,7 +415,7 @@ export default function AdminUsers() {
                             )}
                           </div>
                           <div>
-                            <p className="font-medium text-foreground font-mono">{user.name}</p>
+                            <button className="font-medium text-foreground font-mono text-left hover:underline" onClick={() => navigate(`/admin/users/${user.id}`)}>{user.name}</button>
                             <p className="text-sm text-muted-foreground font-mono text-xs">{user.email}</p>
                           </div>
                         </div>
@@ -346,13 +445,13 @@ export default function AdminUsers() {
                           </DropdownMenuTrigger>
                           <DropdownMenuContent align="end" className="bg-background border-border">
                             {/* ... Common actions ... */}
-                            <DropdownMenuItem className="focus:bg-muted font-mono text-xs" onClick={() => window.open(`mailto:${user.email}`)}>
+                            <DropdownMenuItem className="focus:bg-muted font-mono text-xs" onClick={() => openEmailDialog(user)}>
                               <Mail className="h-3 w-3 mr-2" />
-                              SEND_EMAIL
+                              Send Email
                             </DropdownMenuItem>
-                            <DropdownMenuItem className="focus:bg-muted font-mono text-xs" onClick={() => window.open(`/p/${user.name}`, '_blank')}>
+                            <DropdownMenuItem className="focus:bg-muted font-mono text-xs" onClick={() => handleViewPublicProfile(user)}>
                               <User className="h-3 w-3 mr-2" />
-                              VIEW_PROFILE
+                              View Profile
                             </DropdownMenuItem>
                             <DropdownMenuSeparator className="bg-border" />
                             {(!user.status || user.status.toLowerCase() === 'active') && (
@@ -361,7 +460,7 @@ export default function AdminUsers() {
                                 onClick={() => openActionDialog(user, 'suspend')}
                               >
                                 <AlertTriangle className="h-3 w-3 mr-2" />
-                                SUSPEND_USER
+                                Suspend User
                               </DropdownMenuItem>
                             )}
                             {user.status?.toLowerCase() !== 'banned' && (
@@ -370,7 +469,7 @@ export default function AdminUsers() {
                                 onClick={() => openActionDialog(user, 'ban')}
                               >
                                 <Ban className="h-3 w-3 mr-2" />
-                                BAN_USER
+                                Ban User
                               </DropdownMenuItem>
                             )}
                             {user.status?.toLowerCase() === 'suspended' && (
@@ -379,7 +478,7 @@ export default function AdminUsers() {
                                 onClick={() => handleUpdateStatus(user.id, 'Active')}
                               >
                                 <CheckCircle className="h-3 w-3 mr-2" />
-                                UNSUSPEND_USER
+                                Unsuspend User
                               </DropdownMenuItem>
                             )}
                             {user.status?.toLowerCase() === 'banned' && (
@@ -388,9 +487,17 @@ export default function AdminUsers() {
                                 onClick={() => handleUpdateStatus(user.id, 'Active')}
                               >
                                 <CheckCircle className="h-3 w-3 mr-2" />
-                                UNBAN_USER
+                                Unban User
                               </DropdownMenuItem>
                             )}
+                            <DropdownMenuSeparator className="bg-border" />
+                            <DropdownMenuItem
+                              className="text-red-600 focus:bg-red-500/10 focus:text-red-600 font-mono text-xs"
+                              onClick={() => handleDeleteUser(user.id, user.name)}
+                            >
+                              <Trash2 className="h-3 w-3 mr-2" />
+                              Delete User
+                            </DropdownMenuItem>
                           </DropdownMenuContent>
                         </DropdownMenu>
                       </td>
@@ -410,6 +517,39 @@ export default function AdminUsers() {
         actionType={actionDialog.type}
         userName={actionDialog.user?.name || ''}
       />
+
+      <Dialog open={emailDialog.isOpen} onOpenChange={(open) => setEmailDialog(prev => ({ ...prev, isOpen: open }))}>
+        <DialogContent className="sm:max-w-xl">
+          <DialogHeader>
+            <DialogTitle>Send Email</DialogTitle>
+            <DialogDescription>
+              Send email to {emailDialog.user?.email || 'user'}.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3">
+            <div className="space-y-1">
+              <p className="text-xs text-muted-foreground">Subject</p>
+              <Input value={emailSubject} onChange={(e) => setEmailSubject(e.target.value)} placeholder="Enter email subject" />
+            </div>
+            <div className="space-y-1">
+              <p className="text-xs text-muted-foreground">Message</p>
+              <div className="rounded-lg border border-zinc-200 dark:border-zinc-800 overflow-hidden">
+                <CyberpunkEditor
+                  content={emailMessage}
+                  onChange={setEmailMessage}
+                  placeholder="Write your message..."
+                />
+              </div>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setEmailDialog({ isOpen: false, user: null })}>Cancel</Button>
+            <Button onClick={handleSendEmail} disabled={isSendingEmail}>
+              {isSendingEmail ? 'Sending...' : 'Send Email'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

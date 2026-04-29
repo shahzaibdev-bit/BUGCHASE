@@ -6,14 +6,14 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.resetRateLimit = exports.rateLimiter = void 0;
 const redis_1 = __importDefault(require("../config/redis"));
 const AppError_1 = __importDefault(require("../utils/AppError"));
-const getRateLimitKey = (req) => {
+const getRateLimitKey = (req, prefix = 'global') => {
     const ip = req.ip || req.socket.remoteAddress || 'unknown';
     const route = req.originalUrl;
-    return `rate_limit:${ip}:${route}`;
+    return `rate_limit:${prefix}:${ip}:${route}`;
 };
-const rateLimiter = (limit, windowSeconds) => {
+const rateLimiter = (limit, windowSeconds, prefix = 'global') => {
     return async (req, res, next) => {
-        const key = getRateLimitKey(req);
+        const key = getRateLimitKey(req, prefix);
         try {
             const current = await redis_1.default.incr(key);
             if (current === 1) {
@@ -31,9 +31,9 @@ const rateLimiter = (limit, windowSeconds) => {
     };
 };
 exports.rateLimiter = rateLimiter;
-const resetRateLimit = async (req) => {
+const resetRateLimit = async (req, prefix = 'global') => {
     try {
-        const key = getRateLimitKey(req);
+        const key = getRateLimitKey(req, prefix);
         await redis_1.default.del(key);
     }
     catch (error) {

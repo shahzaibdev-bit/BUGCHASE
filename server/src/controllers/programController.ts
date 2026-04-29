@@ -2,8 +2,11 @@ import { Request, Response, NextFunction } from 'express';
 import Program from '../models/Program';
 import AppError from '../utils/AppError';
 import catchAsync from '../utils/catchAsync';
+import { releaseExpiredProgramBans } from '../services/programModerationService';
 
 export const getPublicPrograms = catchAsync(async (req: Request, res: Response, next: NextFunction) => {
+    await releaseExpiredProgramBans();
+
     // 1. Fetch only ACTIVE programs (and not private unless we handle invites later)
     // For now, public researcher view should only show 'Active' and public programs
     // If we want researchers to see private programs they are invited to, that requires more logic.
@@ -25,6 +28,8 @@ export const getPublicPrograms = catchAsync(async (req: Request, res: Response, 
 });
 
 export const getPublicProgramById = catchAsync(async (req: Request, res: Response, next: NextFunction) => {
+    await releaseExpiredProgramBans();
+
     const program = await Program.findOne({ 
         _id: req.params.id,
         status: 'Active' 

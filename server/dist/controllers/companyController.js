@@ -36,14 +36,41 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.updateReportSeverity = exports.addCompanyComment = exports.getCompanyReports = exports.getReportDetails = exports.deleteProgram = exports.getTeamMembers = exports.getProgramById = exports.getCompanyPrograms = exports.createProgram = exports.deleteVerifiedAsset = exports.updateAssetStatus = exports.getVerifiedAssets = exports.verifyDomain = exports.generateVerificationToken = exports.inviteMember = void 0;
+exports.getCompanyAnalytics = exports.detachPaymentMethod = exports.verifyPaymentMethodOtp = exports.requestPaymentMethodOtp = exports.getPaymentMethods = exports.createSetupIntent = exports.getWalletTransactions = exports.confirmTopUp = exports.createTopUpIntent = exports.awardBounty = exports.updateReportStatus = exports.generateReportMessage = exports.suggestBounty = exports.updateReportSeverity = exports.addCompanyComment = exports.getCompanyReports = exports.getReportDetails = exports.deleteProgram = exports.getTeamMembers = exports.getProgramById = exports.getCompanyPrograms = exports.createProgram = exports.deleteVerifiedAsset = exports.updateAssetScope = exports.updateAssetStatus = exports.getVerifiedAssets = exports.verifyDomain = exports.generateVerificationToken = exports.inviteMember = void 0;
 const crypto_1 = __importDefault(require("crypto"));
 const User_1 = __importDefault(require("../models/User"));
 const Program_1 = __importDefault(require("../models/Program"));
+const Report_1 = __importDefault(require("../models/Report"));
 const AppError_1 = __importDefault(require("../utils/AppError"));
 const catchAsync_1 = __importDefault(require("../utils/catchAsync"));
 const emailService_1 = require("../services/emailService");
+const geminiService_1 = require("../services/geminiService");
 const socketService_1 = require("../services/socketService");
+const cloudinary_1 = require("../utils/cloudinary");
+const stripe_1 = __importDefault(require("stripe"));
+const Transaction_1 = __importDefault(require("../models/Transaction"));
+const redis_1 = __importDefault(require("../config/redis"));
+const stripe = new stripe_1.default(process.env.STRIPE_SECRET_KEY, {
+    apiVersion: '2026-04-22.dahlia',
+});
+const getOrCreateStripeCustomer = async (userId) => {
+    const user = await User_1.default.findById(userId);
+    if (!user)
+        throw new Error('User not found');
+    if (user.stripeCustomerId) {
+        return user.stripeCustomerId;
+    }
+    const customer = await stripe.customers.create({
+        email: user.email,
+        name: user.name,
+        metadata: {
+            userId: user._id.toString()
+        }
+    });
+    user.stripeCustomerId = customer.id;
+    await user.save();
+    return customer.id;
+};
 // ... (inviteMember logic remains unchanged) ...
 exports.inviteMember = (0, catchAsync_1.default)(async (req, res, next) => {
     // ... (keep existing implementation)
@@ -217,6 +244,29 @@ exports.updateAssetStatus = (0, catchAsync_1.default)(async (req, res, next) => 
         data: asset
     });
 });
+exports.updateAssetScope = (0, catchAsync_1.default)(async (req, res, next) => {
+    const { id } = req.params;
+    const { inScope, outScope } = req.body;
+    const user = await User_1.default.findById(req.user.id);
+    if (!user || !user.verifiedAssets) {
+        return next(new AppError_1.default('User or assets not found', 404));
+    }
+    const asset = user.verifiedAssets.find(a => a.id === id);
+    if (!asset) {
+        return next(new AppError_1.default('Asset not found', 404));
+    }
+    if (inScope && Array.isArray(inScope)) {
+        asset.inScope = inScope;
+    }
+    if (outScope && Array.isArray(outScope)) {
+        asset.outScope = outScope;
+    }
+    await user.save({ validateBeforeSave: false });
+    res.status(200).json({
+        status: 'success',
+        data: asset
+    });
+});
 exports.deleteVerifiedAsset = (0, catchAsync_1.default)(async (req, res, next) => {
     const { id } = req.params;
     const user = await User_1.default.findById(req.user.id);
@@ -238,18 +288,42 @@ exports.deleteVerifiedAsset = (0, catchAsync_1.default)(async (req, res, next) =
 exports.createProgram = (0, catchAsync_1.default)(async (req, res, next) => {
     try {
         console.log("Creating Program. Body:", req.body);
-        const { title, type, description, selectedAssets = [], rewards } = req.body;
+        const { title, type, description, selectedAssets = [], rewards, rulesOfEngagement = '', safeHarbor = '', submissionGuidelines = '', outOfScope = [], slas = { firstResponse: 24, triage: 48, bounty: 168, resolution: 360 }, isPrivate = false } = req.body;
         const user = await User_1.default.findById(req.user.id);
         if (!user)
             return next(new AppError_1.default('User not found', 404));
-        const scope = (selectedAssets || []).map((assetId) => {
+        const scope = (selectedAssets || []).flatMap((assetId) => {
             const asset = user.verifiedAssets?.find(a => a.id === assetId);
-            return {
-                asset: asset ? asset.domain : assetId,
-                type: 'Web/API',
-                instruction: 'Testing permitted'
-            };
+            if (!asset) {
+                return [{
+                        asset: assetId,
+                        type: 'Web',
+                        instruction: 'Testing permitted',
+                        tier: 'Primary'
+                    }];
+            }
+            // If the asset has inScope subdomains, use those. Otherwise fallback to the root domain.
+            if (asset.inScope && asset.inScope.length > 0) {
+                return asset.inScope.map(domain => ({
+                    asset: domain,
+                    type: 'Web',
+                    instruction: 'Testing permitted',
+                    tier: 'Primary'
+                }));
+            }
+            else {
+                return [{
+                        asset: asset.domain,
+                        type: 'Web',
+                        instruction: 'Testing permitted',
+                        tier: 'Primary'
+                    }];
+            }
         });
+        const formattedOutOfScope = outOfScope.map((item) => ({
+            asset: item.asset || '',
+            reason: item.reason || 'Out of bounds'
+        }));
         // Calculate Bounty Range 
         let bountyRange = "Varies";
         if (rewards && typeof rewards === 'object') {
@@ -262,7 +336,7 @@ exports.createProgram = (0, catchAsync_1.default)(async (req, res, next) => {
             if (rewardValues.length > 0) {
                 const min = Math.min(...rewardValues);
                 const max = Math.max(...rewardValues);
-                bountyRange = `$${min} - $${max}`;
+                bountyRange = `PKR ${min} - PKR ${max}`;
             }
         }
         const sanitizeReward = (val) => {
@@ -281,7 +355,13 @@ exports.createProgram = (0, catchAsync_1.default)(async (req, res, next) => {
             title,
             type,
             description: description || '',
+            rulesOfEngagement,
+            safeHarbor,
+            submissionGuidelines,
             scope,
+            outOfScope: formattedOutOfScope,
+            slas,
+            isPrivate,
             rewards: sanitizedRewards,
             bountyRange,
             status: 'Pending'
@@ -364,47 +444,41 @@ exports.deleteProgram = (0, catchAsync_1.default)(async (req, res, next) => {
 });
 exports.getReportDetails = (0, catchAsync_1.default)(async (req, res, next) => {
     const { id } = req.params;
-    // 1. Fetch Report
-    // We need to ensure the report belongs to a program owned by this company
-    // OR if we implement team logic, belongs to the company the user is part of.
-    // For now, simple check: report.program.companyId === req.user.id
-    const report = await Promise.resolve().then(() => __importStar(require('../models/Report'))).then(m => m.default.findById(id)
-        .populate('researcherId', 'username name avatar rank')
-        .populate('triagerId', 'name title avatar')
-        .populate('comments.sender', 'name username role avatar'));
+    const Report = (await Promise.resolve().then(() => __importStar(require('../models/Report')))).default;
+    // Note: Report model has no companyId field — reports link to companies via programId.
+    // We fetch by _id only and verify ownership via the program's companyId below.
+    const report = await Report.findById(id)
+        .populate('researcherId', 'name username email avatar')
+        .populate('comments.sender', 'name username role avatar')
+        .populate('triagerId', 'name username email avatar')
+        .populate({
+        path: 'programId',
+        model: 'Program',
+        select: 'title companyName type bountyRange description rewards rulesOfEngagement safeHarbor submissionGuidelines scope',
+        populate: {
+            path: 'companyId',
+            model: 'User',
+            select: 'name avatar'
+        }
+    });
     if (!report) {
         return next(new AppError_1.default('Report not found', 404));
     }
-    // 2. Permission Check
-    // We need to verify if the program this report belongs to is owned by the company.
-    // Since Report schema stores `programId` as string (maybe ID or just string?), 
-    // we might need to fetch the program to check ownership if `programId` is a MongoID.
-    // However, the `createProgram` controller sets `companyId` on the Program.
-    // Let's check `Report` model again. `programId` is String.
-    // If it's a real ID, we can fetch Program and check companyId.
-    // For MVP/Demo if programId is NOT a mongo ID (mock data), we might skip this strict check 
-    // but in production we MUST check. 
-    // Assuming `programId` in Report is the `_id` of the Program document.
-    // Let's try to find the Program.
+    // Permission check: ensure this report belongs to a program owned by this company
     const Program = (await Promise.resolve().then(() => __importStar(require('../models/Program')))).default;
     const program = await Program.findById(report.programId);
     if (program) {
-        if (program.companyId.toString() !== req.user.id && program.companyId.toString() !== req.user.parentCompany?.toString()) {
+        const companyId = req.user.id || req.user._id?.toString();
+        const parentId = req.user.parentCompany?.toString();
+        const programOwner = program.companyId.toString();
+        if (programOwner !== companyId && programOwner !== parentId) {
             return next(new AppError_1.default('You do not have permission to view this report', 403));
         }
     }
-    else {
-        // If program not found (maybe legacy data), we might block or allow if testing.
-        // For now, allowing if no program found is risky. 
-        // Let's assume for this specific codebase state we allow it if we can't fully verify, 
-        // OR easier: check if the user is a company and maybe just strict check is better.
-        // But for "Reviewing" purpose, let's proceed. 
-    }
+    // If program not found (e.g. legacy/test data), allow access
     res.status(200).json({
         status: 'success',
-        data: {
-            report
-        }
+        data: { report }
     });
 });
 exports.getCompanyReports = (0, catchAsync_1.default)(async (req, res, next) => {
@@ -433,7 +507,7 @@ exports.getCompanyReports = (0, catchAsync_1.default)(async (req, res, next) => 
             program: prog?.title || 'Unknown Program',
             researcher: r.researcherId?.username || 'Unknown',
             submittedAt: r.createdAt,
-            bounty: 0 // Placeholder until bounty logic is solid
+            bounty: r.bounty || 0
         };
     });
     res.status(200).json({
@@ -445,7 +519,7 @@ exports.getCompanyReports = (0, catchAsync_1.default)(async (req, res, next) => 
     });
 });
 exports.addCompanyComment = (0, catchAsync_1.default)(async (req, res, next) => {
-    const { content } = req.body;
+    const { content, certificateId } = req.body;
     const { id } = req.params;
     const Report = (await Promise.resolve().then(() => __importStar(require('../models/Report')))).default;
     const report = await Report.findById(id);
@@ -453,11 +527,25 @@ exports.addCompanyComment = (0, catchAsync_1.default)(async (req, res, next) => 
         return next(new AppError_1.default('Report not found', 404));
     }
     // Permission Check: Verify company owns the program (simplified access check based on getReport/updateReportSeverity)
+    const uploadedUrls = [];
+    if (req.files && Array.isArray(req.files)) {
+        const uploadPromises = req.files.map((file) => {
+            return (0, cloudinary_1.uploadToCloudinary)(file);
+        });
+        const results = await Promise.all(uploadPromises);
+        results.forEach(result => {
+            uploadedUrls.push(result.url);
+        });
+    }
     report.comments.push({
         sender: req.user.id,
-        content,
+        content: content || '',
+        attachments: uploadedUrls,
         createdAt: new Date()
     });
+    if (certificateId) {
+        report.certificateId = certificateId;
+    }
     await report.save();
     await report.populate('comments.sender', 'name username role avatar');
     const newComment = report.comments[report.comments.length - 1];
@@ -466,11 +554,14 @@ exports.addCompanyComment = (0, catchAsync_1.default)(async (req, res, next) => 
         io.to(id).emit('new_activity', {
             id: newComment._id,
             type: 'comment',
-            author: newComment.sender?.role !== 'company' ? (newComment.sender?.username || newComment.sender?.name || 'Unknown User') : (newComment.sender?.name || 'Unknown Company'),
+            author: req.user.role !== 'company' ? (req.user.username || req.user.name || 'Unknown User') : (req.user.name || 'Unknown Company'),
+            authorName: req.user.name,
+            authorUsername: req.user.username,
             role: 'Company',
             content: newComment.content,
+            attachments: newComment.attachments,
             timestamp: newComment.createdAt,
-            authorAvatar: newComment.sender?.avatar
+            authorAvatar: req.user.avatar
         });
     }
     catch (socketError) {
@@ -488,19 +579,45 @@ exports.addCompanyComment = (0, catchAsync_1.default)(async (req, res, next) => 
             await report.populate('researcherId', 'email name');
             const researcher = report.researcherId;
             if (researcher?.email) {
-                await (0, emailService_1.sendEmail)(researcher.email, `New Comment on ${report.title}`, (0, emailService_1.threadNotificationTemplate)(researcher.name || 'Researcher', companyName, 'Comment', report.title, content, `${process.env.CLIENT_URL}/researcher/reports/${report._id}`));
+                await (0, emailService_1.sendEmail)(researcher.email, `New Comment on: ${report.title}`, (0, emailService_1.reportEmailTemplate)({
+                    recipientName: researcher.name || 'Researcher',
+                    recipientRole: 'researcher',
+                    actorName: companyName,
+                    actorRole: 'company',
+                    actionType: 'comment',
+                    reportTitle: report.title,
+                    reportId: String(report._id),
+                    severity: report.severity,
+                    vulnerabilityCategory: report.vulnerabilityCategory ?? undefined,
+                    cvssScore: report.cvssScore ?? undefined,
+                    message: content,
+                    link: `${process.env.CLIENT_URL}/researcher/reports/${report._id}`
+                }));
             }
             // Notify Triager (if assigned)
             if (report.triagerId) {
                 await report.populate('triagerId', 'email name');
                 const triager = report.triagerId;
                 if (triager?.email) {
-                    await (0, emailService_1.sendEmail)(triager.email, `New Comment on Report #${report._id}`, (0, emailService_1.threadNotificationTemplate)(triager.name || 'Triager', companyName, 'Comment', report.title, content, `${process.env.CLIENT_URL}/triager/app/reports/${report._id}`));
+                    await (0, emailService_1.sendEmail)(triager.email, `New Comment on: ${report.title}`, (0, emailService_1.reportEmailTemplate)({
+                        recipientName: triager.name || 'Triager',
+                        recipientRole: 'triager',
+                        actorName: companyName,
+                        actorRole: 'company',
+                        actionType: 'comment',
+                        reportTitle: report.title,
+                        reportId: String(report._id),
+                        severity: report.severity,
+                        vulnerabilityCategory: report.vulnerabilityCategory ?? undefined,
+                        cvssScore: report.cvssScore ?? undefined,
+                        message: content,
+                        link: `${process.env.CLIENT_URL}/triager/app/reports/${report._id}`
+                    }));
                 }
             }
         }
         catch (emailError) {
-            console.error("Failed to send comment notification email (Company):", emailError);
+            console.error('Failed to send comment notification email (Company):', emailError);
         }
     })();
 });
@@ -536,10 +653,573 @@ exports.updateReportSeverity = (0, catchAsync_1.default)(async (req, res, next) 
         }
     });
     await report.save();
+    // Push real-time update to everyone in the room
+    try {
+        const io = (0, socketService_1.getIO)();
+        const newComment = report.comments[report.comments.length - 1];
+        io.to(id).emit('new_activity', {
+            id: newComment._id,
+            type: 'severity_update',
+            author: req.user.name || req.user.username || 'Company',
+            authorAvatar: req.user.avatar,
+            role: 'Company',
+            content: newComment.content,
+            timestamp: newComment.createdAt || new Date().toISOString(),
+            metadata: newComment.metadata
+        });
+        io.to(id).emit('report_updated', {
+            severity: report.severity,
+            cvssScore: finalScore,
+            cvssVector: finalVector
+        });
+    }
+    catch (socketError) {
+        console.error('Socket emit failed on company severity update:', socketError);
+    }
     res.status(200).json({
         status: 'success',
         data: {
             report
+        }
+    });
+    // Notify researcher and triager in background
+    (async () => {
+        try {
+            await report.populate('researcherId', 'name email');
+            await report.populate('triagerId', 'name email');
+            const researcher = report.researcherId;
+            const triager = report.triagerId;
+            const companyName = req.user.name || 'Security Program';
+            const reason = `Severity updated from ${oldSeverity} (CVSS: ${oldScore ?? 'N/A'}) to ${report.severity} (CVSS: ${finalScore ?? 'N/A'}).${finalVector ? `\nNew CVSS Vector: ${finalVector}` : ''}`;
+            if (researcher?.email) {
+                await (0, emailService_1.sendEmail)(researcher.email, `Severity Updated: ${report.title}`, (0, emailService_1.reportEmailTemplate)({
+                    recipientName: researcher.name || 'Researcher',
+                    recipientRole: 'researcher',
+                    actorName: companyName,
+                    actorRole: 'company',
+                    actionType: 'status_change',
+                    reportTitle: report.title,
+                    reportId: String(report._id),
+                    severity: report.severity,
+                    vulnerabilityCategory: report.vulnerabilityCategory ?? undefined,
+                    cvssScore: finalScore,
+                    newStatus: `Severity: ${report.severity}`,
+                    reason,
+                    link: `${process.env.CLIENT_URL}/researcher/reports/${report._id}`
+                }));
+            }
+            if (triager?.email) {
+                await (0, emailService_1.sendEmail)(triager.email, `Severity Updated by Company: ${report.title}`, (0, emailService_1.reportEmailTemplate)({
+                    recipientName: triager.name || 'Triager',
+                    recipientRole: 'triager',
+                    actorName: companyName,
+                    actorRole: 'company',
+                    actionType: 'status_change',
+                    reportTitle: report.title,
+                    reportId: String(report._id),
+                    severity: report.severity,
+                    vulnerabilityCategory: report.vulnerabilityCategory ?? undefined,
+                    cvssScore: finalScore,
+                    newStatus: `Severity: ${report.severity}`,
+                    reason,
+                    link: `${process.env.CLIENT_URL}/triager/app/reports/${report._id}`
+                }));
+            }
+        }
+        catch (err) {
+            console.error('Failed to send company severity-change emails:', err);
+        }
+    })();
+});
+exports.suggestBounty = (0, catchAsync_1.default)(async (req, res, next) => {
+    const { id } = req.params;
+    const Report = (await Promise.resolve().then(() => __importStar(require('../models/Report')))).default;
+    const Program = (await Promise.resolve().then(() => __importStar(require('../models/Program')))).default;
+    const report = await Report.findById(id).populate('comments.sender', 'name role username');
+    if (!report)
+        return next(new AppError_1.default('Report not found', 404));
+    const program = await Program.findById(report.programId);
+    if (!program)
+        return next(new AppError_1.default('Program not found', 404));
+    // Determine the min/max bounty for the report's severity
+    const severityLower = (report.severity || 'low').toLowerCase();
+    const rewards = program.rewards;
+    const rewardRange = rewards[severityLower] || { min: 0, max: 0 };
+    const aiSuggestion = await (0, geminiService_1.suggestBountyAmount)(report, report.comments, rewardRange);
+    res.status(200).json({
+        status: 'success',
+        data: {
+            suggestedAmount: aiSuggestion.suggestedAmount,
+            reasoning: aiSuggestion.reasoning,
+            rewardRange
+        }
+    });
+});
+exports.generateReportMessage = (0, catchAsync_1.default)(async (req, res, next) => {
+    const { id } = req.params;
+    const { type, bountyAmount } = req.body;
+    if (!type || !['resolve', 'bounty'].includes(type)) {
+        return next(new AppError_1.default('Valid message type (resolve or bounty) is required', 400));
+    }
+    const Report = (await Promise.resolve().then(() => __importStar(require('../models/Report')))).default;
+    const report = await Report.findById(id).populate('comments.sender', 'name role username');
+    if (!report)
+        return next(new AppError_1.default('Report not found', 404));
+    const generatedResult = await (0, geminiService_1.generateReportMessage)(report, report.comments, type, bountyAmount);
+    res.status(200).json({
+        status: 'success',
+        data: {
+            message: generatedResult.message
+        }
+    });
+});
+exports.updateReportStatus = (0, catchAsync_1.default)(async (req, res, next) => {
+    const { id } = req.params;
+    const { status, note } = req.body;
+    const Report = (await Promise.resolve().then(() => __importStar(require('../models/Report')))).default;
+    const report = await Report.findById(id);
+    if (!report)
+        return next(new AppError_1.default('Report not found', 404));
+    const oldStatus = report.status;
+    report.status = status;
+    // Add Timeline Event
+    const newComment = {
+        sender: req.user._id,
+        content: note ? note : `Changed status from **${oldStatus}** to **${status}**.`,
+        type: 'status_change',
+        metadata: { newStatus: status, reason: note },
+        createdAt: new Date()
+    };
+    report.comments.push(newComment);
+    await report.save();
+    await report.populate('comments.sender', 'name username role avatar');
+    const populatedComment = report.comments[report.comments.length - 1];
+    try {
+        const io = (0, socketService_1.getIO)();
+        io.to(id).emit('new_activity', {
+            id: populatedComment._id,
+            type: 'status_change',
+            author: populatedComment.sender?.name || 'Company',
+            role: 'Company',
+            content: populatedComment.content,
+            timestamp: populatedComment.createdAt,
+            authorAvatar: populatedComment.sender?.avatar,
+            metadata: populatedComment.metadata,
+            status: report.status // Notify frontend of the new status
+        });
+        io.to(id).emit('status_change', report.status);
+    }
+    catch (socketError) {
+        console.error("Socket emit failed:", socketError);
+    }
+    res.status(200).json({
+        status: 'success',
+        data: {
+            report
+        }
+    });
+    // Send role-specific emails to researcher and triager in background
+    (async () => {
+        try {
+            await report.populate('researcherId', 'name email');
+            await report.populate('triagerId', 'name email');
+            const researcher = report.researcherId;
+            const triager = report.triagerId;
+            const companyName = req.user.name || 'Security Program';
+            const newStatus = report.status;
+            const reason = (req.body.note || req.body.reason);
+            // Email Researcher
+            if (researcher?.email) {
+                await (0, emailService_1.sendEmail)(researcher.email, `Report ${newStatus}: ${report.title}`, (0, emailService_1.reportEmailTemplate)({
+                    recipientName: researcher.name || 'Researcher',
+                    recipientRole: 'researcher',
+                    actorName: companyName,
+                    actorRole: 'company',
+                    actionType: 'status_change',
+                    reportTitle: report.title,
+                    reportId: String(report._id),
+                    severity: report.severity,
+                    newStatus,
+                    reason: reason || undefined,
+                    link: `${process.env.CLIENT_URL}/researcher/reports/${report._id}`
+                }));
+            }
+            // Email Triager
+            if (triager?.email) {
+                await (0, emailService_1.sendEmail)(triager.email, `Report ${newStatus} by Company: ${report.title}`, (0, emailService_1.reportEmailTemplate)({
+                    recipientName: triager.name || 'Triager',
+                    recipientRole: 'triager',
+                    actorName: companyName,
+                    actorRole: 'company',
+                    actionType: 'status_change',
+                    reportTitle: report.title,
+                    reportId: String(report._id),
+                    severity: report.severity,
+                    newStatus,
+                    reason: reason,
+                    link: `${process.env.CLIENT_URL}/triager/app/reports/${report._id}`
+                }));
+            }
+        }
+        catch (err) {
+            console.error('Failed to send company status-change emails:', err);
+        }
+    })();
+});
+exports.awardBounty = (0, catchAsync_1.default)(async (req, res, next) => {
+    const { id } = req.params;
+    const { bounty, message } = req.body;
+    const Report = (await Promise.resolve().then(() => __importStar(require('../models/Report')))).default;
+    const report = await Report.findById(id);
+    if (!report)
+        return next(new AppError_1.default('Report not found', 404));
+    if (report.status !== 'Resolved') {
+        return next(new AppError_1.default('Bounty can only be awarded for Resolved reports', 400));
+    }
+    const bountyAmount = Number(bounty);
+    if (!bounty || isNaN(bountyAmount) || bountyAmount <= 0) {
+        return next(new AppError_1.default('Invalid bounty amount', 400));
+    }
+    const fee = bountyAmount * 0.05;
+    const totalCost = bountyAmount + fee;
+    const company = await User_1.default.findById(req.user.id);
+    if (!company)
+        return next(new AppError_1.default('Company not found', 404));
+    if ((company.walletBalance || 0) < totalCost) {
+        return next(new AppError_1.default(`Insufficient balance. You need PKR ${totalCost.toFixed(2)} (bounty + 5% platform fee). Please top up your wallet.`, 400));
+    }
+    company.walletBalance = (company.walletBalance || 0) - totalCost;
+    await company.save();
+    await User_1.default.findByIdAndUpdate(report.researcherId, {
+        $inc: { walletBalance: bountyAmount, reputationScore: Math.floor(bountyAmount / 10) }
+    });
+    report.bounty = bountyAmount;
+    await Transaction_1.default.insertMany([
+        { user: company._id, type: 'bounty_payment', amount: -totalCost, relatedReport: report._id, status: 'completed' },
+        { user: company._id, type: 'platform_fee', amount: fee, relatedReport: report._id, status: 'completed' },
+        { user: report.researcherId, type: 'bounty_earned', amount: bountyAmount, relatedReport: report._id, status: 'completed' }
+    ]);
+    // Add Timeline Event
+    const newComment = {
+        sender: req.user._id,
+        content: message || 'Thank you for your submission!',
+        type: 'bounty_awarded',
+        metadata: { bountyAwarded: report.bounty },
+        createdAt: new Date()
+    };
+    report.comments.push(newComment);
+    await report.save();
+    await report.populate('comments.sender', 'name username role avatar');
+    const populatedComment = report.comments[report.comments.length - 1];
+    try {
+        const io = (0, socketService_1.getIO)();
+        io.to(id).emit('new_activity', {
+            id: populatedComment._id,
+            type: 'bounty_awarded',
+            author: populatedComment.sender?.name || 'Company',
+            role: 'Company',
+            content: populatedComment.content,
+            timestamp: populatedComment.createdAt,
+            authorAvatar: populatedComment.sender?.avatar,
+            metadata: populatedComment.metadata,
+            bounty: report.bounty
+        });
+    }
+    catch (socketError) {
+        console.error("Socket emit failed:", socketError);
+    }
+    res.status(200).json({
+        status: 'success',
+        data: { report }
+    });
+    // Send email to researcher
+    (async () => {
+        try {
+            await report.populate('researcherId', 'name email');
+            const researcher = report.researcherId;
+            const companyName = req.user.name || 'Security Program';
+            if (researcher?.email) {
+                await (0, emailService_1.sendEmail)(researcher.email, `Bounty Awarded: ${report.title}`, (0, emailService_1.reportEmailTemplate)({
+                    recipientName: researcher.name || 'Researcher',
+                    recipientRole: 'researcher',
+                    actorName: companyName,
+                    actorRole: 'company',
+                    actionType: 'bounty_awarded',
+                    reportTitle: report.title,
+                    reportId: String(report._id),
+                    bounty: report.bounty,
+                    reason: message,
+                    link: `${process.env.CLIENT_URL}/researcher/reports/${report._id}`
+                }));
+            }
+        }
+        catch (err) {
+            console.error('Failed to send bounty email:', err);
+        }
+    })();
+});
+exports.createTopUpIntent = (0, catchAsync_1.default)(async (req, res, next) => {
+    const { amount, paymentMethodId } = req.body;
+    if (!amount || isNaN(Number(amount)) || Number(amount) <= 0) {
+        return next(new AppError_1.default('Please provide a valid top-up amount', 400));
+    }
+    const pkrAmount = Math.round(Number(amount));
+    const customerId = await getOrCreateStripeCustomer(req.user.id);
+    // Convert PKR to USD (Assuming 1 USD = 280 PKR for test environment)
+    const conversionRate = 280;
+    const usdAmountCents = Math.round((pkrAmount / conversionRate) * 100);
+    const intentOptions = {
+        amount: usdAmountCents, // Actual USD charge in cents
+        currency: 'usd',
+        customer: customerId,
+        metadata: { userId: req.user.id, pkrAmount: pkrAmount.toString() },
+        payment_method_types: ['card']
+    };
+    if (paymentMethodId) {
+        intentOptions.payment_method = paymentMethodId;
+        intentOptions.off_session = false;
+        intentOptions.confirm = true;
+    }
+    const paymentIntent = await stripe.paymentIntents.create(intentOptions);
+    let newBalance;
+    if (paymentIntent.status === 'succeeded') {
+        const updatedUser = await User_1.default.findByIdAndUpdate(req.user.id, { $inc: { walletBalance: pkrAmount } }, { new: true });
+        newBalance = updatedUser?.walletBalance;
+        await Transaction_1.default.create({
+            user: req.user.id,
+            type: 'topup',
+            amount: pkrAmount,
+            currency: 'PKR',
+            stripePaymentIntentId: paymentIntent.id,
+            status: 'completed'
+        });
+        if (updatedUser) {
+            await (0, emailService_1.sendEmail)(updatedUser.email, 'Wallet Top-Up Successful', (0, emailService_1.walletTopUpTemplate)(updatedUser.name, pkrAmount, updatedUser.walletBalance));
+        }
+    }
+    res.status(200).json({
+        status: 'success',
+        clientSecret: paymentIntent.client_secret,
+        requiresAction: paymentIntent.status === 'requires_action',
+        paymentIntentId: paymentIntent.id,
+        data: { newBalance }
+    });
+});
+exports.confirmTopUp = (0, catchAsync_1.default)(async (req, res, next) => {
+    const { paymentIntentId } = req.body;
+    if (!paymentIntentId)
+        return next(new AppError_1.default('Payment Intent ID is required', 400));
+    const paymentIntent = await stripe.paymentIntents.retrieve(paymentIntentId);
+    if (paymentIntent.status !== 'succeeded')
+        return next(new AppError_1.default('Payment not successful', 400));
+    const existing = await Transaction_1.default.findOne({ stripePaymentIntentId: paymentIntentId });
+    if (existing)
+        return next(new AppError_1.default('Payment already processed', 400));
+    const pkrAmount = parseInt(paymentIntent.metadata?.pkrAmount || '0') || (paymentIntent.amount / 100);
+    const updatedUser = await User_1.default.findByIdAndUpdate(req.user.id, { $inc: { walletBalance: pkrAmount } }, { new: true });
+    const transaction = await Transaction_1.default.create({
+        user: req.user.id,
+        type: 'topup',
+        amount: pkrAmount,
+        currency: 'PKR',
+        stripePaymentIntentId: paymentIntentId,
+        status: 'completed'
+    });
+    if (updatedUser) {
+        await (0, emailService_1.sendEmail)(updatedUser.email, 'Wallet Top-Up Successful', (0, emailService_1.walletTopUpTemplate)(updatedUser.name, pkrAmount, updatedUser.walletBalance));
+    }
+    res.status(200).json({ status: 'success', data: { transaction, newBalance: updatedUser?.walletBalance } });
+});
+exports.getWalletTransactions = (0, catchAsync_1.default)(async (req, res, next) => {
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 20;
+    const skip = (page - 1) * limit;
+    const [transactions, total] = await Promise.all([
+        Transaction_1.default.find({ user: req.user.id })
+            .sort({ createdAt: -1 })
+            .skip(skip)
+            .limit(limit)
+            .populate('relatedReport', 'title'),
+        Transaction_1.default.countDocuments({ user: req.user.id })
+    ]);
+    res.status(200).json({
+        status: 'success',
+        data: { transactions, total, page, totalPages: Math.ceil(total / limit) }
+    });
+});
+exports.createSetupIntent = (0, catchAsync_1.default)(async (req, res, next) => {
+    const customerId = await getOrCreateStripeCustomer(req.user.id);
+    const setupIntent = await stripe.setupIntents.create({
+        customer: customerId,
+        metadata: {
+            userId: req.user.id
+        },
+        payment_method_types: ['card']
+    });
+    res.status(200).json({
+        status: 'success',
+        clientSecret: setupIntent.client_secret
+    });
+});
+exports.getPaymentMethods = (0, catchAsync_1.default)(async (req, res, next) => {
+    const customerId = await getOrCreateStripeCustomer(req.user.id);
+    const paymentMethods = await stripe.paymentMethods.list({
+        customer: customerId,
+        type: 'card',
+    });
+    res.status(200).json({
+        status: 'success',
+        data: {
+            paymentMethods: paymentMethods.data
+        }
+    });
+});
+/** Request OTP to authorize payment method deletion */
+exports.requestPaymentMethodOtp = (0, catchAsync_1.default)(async (req, res, next) => {
+    const user = await User_1.default.findById(req.user._id);
+    if (!user)
+        return next(new AppError_1.default('User not found', 404));
+    const otp = Math.floor(100000 + Math.random() * 900000).toString();
+    await redis_1.default.set(`payment_otp:${user.email}`, otp, 'EX', 600);
+    try {
+        await (0, emailService_1.sendEmail)(user.email, 'Payment Method Removal - BugChase', (0, emailService_1.cardDeletionOtpTemplate)(otp));
+    }
+    catch (error) {
+        console.error('Email Send Error:', error);
+        return next(new AppError_1.default('There was an error sending the email. Try again later!', 500));
+    }
+    res.status(200).json({ status: 'success', message: 'Verification code sent to your email' });
+});
+/** Verify OTP for payment method deletion */
+exports.verifyPaymentMethodOtp = (0, catchAsync_1.default)(async (req, res, next) => {
+    const { otp } = req.body;
+    if (!otp)
+        return next(new AppError_1.default('OTP is required', 400));
+    const user = await User_1.default.findById(req.user._id);
+    if (!user)
+        return next(new AppError_1.default('User not found', 404));
+    const storedOtp = await redis_1.default.get(`payment_otp:${user.email}`);
+    if (!storedOtp || storedOtp !== otp) {
+        return next(new AppError_1.default('Invalid or expired verification code', 400));
+    }
+    await redis_1.default.del(`payment_otp:${user.email}`);
+    res.status(200).json({ status: 'success', message: 'Identity verified successfully' });
+});
+exports.detachPaymentMethod = (0, catchAsync_1.default)(async (req, res, next) => {
+    const paymentMethodIdParam = req.params.paymentMethodId;
+    if (!paymentMethodIdParam || Array.isArray(paymentMethodIdParam)) {
+        return next(new AppError_1.default('Payment Method ID is required', 400));
+    }
+    const paymentMethodId = paymentMethodIdParam;
+    // Security check: verify the PM belongs to this company's customer
+    const customerId = await getOrCreateStripeCustomer(req.user.id);
+    const pm = await stripe.paymentMethods.retrieve(paymentMethodId);
+    if (pm.customer !== customerId) {
+        return next(new AppError_1.default('You do not have permission to remove this card', 403));
+    }
+    await stripe.paymentMethods.detach(paymentMethodId);
+    res.status(200).json({
+        status: 'success',
+        message: 'Payment method detached successfully'
+    });
+});
+exports.getCompanyAnalytics = (0, catchAsync_1.default)(async (req, res, next) => {
+    const companyId = req.user.parentCompany || req.user.id;
+    const programs = await Program_1.default.find({ companyId });
+    const programIds = programs.map(p => p._id.toString());
+    if (programIds.length === 0) {
+        return res.status(200).json({
+            status: 'success',
+            data: {
+                stats: {
+                    totalReports: 0,
+                    openReports: 0,
+                    bountiesPaid: 0,
+                    researchers: 0
+                },
+                severityData: [],
+                trendsData: [],
+                recentReports: []
+            }
+        });
+    }
+    const reports = await Report_1.default.find({ programId: { $in: programIds } }).sort({ createdAt: -1 });
+    let totalReports = reports.length;
+    let openReports = 0;
+    let bountiesPaid = 0;
+    const researchersSet = new Set();
+    const severityCount = {
+        Critical: 0,
+        High: 0,
+        Medium: 0,
+        Low: 0,
+        None: 0
+    };
+    const trendsMap = {};
+    reports.forEach(report => {
+        if (!['Resolved', 'Paid', 'Closed', 'Spam', 'Duplicate', 'NA', 'Out-of-Scope'].includes(report.status)) {
+            openReports++;
+        }
+        if (report.bounty) {
+            bountiesPaid += report.bounty;
+        }
+        if (report.researcherId) {
+            researchersSet.add(report.researcherId.toString());
+        }
+        if (report.severity && severityCount[report.severity] !== undefined) {
+            severityCount[report.severity]++;
+        }
+        // Month key like "2024-03"
+        const date = new Date(report.createdAt);
+        const monthKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
+        if (!trendsMap[monthKey]) {
+            trendsMap[monthKey] = { reports: 0, bounties: 0 };
+        }
+        trendsMap[monthKey].reports++;
+        if (report.bounty)
+            trendsMap[monthKey].bounties += report.bounty;
+    });
+    const severityData = [
+        { name: 'Critical', count: severityCount.Critical, color: '#ef4444' },
+        { name: 'High', count: severityCount.High, color: '#f97316' },
+        { name: 'Medium', count: severityCount.Medium, color: '#eab308' },
+        { name: 'Low', count: severityCount.Low, color: '#22c55e' }
+    ];
+    const sortedMonths = Object.keys(trendsMap).sort();
+    const trendsData = sortedMonths.map(month => {
+        // e.g. "2024-03"
+        const year = month.split('-')[0];
+        const monthIndex = parseInt(month.split('-')[1]) - 1;
+        const d = new Date(parseInt(year), monthIndex, 1);
+        const monthName = d.toLocaleString('default', { month: 'short' });
+        return {
+            month: monthName,
+            week: monthName,
+            reports: trendsMap[month].reports,
+            amount: trendsMap[month].bounties
+        };
+    });
+    const recentReports = reports.slice(0, 5).map(r => ({
+        id: r._id,
+        title: r.title,
+        severity: r.severity.toLowerCase(),
+        status: r.status.toLowerCase(),
+        createdAt: r.createdAt
+    }));
+    res.status(200).json({
+        status: 'success',
+        data: {
+            stats: {
+                totalReports,
+                openReports,
+                bountiesPaid,
+                researchers: researchersSet.size,
+                reportsTrend: 0,
+                bountiesTrend: 0
+            },
+            severityData,
+            trendsData,
+            recentReports
         }
     });
 });

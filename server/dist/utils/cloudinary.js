@@ -11,9 +11,23 @@ cloudinary_1.v2.config({
     api_key: '741874419883385',
     api_secret: 'lecGb1UdWtbJDXggoTzrpnXSjxg'
 });
-const uploadToCloudinary = (buffer) => {
+const uploadToCloudinary = (file) => {
     return new Promise((resolve, reject) => {
-        const stream = cloudinary_1.v2.uploader.upload_stream({ folder: 'BugChase' }, (error, result) => {
+        let resourceType = 'auto';
+        if (file.mimetype === 'application/pdf' || file.mimetype.includes('zip') || file.originalname.endsWith('.pdf')) {
+            resourceType = 'raw';
+        }
+        let uploadOptions = {
+            folder: 'BugChase',
+            resource_type: resourceType
+        };
+        if (resourceType === 'raw') {
+            const ext = file.originalname.split('.').pop();
+            if (ext) {
+                uploadOptions.format = ext;
+            }
+        }
+        const stream = cloudinary_1.v2.uploader.upload_stream(uploadOptions, (error, result) => {
             if (result) {
                 resolve({ url: result.secure_url, public_id: result.public_id });
             }
@@ -21,7 +35,7 @@ const uploadToCloudinary = (buffer) => {
                 reject(error);
             }
         });
-        streamifier_1.default.createReadStream(buffer).pipe(stream);
+        streamifier_1.default.createReadStream(file.buffer).pipe(stream);
     });
 };
 exports.uploadToCloudinary = uploadToCloudinary;

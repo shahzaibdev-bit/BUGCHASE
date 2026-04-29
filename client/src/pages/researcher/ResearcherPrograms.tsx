@@ -1,10 +1,10 @@
 import React, { useState, useEffect } from 'react';
-import { Search, Filter, ExternalLink } from 'lucide-react';
+import { Search, Filter } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { GlassCard } from '@/components/ui/glass-card';
-import { Link } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 import { API_URL } from '@/config';
 
 // Simplified Program Interface matching backend response
@@ -31,6 +31,7 @@ interface Program {
 const allTags = ['Web', 'Mobile', 'API', 'Fintech', 'E-commerce', 'Banking', 'IoT', 'Crypto'];
 
 export default function ResearcherPrograms() {
+  const navigate = useNavigate();
   const [programs, setPrograms] = useState<Program[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [search, setSearch] = useState('');
@@ -124,8 +125,9 @@ export default function ResearcherPrograms() {
             <GlassCard 
                 key={program._id}
                 variant="glow"
-                className="group hover:scale-[1.02] transition-all duration-300 animate-fade-in flex flex-col"
+                className="group hover:scale-[1.02] transition-all duration-300 animate-fade-in flex flex-col cursor-pointer"
                 style={{ animationDelay: `${index * 0.1}s` }}
+                onClick={() => navigate(`/researcher/programs/${program._id}`)}
             >
                 <div className="flex items-start gap-4 mb-4">
                 {/* Logo or Placeholder */}
@@ -158,16 +160,16 @@ export default function ResearcherPrograms() {
                 </p>
 
                 <div className="flex items-center justify-between pt-4 border-t border-border/30 mt-auto">
-                <div>
-                    <p className="text-xs text-muted-foreground">Bounty</p>
-                    <p className="font-bold text-primary font-mono text-sm">{program.bountyRange?.replace(/\$/g, 'PKR ')}</p>
-                </div>
-                <Link to={`/researcher/programs/${program._id}`}>
-                    <Button variant="glass" size="sm" className="gap-1 group-hover:bg-primary/20">
-                    View Program
-                    <ExternalLink className="h-3 w-3" />
-                    </Button>
-                </Link>
+                  <div>
+                      <p className="text-xs text-muted-foreground">Bounty</p>
+                      <p className="font-bold text-primary font-mono text-sm">{program.bountyRange?.replace(/\$/g, 'PKR ')}</p>
+                  </div>
+                  <div className="text-right">
+                    <p className="text-xs text-muted-foreground">Avg Response</p>
+                    <p className="text-xs font-mono text-zinc-600 dark:text-zinc-300">
+                      {program.avgTriageTime ? `~${program.avgTriageTime}` : '~24h'}
+                    </p>
+                  </div>
                 </div>
             </GlassCard>
             ))

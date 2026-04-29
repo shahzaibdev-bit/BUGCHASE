@@ -121,7 +121,7 @@ interface TimelineEvent {
   type: 'comment' | 'status_change' | 'action' | 'severity_update' | 'bounty_awarded';
   author: string;
   authorAvatar?: string;
-  role: 'Triager' | 'Researcher' | 'Company';
+  role: 'Triager' | 'Researcher' | 'Company' | 'Admin';
   content: string;
   attachments?: string[];
   timestamp: string;
@@ -157,6 +157,7 @@ const mapComment = (c: any): TimelineEvent => {
   const role: TimelineEvent['role'] =
     sender?.role === 'company' ? 'Company' :
     sender?.role === 'triager' ? 'Triager' :
+    sender?.role === 'admin' ? 'Admin' :
     'Researcher';
 
   return {
@@ -165,8 +166,8 @@ const mapComment = (c: any): TimelineEvent => {
         : c.type === 'bounty_awarded' ? 'bounty_awarded'
         : c.type === 'severity_update' ? 'severity_update'
         : 'comment',
-    author: role === 'Researcher'
-      ? (sender?.username || sender?.name || 'Researcher')
+    author: role === 'Researcher' || role === 'Admin'
+      ? (sender?.username || sender?.name || (role === 'Admin' ? 'admin' : 'Researcher'))
       : (sender?.name || sender?.username || 'User'),
     authorAvatar: sender?.avatar,
     role,
@@ -1035,10 +1036,18 @@ export default function CompanyReportDetails() {
                                             ) : (
                                                 <div className="flex items-center gap-2">
                                                     <span className="text-sm font-bold text-zinc-900 dark:text-zinc-100">
-                                                        {event.role === 'Triager' ? `@${event.author}` : event.author}
+                                                        {event.role === 'Triager'
+                                                          ? `@${event.author}`
+                                                          : event.role === 'Admin'
+                                                            ? `Platform Admin @${event.author}`
+                                                            : event.author}
                                                     </span>
                                                     <Badge variant="outline" className="text-[10px] px-1 py-0 border-zinc-200 dark:border-zinc-800 text-zinc-500 font-normal">
-                                                        {event.role === 'Triager' ? 'Bugchase Triage' : 'Company'}
+                                                        {event.role === 'Triager'
+                                                          ? 'Bugchase Triage'
+                                                          : event.role === 'Admin'
+                                                            ? 'Platform Admin'
+                                                            : 'Company'}
                                                     </Badge>
                                                 </div>
                                             )}

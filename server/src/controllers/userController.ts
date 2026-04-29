@@ -24,6 +24,69 @@ export const getPublicProfile = catchAsync(async (req: Request, res: Response, n
   });
 });
 
+export const getResearcherLeaderboard = catchAsync(async (req: Request, res: Response, next: NextFunction) => {
+  const ReportModel = (await import('../models/Report')).default;
+
+  const [researchers, paidReportStats] = await Promise.all([
+    User.find({ role: 'researcher', status: 'Active' })
+      .select('_id name username avatar country city reputationScore')
+      .lean(),
+    ReportModel.aggregate([
+      {
+        $match: {
+          researcherId: { $ne: null },
+          bounty: { $gt: 0 }
+        }
+      },
+      {
+        $group: {
+          _id: '$researcherId',
+          paidReports: { $sum: 1 },
+          totalBounties: { $sum: '$bounty' }
+        }
+      }
+    ])
+  ]);
+
+  const statsByResearcher = new Map<string, { paidReports: number; totalBounties: number }>();
+  paidReportStats.forEach((row: any) => {
+    statsByResearcher.set(String(row._id), {
+      paidReports: Number(row.paidReports || 0),
+      totalBounties: Number(row.totalBounties || 0)
+    });
+  });
+
+  const ranked = researchers
+    .map((researcher: any) => {
+      const stats = statsByResearcher.get(String(researcher._id)) || { paidReports: 0, totalBounties: 0 };
+      return {
+        userId: String(researcher._id),
+        name: researcher.name || researcher.username || 'Researcher',
+        username: researcher.username || '',
+        reputation: Number(researcher.reputationScore || 0),
+        bounties: stats.totalBounties,
+        reportsSubmitted: stats.paidReports,
+        country: researcher.country || 'Unknown',
+        city: researcher.city || '',
+        avatar: researcher.avatar || ''
+      };
+    })
+    .sort((a, b) => {
+      if (b.reputation !== a.reputation) return b.reputation - a.reputation;
+      if (b.bounties !== a.bounties) return b.bounties - a.bounties;
+      return b.reportsSubmitted - a.reportsSubmitted;
+    })
+    .map((entry, index) => ({ ...entry, rank: index + 1 }));
+
+  res.status(200).json({
+    status: 'success',
+    results: ranked.length,
+    data: {
+      leaderboard: ranked
+    }
+  });
+});
+
 import Stripe from 'stripe';
 import Transaction from '../models/Transaction';
 import { sendEmail, payoutSuccessTemplate, otpTemplate, cardDeletionOtpTemplate } from '../services/emailService';
@@ -169,6 +232,10 @@ export const requestPayout = catchAsync(async (req: Request, res: Response, next
     const user = await User.findById(req.user!._id);
     if (!user) return next(new AppError('User not found', 404));
 
+    if (user.payoutHold) {
+        return next(new AppError('Withdrawals are currently on hold by admin review', 403));
+    }
+
     if ((user.walletBalance || 0) < withdrawAmount) {
         return next(new AppError('Insufficient wallet balance', 400));
     }
@@ -278,19 +345,20 @@ export const verifyPayoutMethodOtp = catchAsync(async (req: Request, res: Respon
 
 /** Remove a payment method from Stripe */
 export const removePayoutMethod = catchAsync(async (req: Request, res: Response, next: NextFunction) => {
-    const { id } = req.params;
-    if (!id) return next(new AppError('Payment method ID is required', 400));
+    const idParam = req.params.id;
+    if (!idParam || Array.isArray(idParam)) return next(new AppError('Payment method ID is required', 400));
+    const paymentMethodId = idParam;
 
     const user = await User.findById(req.user!._id);
     if (!user || !user.stripeCustomerId) return next(new AppError('User or customer not found', 404));
 
     try {
-        const pm = await stripe.paymentMethods.retrieve(id);
+        const pm = await stripe.paymentMethods.retrieve(paymentMethodId);
         if (pm.customer !== user.stripeCustomerId) {
             return next(new AppError('You do not have permission to remove this card', 403));
         }
 
-        await stripe.paymentMethods.detach(id);
+        await stripe.paymentMethods.detach(paymentMethodId);
     } catch (error: any) {
         return next(new AppError(error.message || 'Failed to remove payment method', 400));
     }

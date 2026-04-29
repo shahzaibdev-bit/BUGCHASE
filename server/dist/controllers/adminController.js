@@ -1,14 +1,76 @@
 "use strict";
+var __createBinding = (this && this.__createBinding) || (Object.create ? (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    var desc = Object.getOwnPropertyDescriptor(m, k);
+    if (!desc || ("get" in desc ? !m.__esModule : desc.writable || desc.configurable)) {
+      desc = { enumerable: true, get: function() { return m[k]; } };
+    }
+    Object.defineProperty(o, k2, desc);
+}) : (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    o[k2] = m[k];
+}));
+var __setModuleDefault = (this && this.__setModuleDefault) || (Object.create ? (function(o, v) {
+    Object.defineProperty(o, "default", { enumerable: true, value: v });
+}) : function(o, v) {
+    o["default"] = v;
+});
+var __importStar = (this && this.__importStar) || (function () {
+    var ownKeys = function(o) {
+        ownKeys = Object.getOwnPropertyNames || function (o) {
+            var ar = [];
+            for (var k in o) if (Object.prototype.hasOwnProperty.call(o, k)) ar[ar.length] = k;
+            return ar;
+        };
+        return ownKeys(o);
+    };
+    return function (mod) {
+        if (mod && mod.__esModule) return mod;
+        var result = {};
+        if (mod != null) for (var k = ownKeys(mod), i = 0; i < k.length; i++) if (k[i] !== "default") __createBinding(result, mod, k[i]);
+        __setModuleDefault(result, mod);
+        return result;
+    };
+})();
 var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.updateProgramStatus = exports.getAllPrograms = exports.updateUserStatus = exports.getAllUsers = exports.broadcastAnnouncement = exports.getTriagers = exports.createTriager = void 0;
+exports.updateProgramByAdmin = exports.getProgramDetails = exports.updateProgramStatus = exports.getAllPrograms = exports.addAdminComment = exports.updateReportSeverityByAdmin = exports.updateReportStatusByAdmin = exports.updateReportByAdmin = exports.getReportDetailsForAdmin = exports.setWalletHold = exports.adjustUserPoints = exports.updateUserDetails = exports.checkUsernameAvailability = exports.getUserDetails = exports.updateUserStatus = exports.getAllUsers = exports.getDashboardAnalytics = exports.broadcastAnnouncement = exports.getTriagers = exports.createTriager = void 0;
 const catchAsync_1 = __importDefault(require("../utils/catchAsync"));
 const AppError_1 = __importDefault(require("../utils/AppError"));
 const Notification_1 = __importDefault(require("../models/Notification"));
 const User_1 = __importDefault(require("../models/User"));
 const emailService_1 = require("../services/emailService");
+const programModerationService_1 = require("../services/programModerationService");
+const Program_1 = __importDefault(require("../models/Program"));
+const Transaction_1 = __importDefault(require("../models/Transaction"));
+const socketService_1 = require("../services/socketService");
+const toDisplay = (v) => {
+    if (v === undefined || v === null || v === '')
+        return '-';
+    if (Array.isArray(v))
+        return v.join(', ');
+    if (typeof v === 'object')
+        return JSON.stringify(v);
+    return String(v);
+};
+const notifyAdminChange = async (user, section, details, changes = []) => {
+    await Notification_1.default.create({
+        recipient: user._id,
+        title: 'Admin Updated Your Profile',
+        message: `${section}: ${details}`,
+        type: 'system',
+    });
+    if (user.email) {
+        try {
+            await (0, emailService_1.sendEmail)(user.email, 'Admin updated your BugChase profile', (0, emailService_1.adminProfileUpdateTemplate)(user.name, section, changes.length ? changes : [{ field: section, before: '-', after: details }]));
+        }
+        catch (error) {
+            console.error('Failed to send admin change notification email', error);
+        }
+    }
+};
 exports.createTriager = (0, catchAsync_1.default)(async (req, res, next) => {
     const { name, email, tempPassword, expertise, technicalInterviewPassed, identityVerified } = req.body;
     // 1. Basic validation
@@ -66,14 +128,26 @@ exports.getTriagers = (0, catchAsync_1.default)(async (req, res, next) => {
     });
 });
 exports.broadcastAnnouncement = (0, catchAsync_1.default)(async (req, res, next) => {
-    const { message } = req.body;
+    const { message, audiences } = req.body;
     if (!message) {
         return next(new AppError_1.default('Message is required', 400));
     }
-    // 1. Get all users (id and email)
-    const users = await User_1.default.find({}, '_id email');
+    const allowedAudiences = ['researcher', 'company', 'triager'];
+    const requestedAudiences = Array.isArray(audiences) ? audiences : [];
+    if (!requestedAudiences.length) {
+        return next(new AppError_1.default('There must be an audience to broadcast', 400));
+    }
+    const hasAll = requestedAudiences.includes('all');
+    const selectedAudiences = hasAll
+        ? [...allowedAudiences]
+        : requestedAudiences.filter((aud) => allowedAudiences.includes(aud));
+    if (!selectedAudiences.length) {
+        return next(new AppError_1.default('There must be an audience to broadcast', 400));
+    }
+    // 1. Get audience-filtered users (id and email)
+    const users = await User_1.default.find({ role: { $in: selectedAudiences } }, '_id email role');
     if (!users.length) {
-        return next(new AppError_1.default('No users found to broadcast to', 404));
+        return next(new AppError_1.default('No users found for selected audience', 404));
     }
     // 2. Prepare notifications and send emails
     const notifications = [];
@@ -106,7 +180,88 @@ exports.broadcastAnnouncement = (0, catchAsync_1.default)(async (req, res, next)
     await Promise.allSettled(emailPromises);
     res.status(200).json({
         status: 'success',
-        message: `Broadcast sent to ${users.length} users (Notification + Email).`
+        message: `Broadcast sent to ${users.length} users (Notification + Email).`,
+        data: {
+            audiences: selectedAudiences,
+            recipients: users.length
+        }
+    });
+});
+exports.getDashboardAnalytics = (0, catchAsync_1.default)(async (req, res, next) => {
+    const [users, reports] = await Promise.all([
+        User_1.default.find({ role: { $ne: 'admin' } })
+            .select('name role createdAt walletBalance companyName')
+            .sort({ createdAt: -1 }),
+        (await Promise.resolve().then(() => __importStar(require('../models/Report')))).default.find({})
+            .select('severity status bounty createdAt')
+            .sort({ createdAt: -1 })
+    ]);
+    const totalResearchers = users.filter(u => u.role === 'researcher').length;
+    const totalCompanies = users.filter(u => u.role === 'company').length;
+    const totalTriagers = users.filter(u => u.role === 'triager').length;
+    const severityCounts = {
+        Critical: 0,
+        High: 0,
+        Medium: 0,
+        Low: 0,
+        None: 0
+    };
+    const statusCounts = {};
+    let totalBountiesPaid = 0;
+    reports.forEach((report) => {
+        if (severityCounts[report.severity] !== undefined) {
+            severityCounts[report.severity] += 1;
+        }
+        statusCounts[report.status] = (statusCounts[report.status] || 0) + 1;
+        if (report.bounty && report.bounty > 0) {
+            totalBountiesPaid += report.bounty;
+        }
+    });
+    const lowBalanceCompanies = users
+        .filter(u => u.role === 'company')
+        .map((u) => ({
+        id: u._id,
+        name: u.companyName || u.name,
+        balance: u.walletBalance || 0
+    }))
+        .sort((a, b) => a.balance - b.balance)
+        .slice(0, 5);
+    const recentUsers = users.slice(0, 8).map((u) => ({
+        id: u._id,
+        name: u.name,
+        role: u.role,
+        createdAt: u.createdAt
+    }));
+    const roleDistribution = [
+        { name: 'Researchers', value: totalResearchers },
+        { name: 'Companies', value: totalCompanies },
+        { name: 'Triagers', value: totalTriagers }
+    ];
+    const severityDistribution = [
+        { name: 'Critical', value: severityCounts.Critical },
+        { name: 'High', value: severityCounts.High },
+        { name: 'Medium', value: severityCounts.Medium },
+        { name: 'Low', value: severityCounts.Low },
+        { name: 'None', value: severityCounts.None }
+    ];
+    const reportStatusDistribution = Object.entries(statusCounts).map(([name, value]) => ({ name, value }));
+    res.status(200).json({
+        status: 'success',
+        data: {
+            stats: {
+                totalUsers: users.length,
+                totalReports: reports.length,
+                totalBountiesPaid,
+                criticalVulns: severityCounts.Critical
+            },
+            charts: {
+                roleDistribution,
+                severityDistribution,
+                reportStatusDistribution
+            },
+            lowBalanceCompanies,
+            recentUsers
+        }
     });
 });
 exports.getAllUsers = (0, catchAsync_1.default)(async (req, res, next) => {
@@ -145,6 +300,9 @@ exports.updateUserStatus = (0, catchAsync_1.default)(async (req, res, next) => {
     if (!user) {
         return next(new AppError_1.default('No user found with that ID', 404));
     }
+    if ((status === 'Suspended' || status === 'Banned') && user.role === 'company') {
+        await Program_1.default.updateMany({ companyId: user._id }, { status: 'Suspended', suspensionReason: `Company ${status.toLowerCase()} by admin` });
+    }
     // Notifications & Email
     const notifTitle = `Account ${status}`;
     let notifMsg = `Your account has been set to ${status}.`;
@@ -167,6 +325,7 @@ exports.updateUserStatus = (0, catchAsync_1.default)(async (req, res, next) => {
         message: notifMsg,
         type: 'system',
     });
+    await notifyAdminChange(user, 'Account Status', `Status changed to ${status}${reason ? ` (${reason})` : ''}`);
     res.status(200).json({
         status: 'success',
         data: {
@@ -174,10 +333,417 @@ exports.updateUserStatus = (0, catchAsync_1.default)(async (req, res, next) => {
         }
     });
 });
-const Program_1 = __importDefault(require("../models/Program"));
+exports.getUserDetails = (0, catchAsync_1.default)(async (req, res, next) => {
+    const { id } = req.params;
+    const Report = (await Promise.resolve().then(() => __importStar(require('../models/Report')))).default;
+    const user = await User_1.default.findById(id).select('-password');
+    if (!user)
+        return next(new AppError_1.default('No user found with that ID', 404));
+    const programPopulateSelect = 'title type status companyName bountyRange createdAt description isPrivate companyId';
+    const [submittedReportsRaw, triagedReportsRaw, programs, transactions] = await Promise.all([
+        Report.find({ researcherId: id }).sort({ createdAt: -1 }).limit(200).select('title severity status bounty createdAt programId').populate('researcherId', 'username name').populate('programId', programPopulateSelect),
+        Report.find({ triagerId: id }).sort({ createdAt: -1 }).limit(200).select('title severity status bounty createdAt programId').populate('researcherId', 'username name').populate('programId', programPopulateSelect),
+        Program_1.default.find({ companyId: id }).sort({ createdAt: -1 }).select('title type status createdAt companyName bountyRange isPrivate'),
+        Transaction_1.default.find({ user: id }).sort({ createdAt: -1 }).limit(100).select('type amount status description createdAt relatedReport')
+    ]);
+    const mapReportRow = (r) => {
+        const prog = r.programId && typeof r.programId === 'object' ? r.programId : null;
+        const programIdStr = prog?._id?.toString() || (r.programId && typeof r.programId !== 'object' ? String(r.programId) : '');
+        return {
+            id: r._id,
+            title: r.title,
+            severity: (r.severity || 'Low').toLowerCase(),
+            status: (r.status || 'Submitted').toLowerCase(),
+            submittedAt: r.createdAt,
+            bounty: r.bounty || 0,
+            programId: programIdStr || 'unknown',
+            program: prog
+                ? {
+                    _id: prog._id,
+                    title: prog.title,
+                    type: prog.type,
+                    status: prog.status,
+                    companyName: prog.companyName,
+                    bountyRange: prog.bountyRange,
+                    createdAt: prog.createdAt,
+                    description: prog.description,
+                    isPrivate: prog.isPrivate,
+                }
+                : null,
+            researcher: r.researcherId?.username || r.researcherId?.name || 'Unknown',
+        };
+    };
+    const submittedReports = submittedReportsRaw.map(mapReportRow);
+    const triagedReports = triagedReportsRaw.map(mapReportRow);
+    const walletTransactions = transactions.map((tx) => ({
+        id: tx._id,
+        date: new Date(tx.createdAt).toLocaleString(),
+        desc: tx.description || tx.type,
+        amount: `${tx.amount >= 0 ? '+' : ''}${Number(tx.amount).toLocaleString()}`,
+        status: tx.status === 'completed' ? 'CLEARED' : tx.status.toUpperCase(),
+        timestamp: new Date(tx.createdAt).getTime(),
+        type: tx.type,
+        rawAmount: tx.amount,
+    }));
+    res.status(200).json({
+        status: 'success',
+        data: {
+            user,
+            reports: {
+                submitted: submittedReports,
+                triaged: triagedReports
+            },
+            programs,
+            wallet: {
+                balance: user.walletBalance || 0,
+                payoutHold: user.payoutHold || false,
+                transactions: walletTransactions
+            }
+        }
+    });
+});
+exports.checkUsernameAvailability = (0, catchAsync_1.default)(async (req, res, next) => {
+    const username = String(req.query.username || '').trim();
+    const excludeId = String(req.query.excludeId || '').trim();
+    if (!username) {
+        return next(new AppError_1.default('username query is required', 400));
+    }
+    const existing = await User_1.default.findOne({
+        username: { $regex: new RegExp(`^${username}$`, 'i') },
+        ...(excludeId ? { _id: { $ne: excludeId } } : {})
+    }).select('_id');
+    res.status(200).json({
+        status: 'success',
+        data: { available: !existing }
+    });
+});
+exports.updateUserDetails = (0, catchAsync_1.default)(async (req, res, next) => {
+    const { id } = req.params;
+    const updates = req.body || {};
+    const allowedFields = [
+        'name', 'username', 'email', 'country', 'bio', 'companyName', 'industry', 'website', 'city',
+        'isVerified', 'isEmailVerified', 'walletBalance', 'reputationScore', 'trustScore', 'status',
+        'statusReason', 'skills', 'expertise', 'verifiedAssets', 'payoutHold', 'isPrivate'
+    ];
+    const safeUpdates = {};
+    allowedFields.forEach((field) => {
+        if (Object.prototype.hasOwnProperty.call(updates, field)) {
+            safeUpdates[field] = updates[field];
+        }
+    });
+    if (!Object.keys(safeUpdates).length) {
+        return next(new AppError_1.default('No valid fields provided for update', 400));
+    }
+    const existingUser = await User_1.default.findById(id).select('-password');
+    if (!existingUser)
+        return next(new AppError_1.default('No user found with that ID', 404));
+    if (safeUpdates.username) {
+        const usernameExists = await User_1.default.findOne({
+            _id: { $ne: id },
+            username: { $regex: new RegExp(`^${String(safeUpdates.username).trim()}$`, 'i') }
+        }).select('_id');
+        if (usernameExists) {
+            return next(new AppError_1.default('Username is already taken', 400));
+        }
+    }
+    const user = await User_1.default.findByIdAndUpdate(id, safeUpdates, { new: true, runValidators: true }).select('-password');
+    if (!user)
+        return next(new AppError_1.default('No user found with that ID', 404));
+    if ((safeUpdates.status === 'Suspended' || safeUpdates.status === 'Banned') && user.role === 'company') {
+        await Program_1.default.updateMany({ companyId: user._id }, { status: 'Suspended', suspensionReason: `Company ${String(safeUpdates.status).toLowerCase()} by admin` });
+    }
+    const changeDetails = Object.keys(safeUpdates).map((field) => ({
+        field,
+        before: toDisplay(existingUser[field]),
+        after: toDisplay(user[field])
+    }));
+    await notifyAdminChange(user, 'Profile Details', `Updated fields: ${Object.keys(safeUpdates).join(', ')}`, changeDetails);
+    res.status(200).json({
+        status: 'success',
+        data: { user }
+    });
+});
+exports.adjustUserPoints = (0, catchAsync_1.default)(async (req, res, next) => {
+    const { id } = req.params;
+    const { reputationDelta = 0, trustDelta = 0 } = req.body;
+    const rep = Number(reputationDelta);
+    const trust = Number(trustDelta);
+    if (Number.isNaN(rep) || Number.isNaN(trust)) {
+        return next(new AppError_1.default('Invalid points delta', 400));
+    }
+    const user = await User_1.default.findByIdAndUpdate(id, { $inc: { reputationScore: rep, trustScore: trust } }, { new: true }).select('-password');
+    if (!user)
+        return next(new AppError_1.default('No user found with that ID', 404));
+    await notifyAdminChange(user, 'Points Adjustment', `Reputation ${rep >= 0 ? '+' : ''}${rep}, Trust ${trust >= 0 ? '+' : ''}${trust}`, [
+        { field: 'reputationScore', before: 'Adjusted', after: `${rep >= 0 ? '+' : ''}${rep}` },
+        { field: 'trustScore', before: 'Adjusted', after: `${trust >= 0 ? '+' : ''}${trust}` }
+    ]);
+    res.status(200).json({
+        status: 'success',
+        data: { user }
+    });
+});
+exports.setWalletHold = (0, catchAsync_1.default)(async (req, res, next) => {
+    const { id } = req.params;
+    const { payoutHold } = req.body;
+    if (typeof payoutHold !== 'boolean') {
+        return next(new AppError_1.default('payoutHold must be a boolean', 400));
+    }
+    const user = await User_1.default.findByIdAndUpdate(id, { payoutHold }, { new: true }).select('-password');
+    if (!user)
+        return next(new AppError_1.default('No user found with that ID', 404));
+    await notifyAdminChange(user, 'Wallet Withdrawal Hold', payoutHold ? 'Withdrawals have been paused by admin' : 'Withdrawals have been resumed by admin', [{ field: 'payoutHold', before: payoutHold ? 'false' : 'true', after: String(payoutHold) }]);
+    res.status(200).json({
+        status: 'success',
+        data: { user }
+    });
+});
+exports.getReportDetailsForAdmin = (0, catchAsync_1.default)(async (req, res, next) => {
+    const { id } = req.params;
+    const Report = (await Promise.resolve().then(() => __importStar(require('../models/Report')))).default;
+    const report = await Report.findById(id)
+        .populate('researcherId', 'name username email avatar reputationScore trustScore')
+        .populate('triagerId', 'name username email avatar')
+        .populate('comments.sender', 'name username role avatar')
+        .populate('programId', 'title companyId');
+    if (!report)
+        return next(new AppError_1.default('Report not found', 404));
+    res.status(200).json({
+        status: 'success',
+        data: { report }
+    });
+});
+const notifyReportParticipants = async (report, actionType, message, newStatus, actorName = 'Admin', actorRole = 'admin') => {
+    const recipients = [];
+    const clientUrl = process.env.CLIENT_URL || 'http://localhost:3000';
+    const researcher = report.researcherId;
+    if (researcher?.email) {
+        recipients.push({ email: researcher.email, name: researcher.name, role: 'researcher', link: `${clientUrl}/researcher/reports/${report._id}` });
+    }
+    const triager = report.triagerId;
+    if (triager?.email) {
+        recipients.push({ email: triager.email, name: triager.name, role: 'triager', link: `${clientUrl}/triager/reports/${report._id}` });
+    }
+    const program = report.programId;
+    if (program?.companyId) {
+        const company = await User_1.default.findById(program.companyId).select('email name');
+        if (company?.email) {
+            recipients.push({ email: company.email, name: company.name, role: 'company', link: `${clientUrl}/company/reports/${report._id}` });
+        }
+    }
+    await Promise.allSettled(recipients.map((r) => (0, emailService_1.sendEmail)(r.email, actionType === 'comment' ? `New Comment on: ${report.title}` : `Report Status Updated: ${report.title}`, (0, emailService_1.reportEmailTemplate)({
+        recipientName: r.name || 'User',
+        recipientRole: r.role,
+        actorName,
+        actorRole,
+        actionType,
+        reportTitle: report.title,
+        reportId: String(report._id),
+        severity: report.severity,
+        newStatus,
+        message,
+        link: r.link
+    }))));
+};
+exports.updateReportByAdmin = (0, catchAsync_1.default)(async (req, res, next) => {
+    const { id } = req.params;
+    const updates = req.body || {};
+    const allowedFields = ['title', 'description', 'impact', 'pocSteps', 'vulnerabilityCategory', 'severity', 'status', 'cvssScore', 'cvssVector', 'bounty'];
+    const safeUpdates = {};
+    allowedFields.forEach((field) => {
+        if (Object.prototype.hasOwnProperty.call(updates, field)) {
+            safeUpdates[field] = updates[field];
+        }
+    });
+    if (!Object.keys(safeUpdates).length) {
+        return next(new AppError_1.default('No valid report fields provided', 400));
+    }
+    const Report = (await Promise.resolve().then(() => __importStar(require('../models/Report')))).default;
+    const existing = await Report.findById(id)
+        .populate('researcherId', 'name email username')
+        .populate('triagerId', 'name email')
+        .populate('programId', 'title companyId');
+    if (!existing)
+        return next(new AppError_1.default('Report not found', 404));
+    const report = await Report.findByIdAndUpdate(id, safeUpdates, { new: true, runValidators: true })
+        .populate('researcherId', 'name email username')
+        .populate('triagerId', 'name email')
+        .populate('programId', 'title companyId')
+        .populate('comments.sender', 'name username role avatar');
+    if (!report)
+        return next(new AppError_1.default('Report not found', 404));
+    const statusChanged = safeUpdates.status && safeUpdates.status !== existing.status;
+    if (statusChanged) {
+        report.comments.push({
+            sender: req.user._id,
+            content: `Changed status from **${existing.status}** to **${safeUpdates.status}**.`,
+            type: 'status_change',
+            metadata: { oldStatus: existing.status, newStatus: safeUpdates.status, reason: req.body.reason || undefined },
+            createdAt: new Date()
+        });
+        await report.save();
+        await notifyReportParticipants(report, 'status_change', req.body.reason, safeUpdates.status);
+    }
+    const researcher = report.researcherId;
+    if (researcher?._id) {
+        await notifyAdminChange(researcher, 'Report Update', `Report "${report.title}" was updated by admin`);
+    }
+    res.status(200).json({
+        status: 'success',
+        data: { report }
+    });
+});
+exports.updateReportStatusByAdmin = (0, catchAsync_1.default)(async (req, res, next) => {
+    const { id } = req.params;
+    const { status, reason } = req.body;
+    if (!status)
+        return next(new AppError_1.default('Status is required', 400));
+    const Report = (await Promise.resolve().then(() => __importStar(require('../models/Report')))).default;
+    const report = await Report.findById(id)
+        .populate('researcherId', 'name email username avatar')
+        .populate('triagerId', 'name email username avatar')
+        .populate('programId', 'title companyId')
+        .populate('comments.sender', 'name username role avatar');
+    if (!report)
+        return next(new AppError_1.default('Report not found', 404));
+    const oldStatus = report.status;
+    report.status = status;
+    report.comments.push({
+        sender: req.user._id,
+        content: reason ? reason : `Changed status from **${oldStatus}** to **${status}**.`,
+        type: 'status_change',
+        metadata: { oldStatus, newStatus: status, reason: reason || undefined },
+        createdAt: new Date()
+    });
+    await report.save();
+    await report.populate('comments.sender', 'name username role avatar');
+    const newComment = report.comments[report.comments.length - 1];
+    try {
+        const io = (0, socketService_1.getIO)();
+        io.to(id).emit('new_activity', {
+            id: newComment._id,
+            type: 'status_change',
+            author: req.user.name || req.user.username || 'Admin',
+            authorName: req.user.name || 'Admin',
+            authorUsername: req.user.username || 'admin',
+            role: 'Admin',
+            content: newComment.content,
+            timestamp: newComment.createdAt || new Date().toISOString(),
+            authorAvatar: req.user.avatar,
+            metadata: newComment.metadata,
+            status: report.status
+        });
+        io.to(id).emit('status_updated', { status: report.status });
+    }
+    catch (error) {
+        console.error('Admin status socket emit failed:', error);
+    }
+    await notifyReportParticipants(report, 'status_change', reason, status, req.user.name || req.user.username || 'Admin', 'admin');
+    res.status(200).json({
+        status: 'success',
+        data: { report }
+    });
+});
+exports.updateReportSeverityByAdmin = (0, catchAsync_1.default)(async (req, res, next) => {
+    const { id } = req.params;
+    const { cvssVector, cvssScore, severity } = req.body;
+    const Report = (await Promise.resolve().then(() => __importStar(require('../models/Report')))).default;
+    const report = await Report.findById(id).populate('comments.sender', 'name username role avatar');
+    if (!report)
+        return next(new AppError_1.default('Report not found', 404));
+    const oldSeverity = report.severity;
+    const oldScore = report.cvssScore;
+    const oldVector = report.cvssVector;
+    report.cvssVector = cvssVector;
+    report.cvssScore = cvssScore;
+    report.severity = severity || report.severity;
+    report.comments.push({
+        sender: req.user._id,
+        content: `Updated severity from <b>${oldSeverity} (${oldScore})</b> to <b>${report.severity} (${cvssScore})</b>`,
+        type: 'severity_update',
+        metadata: { oldVector, newVector: cvssVector, oldScore, newScore: cvssScore },
+        createdAt: new Date()
+    });
+    await report.save();
+    await report.populate('comments.sender', 'name username role avatar');
+    const newComment = report.comments[report.comments.length - 1];
+    try {
+        const io = (0, socketService_1.getIO)();
+        io.to(id).emit('new_activity', {
+            id: newComment._id,
+            type: 'severity_update',
+            author: req.user.name || req.user.username || 'Admin',
+            authorName: req.user.name || 'Admin',
+            authorUsername: req.user.username || 'admin',
+            role: 'Admin',
+            content: newComment.content,
+            timestamp: newComment.createdAt || new Date().toISOString(),
+            authorAvatar: req.user.avatar,
+            metadata: newComment.metadata
+        });
+        io.to(id).emit('report_updated', {
+            severity: report.severity,
+            cvssScore: report.cvssScore,
+            cvssVector: report.cvssVector
+        });
+    }
+    catch (error) {
+        console.error('Admin severity socket emit failed:', error);
+    }
+    res.status(200).json({
+        status: 'success',
+        data: { report }
+    });
+});
+exports.addAdminComment = (0, catchAsync_1.default)(async (req, res, next) => {
+    const { id } = req.params;
+    const { content } = req.body;
+    if (!content || !String(content).trim())
+        return next(new AppError_1.default('Comment content is required', 400));
+    const Report = (await Promise.resolve().then(() => __importStar(require('../models/Report')))).default;
+    const report = await Report.findById(id)
+        .populate('researcherId', 'name email username')
+        .populate('triagerId', 'name email')
+        .populate('programId', 'title companyId');
+    if (!report)
+        return next(new AppError_1.default('Report not found', 404));
+    report.comments.push({
+        sender: req.user._id,
+        content,
+        type: 'comment',
+        createdAt: new Date()
+    });
+    await report.save();
+    await report.populate('comments.sender', 'name username role avatar');
+    const newComment = report.comments[report.comments.length - 1];
+    try {
+        const io = (0, socketService_1.getIO)();
+        io.to(id).emit('new_activity', {
+            id: newComment._id,
+            type: 'comment',
+            author: req.user.name || req.user.username || 'Admin',
+            authorName: req.user.name || 'Admin',
+            authorUsername: req.user.username || 'admin',
+            role: 'Admin',
+            content: newComment.content,
+            attachments: newComment.attachments || [],
+            timestamp: newComment.createdAt || new Date().toISOString(),
+            authorAvatar: req.user.avatar
+        });
+    }
+    catch (error) {
+        console.error('Admin comment socket emit failed:', error);
+    }
+    await notifyReportParticipants(report, 'comment', content, undefined, req.user.name || req.user.username || 'Admin', 'admin');
+    res.status(200).json({
+        status: 'success',
+        data: { comments: report.comments }
+    });
+});
 exports.getAllPrograms = (0, catchAsync_1.default)(async (req, res, next) => {
     // Fetch all programs and populate company details (name, avatar, etc. from User model if needed, 
     // but Program has companyName string. Ideally link to User for more details)
+    await (0, programModerationService_1.releaseExpiredProgramBans)();
     // Assuming Program has companyId ref to User
     const programs = await Program_1.default.find().populate('companyId', 'name avatar').sort('-createdAt');
     res.status(200).json({
@@ -188,36 +754,91 @@ exports.getAllPrograms = (0, catchAsync_1.default)(async (req, res, next) => {
         }
     });
 });
+const BAN_DURATION_MS = {
+    '1h': 60 * 60 * 1000,
+    '6h': 6 * 60 * 60 * 1000,
+    '24h': 24 * 60 * 60 * 1000,
+    '7d': 7 * 24 * 60 * 60 * 1000,
+    '30d': 30 * 24 * 60 * 60 * 1000,
+    '90d': 90 * 24 * 60 * 60 * 1000,
+    permanent: null,
+};
+const stripHtmlModeration = (html) => {
+    if (!html)
+        return '';
+    return String(html).replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
+};
+const buildModerationSummary = (preset, commentHtml) => {
+    const note = stripHtmlModeration(commentHtml || '');
+    if (note)
+        return `${preset}\n\nAdmin note: ${note}`;
+    return preset;
+};
 exports.updateProgramStatus = (0, catchAsync_1.default)(async (req, res, next) => {
+    await (0, programModerationService_1.releaseExpiredProgramBans)();
     const { id } = req.params;
-    const { status, reason } = req.body;
-    if (!['Active', 'Pending', 'Suspended', 'Rejected'].includes(status)) {
+    const { status, reason, commentHtml, banDurationKey } = req.body;
+    if (!['Active', 'Pending', 'Suspended', 'Rejected', 'Banned'].includes(status)) {
         return next(new AppError_1.default('Invalid status', 400));
     }
     const updateData = { status };
-    if (status === 'Suspended' && reason) {
-        updateData.suspensionReason = reason;
+    if (status === 'Active') {
+        updateData.bannedUntil = null;
+        updateData.suspensionReason = null;
+        updateData.moderationCommentHtml = null;
     }
-    // Populate companyId to get the email
+    else if (status === 'Suspended') {
+        if (!reason || typeof reason !== 'string' || !reason.trim()) {
+            return next(new AppError_1.default('Reason is required to suspend a program', 400));
+        }
+        updateData.suspensionReason = buildModerationSummary(reason.trim(), commentHtml);
+        updateData.moderationCommentHtml = typeof commentHtml === 'string' ? commentHtml : '';
+        updateData.bannedUntil = null;
+    }
+    else if (status === 'Banned') {
+        if (!reason || typeof reason !== 'string' || !reason.trim()) {
+            return next(new AppError_1.default('Reason is required to ban a program', 400));
+        }
+        if (!banDurationKey || typeof banDurationKey !== 'string' || !Object.prototype.hasOwnProperty.call(BAN_DURATION_MS, banDurationKey)) {
+            return next(new AppError_1.default('Valid ban duration is required', 400));
+        }
+        const ms = BAN_DURATION_MS[banDurationKey];
+        updateData.suspensionReason = buildModerationSummary(reason.trim(), commentHtml);
+        updateData.moderationCommentHtml = typeof commentHtml === 'string' ? commentHtml : '';
+        updateData.bannedUntil = ms === null ? null : new Date(Date.now() + ms);
+    }
     const program = await Program_1.default.findByIdAndUpdate(id, updateData, { new: true, runValidators: true }).populate('companyId');
     if (!program) {
         return next(new AppError_1.default('No program found with that ID', 404));
     }
     if (program.companyId) {
-        // Safe check for company fields since Populate returns User document or ID
         const company = program.companyId;
         const notifTitle = `Program ${status}`;
         let notifMsg = `Your program "${program.title}" has been ${status.toLowerCase()} by admin.`;
-        if (status === 'Suspended' && reason) {
-            notifMsg += ` Reason: ${reason}`;
-            // Send Email Notification
+        if (status === 'Suspended') {
+            notifMsg += ` Reason: ${program.suspensionReason || reason}`;
             if (company.email) {
-                const emailHtml = (0, emailService_1.programSuspendedTemplate)(program.title, reason);
+                const emailHtml = (0, emailService_1.programSuspendedTemplate)(program.title, program.suspensionReason || reason);
                 try {
                     await (0, emailService_1.sendEmail)(company.email, `URGENT: Program Suspended - ${program.title}`, emailHtml);
                 }
                 catch (error) {
                     console.error('Failed to send suspension email:', error);
+                }
+            }
+        }
+        if (status === 'Banned') {
+            const expiryNote = program.bannedUntil
+                ? `This ban will automatically lift on ${program.bannedUntil.toISOString()}.`
+                : 'This ban has no automatic end date; an administrator must reactivate your program.';
+            notifMsg += ` Reason: ${program.suspensionReason || reason}. ${expiryNote}`;
+            if (company.email) {
+                const emailHtml = (0, emailService_1.programBannedTemplate)(program.title, program.suspensionReason || reason, expiryNote);
+                try {
+                    await (0, emailService_1.sendEmail)(company.email, `URGENT: Program Banned - ${program.title}`, emailHtml);
+                }
+                catch (error) {
+                    console.error('Failed to send ban email:', error);
                 }
             }
         }
@@ -233,5 +854,107 @@ exports.updateProgramStatus = (0, catchAsync_1.default)(async (req, res, next) =
         data: {
             program
         }
+    });
+});
+exports.getProgramDetails = (0, catchAsync_1.default)(async (req, res, next) => {
+    const { id } = req.params;
+    await (0, programModerationService_1.releaseExpiredProgramBans)();
+    // 1. Fetch program and fully populate company details
+    const program = await Program_1.default.findById(id).populate('companyId', 'name email avatar companyName website industry city domainVerified verifiedAssets');
+    if (!program) {
+        return next(new AppError_1.default('No program found with that ID', 404));
+    }
+    // 2. Fetch reports for this program to build Hall of Fame
+    // Specifically, find unique researchers who have submitted reports for this program.
+    // For a more strict Hall of Fame, we might filter by status: 'resolved' or 'rewarded'.
+    // For now, based on requirement "how many researchers have worked on this program", we'll get all valid submissions.
+    const Report = (await Promise.resolve().then(() => __importStar(require('../models/Report')))).default;
+    const reports = await Report.find({ programId: id })
+        .populate('researcherId', 'username name avatar reputationScore')
+        .select('researcherId status');
+    // Filter to unique researchers
+    const uniqueResearchers = new Map();
+    reports.forEach((report) => {
+        if (report.researcherId && !uniqueResearchers.has(report.researcherId._id.toString())) {
+            uniqueResearchers.set(report.researcherId._id.toString(), {
+                _id: report.researcherId._id,
+                username: report.researcherId.username || report.researcherId.name,
+                avatar: report.researcherId.avatar,
+                reputationScore: report.researcherId.reputationScore
+            });
+        }
+    });
+    const hallOfFame = Array.from(uniqueResearchers.values())
+        .sort((a, b) => (b.reputationScore || 0) - (a.reputationScore || 0));
+    const programReportsRaw = await Report.find({ programId: id })
+        .sort({ createdAt: -1 })
+        .limit(100)
+        .select('title severity status bounty createdAt researcherId')
+        .populate('researcherId', 'username name');
+    const programReports = programReportsRaw.map((r) => ({
+        id: r._id,
+        title: r.title,
+        severity: (r.severity || 'Low').toLowerCase(),
+        status: (r.status || 'Submitted').toLowerCase(),
+        submittedAt: r.createdAt,
+        bounty: r.bounty || 0,
+        researcher: r.researcherId?.username || r.researcherId?.name || 'Unknown',
+    }));
+    res.status(200).json({
+        status: 'success',
+        data: {
+            program,
+            hallOfFame,
+            programReports
+        }
+    });
+});
+exports.updateProgramByAdmin = (0, catchAsync_1.default)(async (req, res, next) => {
+    const { id } = req.params;
+    const body = req.body || {};
+    const allowed = {
+        title: true,
+        description: true,
+        rulesOfEngagement: true,
+        safeHarbor: true,
+        submissionGuidelines: true,
+        bountyRange: true,
+        scope: true,
+        outOfScope: true,
+        rewards: true,
+    };
+    const updates = {};
+    for (const key of Object.keys(allowed)) {
+        if (Object.prototype.hasOwnProperty.call(body, key)) {
+            updates[key] = body[key];
+        }
+    }
+    if (updates.scope !== undefined && !Array.isArray(updates.scope)) {
+        return next(new AppError_1.default('scope must be an array', 400));
+    }
+    if (updates.outOfScope !== undefined && !Array.isArray(updates.outOfScope)) {
+        return next(new AppError_1.default('outOfScope must be an array', 400));
+    }
+    if (updates.rewards !== undefined && (typeof updates.rewards !== 'object' || updates.rewards === null)) {
+        return next(new AppError_1.default('rewards must be an object', 400));
+    }
+    if (!Object.keys(updates).length) {
+        return next(new AppError_1.default('No valid fields to update', 400));
+    }
+    const existing = await Program_1.default.findById(id);
+    if (!existing) {
+        return next(new AppError_1.default('No program found with that ID', 404));
+    }
+    const isVdp = String(existing.type || '').toUpperCase() === 'VDP';
+    if (isVdp && (updates.rewards !== undefined || updates.bountyRange !== undefined)) {
+        return next(new AppError_1.default('VDP programs do not use bounty range or reward tiers', 400));
+    }
+    const program = await Program_1.default.findByIdAndUpdate(id, updates, { new: true, runValidators: true }).populate('companyId', 'name email avatar companyName website industry city domainVerified verifiedAssets');
+    if (!program) {
+        return next(new AppError_1.default('No program found with that ID', 404));
+    }
+    res.status(200).json({
+        status: 'success',
+        data: { program }
     });
 });

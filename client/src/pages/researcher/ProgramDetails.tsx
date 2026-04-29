@@ -273,12 +273,13 @@ const ProgramDetails = () => {
                 <div className="space-y-6">
                     
                     {/* Primary Action */}
-                    <Button asChild className="w-full h-14 text-base font-bold uppercase tracking-widest bg-zinc-900 hover:bg-zinc-800 text-white dark:bg-white dark:hover:bg-zinc-200 dark:text-black transition-all shadow-lg hover:shadow-xl hover:-translate-y-1">
-                        <Link to={`/researcher/submit?program=${program._id}`}>
-                            Submit Report
-                            <ExternalLink className="ml-2 w-4 h-4" />
-                        </Link>
-                    </Button>
+                    <Link
+                      to={`/researcher/submit?program=${program._id}`}
+                      className="w-full h-14 inline-flex items-center justify-center rounded-xl text-base font-bold uppercase tracking-widest bg-zinc-900 hover:bg-zinc-800 text-white dark:bg-white dark:hover:bg-zinc-200 dark:text-black transition-all shadow-lg hover:shadow-xl hover:-translate-y-1"
+                    >
+                      Submit Report
+                      <ExternalLink className="ml-2 w-4 h-4" />
+                    </Link>
 
                     {/* Rewards Card */}
                     {program.type === 'BBP' && (

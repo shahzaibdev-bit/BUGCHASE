@@ -6,11 +6,17 @@ import { useEditor, EditorContent } from '@tiptap/react';
 import StarterKit from '@tiptap/starter-kit';
 import Placeholder from '@tiptap/extension-placeholder';
 import { API_URL } from '@/config';
+import { Checkbox } from '@/components/ui/checkbox';
 
 export default function AdminAnnouncements() {
   const [isSending, setIsSending] = useState(false);
   const [charCount, setCharCount] = useState(0);
   const [cursorVisible, setCursorVisible] = useState(true);
+  const [audiences, setAudiences] = useState({
+    researcher: false,
+    company: false,
+    triager: false,
+  });
 
   const editor = useEditor({
     extensions: [
@@ -43,6 +49,15 @@ export default function AdminAnnouncements() {
       return;
     }
 
+    const selectedAudiences = Object.entries(audiences)
+      .filter(([, checked]) => checked)
+      .map(([audience]) => audience);
+
+    if (!selectedAudiences.length) {
+      toast.error("There must be an audience to broadcast.");
+      return;
+    }
+
     setIsSending(true);
 
     try {
@@ -54,7 +69,7 @@ export default function AdminAnnouncements() {
                 'Content-Type': 'application/json',
                 'Authorization': `Bearer ${token}`
             },
-            body: JSON.stringify({ message })
+            body: JSON.stringify({ message, audiences: selectedAudiences })
         });
 
         const data = await res.json();
@@ -84,7 +99,34 @@ export default function AdminAnnouncements() {
       {/* Header Section */}
       <div className="text-center space-y-2">
         <h1 className="text-3xl font-bold text-foreground tracking-tight uppercase font-mono">Platform Announcement</h1>
-        <p className="text-muted-foreground">Send system-wide notifications to all users.</p>
+        <p className="text-muted-foreground">Send notifications to selected user audiences.</p>
+      </div>
+
+      <div className="rounded-xl border border-border p-4 bg-card">
+        <p className="text-sm font-semibold mb-3">Broadcast Audience</p>
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+          <label className="flex items-center gap-2 text-sm">
+            <Checkbox
+              checked={audiences.researcher}
+              onCheckedChange={(checked) => setAudiences((prev) => ({ ...prev, researcher: checked === true }))}
+            />
+            Researchers
+          </label>
+          <label className="flex items-center gap-2 text-sm">
+            <Checkbox
+              checked={audiences.company}
+              onCheckedChange={(checked) => setAudiences((prev) => ({ ...prev, company: checked === true }))}
+            />
+            Companies
+          </label>
+          <label className="flex items-center gap-2 text-sm">
+            <Checkbox
+              checked={audiences.triager}
+              onCheckedChange={(checked) => setAudiences((prev) => ({ ...prev, triager: checked === true }))}
+            />
+            Triagers
+          </label>
+        </div>
       </div>
 
       {/* Broadcast Terminal */}

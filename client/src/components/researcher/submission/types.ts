@@ -9,6 +9,7 @@ export type SubmissionData = {
   cvssVector: Record<string, string>; // Store individual metrics
   cvssScore: number;
   title: string;
+  vulnerableEndpoint: string; // Rich Text
   vulnerabilityDetails: string; // Rich Text
   validationSteps: string; // Rich Text
   impact: string; // Rich Text

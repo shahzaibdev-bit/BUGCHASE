@@ -4,9 +4,17 @@ exports.getIO = exports.initSocket = void 0;
 const socket_io_1 = require("socket.io");
 let io;
 const initSocket = (server) => {
+    const allowedOrigins = [
+        'http://localhost:3000',
+        'http://localhost:5173',
+        'https://bugchase-client.vercel.app'
+    ];
+    if (process.env.CLIENT_URL && !allowedOrigins.includes(process.env.CLIENT_URL)) {
+        allowedOrigins.push(process.env.CLIENT_URL);
+    }
     io = new socket_io_1.Server(server, {
         cors: {
-            origin: process.env.CLIENT_URL || 'http://localhost:3000',
+            origin: allowedOrigins,
             methods: ['GET', 'POST'],
             credentials: true
         }

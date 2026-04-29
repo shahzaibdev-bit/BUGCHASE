@@ -311,13 +311,93 @@ body { margin: 0; padding: 0; background-color: #000000; }
   return juice(html);
 };
 
-export const userStatusChangedTemplate = (userName: string, status: string, reason: string) => {
-  const isBanned = status === 'Banned';
-  const color = isBanned ? '#ef4444' : '#eab308';
-  const title = isBanned ? 'Account Banned' : 'Account Suspended';
-  const message = isBanned 
-    ? `Your account has been permanently <strong>BANNED</strong> from the BugChase platform.` 
-    : `Your account has been temporarily <strong>SUSPENDED</strong> from the BugChase platform.`;
+const escapeEmailText = (s: string) =>
+  String(s)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+
+export const programBannedTemplate = (programName: string, reason: string, expiryNote: string) => {
+  const safeReason = escapeEmailText(reason);
+  const safeExpiry = escapeEmailText(expiryNote);
+  const safeName = escapeEmailText(programName);
+  const html = `
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Program Banned</title>
+<style>
+body { margin: 0; padding: 0; background-color: #000000; }
+.wrapper { width: 100%; table-layout: fixed; background-color: #000000; padding-bottom: 40px; }
+.container { background-color: #09090b; margin: 0 auto; width: 100%; max-width: 800px; border: 1px solid #27272a; border-radius: 8px; overflow: hidden; }
+.header { background-color: #18181b; padding: 20px; text-align: center; border-bottom: 1px solid #27272a; }
+.logo { color: #ffffff; font-family: 'Courier New', Courier, monospace; font-weight: bold; font-size: 20px; letter-spacing: 1px; text-transform: uppercase; text-decoration: none; }
+.content { padding: 40px 20px; text-align: left; font-family: 'Courier New', Courier, monospace; }
+.title { font-size: 24px; margin: 0 0 20px; color: #dc2626; text-align: center; text-transform: uppercase; }
+.text { font-size: 16px; color: #a1a1aa; line-height: 1.6; margin: 0 0 30px; }
+.reason-box { background-color: #2f1212; border: 1px solid #7f1d1d; border-radius: 8px; padding: 20px; margin-bottom: 30px; }
+.label { font-size: 12px; color: #ef4444; margin-bottom: 5px; text-transform: uppercase; letter-spacing: 1px; font-weight: bold; }
+.value { font-size: 16px; color: #ffffff; font-weight: bold; font-family: monospace; white-space: pre-wrap; }
+.expiry { font-size: 14px; color: #fbbf24; margin-top: 16px; padding: 12px; background: #1c1917; border-radius: 6px; border: 1px solid #44403c; }
+.footer { padding: 20px; text-align: center; color: #52525b; font-size: 12px; font-family: 'Courier New', Courier, monospace; border-top: 1px solid #27272a; background-color: #09090b; }
+</style>
+</head>
+<body>
+<div class="wrapper">
+    <div style="height: 40px;"></div>
+    <div class="container">
+      <div class="header">
+        <a href="#" class="logo">BugChase Security</a>
+      </div>
+      <div class="content">
+        <h1 class="title">Program Banned</h1>
+        <p class="text">
+          Your program <strong>"${safeName}"</strong> has been banned by the administration.
+        </p>
+        <div class="reason-box">
+          <div class="label">Reason</div>
+          <div class="value">${safeReason}</div>
+        </div>
+        <p class="expiry">${safeExpiry}</p>
+        <p class="text">
+          While banned, the program cannot accept submissions. If you believe this is an error, contact support.
+        </p>
+      </div>
+      <div class="footer">
+        &copy; ${new Date().getFullYear()} BugChase. All rights reserved.
+      </div>
+    </div>
+</div>
+</body>
+</html>
+  `;
+  return juice(html);
+};
+
+const escapeHtml = (value: string) =>
+  String(value || '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+
+export const userStatusChangedTemplate = (userName: string, status: string, reason?: string) => {
+  const normalized = String(status || '').toLowerCase();
+  const isBanned = normalized === 'banned';
+  const isSuspended = normalized === 'suspended';
+  const isActive = normalized === 'active';
+  const color = isBanned ? '#ef4444' : isSuspended ? '#eab308' : '#22c55e';
+  const title = isBanned ? 'Account Banned' : isSuspended ? 'Account Suspended' : 'Account Activated';
+  const message = isBanned
+    ? `Your account has been set to <strong>BANNED</strong> on the BugChase platform.`
+    : isSuspended
+      ? `Your account has been set to <strong>SUSPENDED</strong> on the BugChase platform.`
+      : `Your account has been <strong>ACTIVATED</strong> and access has been restored.`;
+  const safeReason = escapeHtml(reason || (isActive ? 'Your account is now active and fully operational.' : 'Administrative policy enforcement.'));
 
   const html = `
 <!DOCTYPE html>
@@ -335,9 +415,9 @@ body { margin: 0; padding: 0; background-color: #000000; }
 .content { padding: 40px 20px; text-align: left; font-family: 'Courier New', Courier, monospace; }
 .title { font-size: 24px; margin: 0 0 20px; color: ${color}; text-align: center; text-transform: uppercase; }
 .text { font-size: 16px; color: #a1a1aa; line-height: 1.6; margin: 0 0 30px; }
-.reason-box { background-color: ${isBanned ? '#2f1212' : '#2a2005'}; border: 1px solid ${isBanned ? '#7f1d1d' : '#854d0e'}; border-radius: 8px; padding: 20px; margin-bottom: 30px; }
+.reason-box { background-color: ${isBanned ? '#2f1212' : isSuspended ? '#2a2005' : '#0f2415'}; border: 1px solid ${isBanned ? '#7f1d1d' : isSuspended ? '#854d0e' : '#166534'}; border-radius: 8px; padding: 20px; margin-bottom: 30px; }
 .label { font-size: 12px; color: ${color}; margin-bottom: 5px; text-transform: uppercase; letter-spacing: 1px; font-weight: bold; }
-.value { font-size: 16px; color: #ffffff; font-weight: bold; font-family: monospace; }
+.value { font-size: 15px; color: #ffffff; font-weight: bold; font-family: monospace; white-space: pre-wrap; }
 .button { display: inline-block; background-color: #27272a; color: #ffffff; padding: 14px 28px; border-radius: 6px; text-decoration: none; font-weight: bold; font-size: 14px; border: 1px solid #3f3f46; font-family: 'Courier New', Courier, monospace; text-transform: uppercase; }
 .footer { padding: 20px; text-align: center; color: #52525b; font-size: 12px; font-family: 'Courier New', Courier, monospace; border-top: 1px solid #27272a; background-color: #09090b; }
 @media only screen and (max-width: 800px) {
@@ -355,18 +435,19 @@ body { margin: 0; padding: 0; background-color: #000000; }
       <div class="content">
         <h1 class="title">${title}</h1>
         <p class="text">
-          Hello ${userName},<br/><br/>
+          Hello ${escapeHtml(userName)},<br/><br/>
           ${message}
         </p>
         
         <div class="reason-box">
           <div class="label">Action Reason</div>
-          <div class="value">${reason}</div>
+          <div class="value">${safeReason}</div>
         </div>
 
         <p class="text">
-          During this period, you will not be able to access your dashboard or perform any actions.
-          If you believe this is a mistake, you may contact support for an appeal.
+          ${isActive
+            ? 'You can now sign in and continue normal activity. Please maintain compliance with BugChase policy requirements.'
+            : 'During this period, your account actions may be restricted. If you believe this decision is incorrect, you may contact support for review.'}
         </p>
 
         <div style="text-align: center;">
@@ -384,8 +465,58 @@ body { margin: 0; padding: 0; background-color: #000000; }
   return juice(html);
 };
 
+export const adminDirectMessageTemplate = (userName: string, subject: string, message: string) => {
+  const safeName = escapeHtml(userName);
+  const safeSubject = escapeHtml(subject);
+  const safeMessage = escapeHtml(message).replace(/\n/g, '<br/>');
+  const html = `
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>${safeSubject}</title>
+<style>
+body { margin: 0; padding: 0; background-color: #000000; font-family: 'Courier New', Courier, monospace; }
+.wrapper { width: 100%; table-layout: fixed; background-color: #000000; padding: 40px 0; }
+.container { background-color: #09090b; margin: 0 auto; width: 100%; max-width: 620px; border: 1px solid #27272a; border-radius: 10px; overflow: hidden; }
+.header { background-color: #09090b; padding: 24px 32px; border-bottom: 1px solid #27272a; }
+.logo { color: #ffffff; font-weight: bold; font-size: 18px; letter-spacing: 2px; text-transform: uppercase; text-decoration: none; }
+.hero { background: linear-gradient(135deg, #18181b 0%, #09090b 100%); padding: 40px 32px; border-bottom: 1px solid #27272a; }
+.hero-label { font-size: 11px; color: #a1a1aa; letter-spacing: 2px; text-transform: uppercase; margin-bottom: 12px; }
+.hero-title { font-size: 22px; font-weight: bold; color: #ffffff; line-height: 1.4; margin: 0; }
+.content { padding: 32px; }
+.greeting { font-size: 14px; color: #a1a1aa; line-height: 1.7; margin-bottom: 20px; }
+.greeting strong { color: #ffffff; }
+.message-box { background: #18181b; border: 1px solid #27272a; border-left: 3px solid #ffffff; border-radius: 6px; padding: 16px 20px; margin-bottom: 24px; }
+.message-text { font-size: 14px; color: #d4d4d8; line-height: 1.7; white-space: pre-wrap; }
+.footer { padding: 24px 32px; text-align: center; color: #52525b; font-size: 11px; border-top: 1px solid #27272a; background: #09090b; line-height: 1.7; }
+</style>
+</head>
+<body>
+<div class="wrapper">
+  <div class="container">
+    <div class="header"><a href="#" class="logo">BugChase Security</a></div>
+    <div class="hero">
+      <div class="hero-label">Admin Message</div>
+      <h1 class="hero-title">${safeSubject}</h1>
+    </div>
+    <div class="content">
+      <p class="greeting">Hello <strong>${safeName}</strong>,</p>
+      <div class="message-box"><div class="message-text">${safeMessage}</div></div>
+      <p class="greeting">Regards,<br/>BugChase Admin Team</p>
+    </div>
+    <div class="footer">&copy; ${new Date().getFullYear()} BugChase Security Platform. All rights reserved.</div>
+  </div>
+</div>
+</body>
+</html>
+  `;
+  return juice(html);
+};
+
 export type EmailActionType = 'comment' | 'status_change' | 'claimed' | 'submitted' | 'promoted' | 'bounty_awarded';
-export type EmailRole = 'researcher' | 'triager' | 'company';
+export type EmailRole = 'researcher' | 'triager' | 'company' | 'admin';
 
 export interface ReportEmailOptions {
   recipientName: string;
@@ -798,5 +929,75 @@ td { padding: 8px 0; }
 </body>
 </html>
   `;
+  return juice(html);
+};
+
+export const adminProfileUpdateTemplate = (
+  userName: string,
+  section: string,
+  changes: Array<{ field: string; before: string; after: string }>
+) => {
+  const rows = changes
+    .map(
+      (c) => `
+      <tr>
+        <td class="detail-label">${c.field}</td>
+        <td class="detail-value">${c.before || '-'}</td>
+        <td class="detail-value">${c.after || '-'}</td>
+      </tr>`
+    )
+    .join('');
+
+  const html = `
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Admin Profile Update</title>
+<style>
+body { margin: 0; padding: 0; background-color: #000000; font-family: 'Courier New', Courier, monospace; }
+.wrapper { width: 100%; table-layout: fixed; background-color: #000000; padding: 40px 0; }
+.container { background-color: #09090b; margin: 0 auto; width: 100%; max-width: 700px; border: 1px solid #27272a; border-radius: 10px; overflow: hidden; }
+.header { background-color: #18181b; padding: 20px; border-bottom: 1px solid #27272a; text-align: center; }
+.logo { color: #ffffff; font-weight: bold; font-size: 20px; letter-spacing: 1px; text-transform: uppercase; }
+.content { padding: 28px 22px; color: #d4d4d8; }
+.title { color: #ffffff; font-size: 22px; margin: 0 0 10px; }
+.sub { color: #a1a1aa; font-size: 14px; line-height: 1.6; margin: 0 0 18px; }
+.badge { display: inline-block; padding: 6px 10px; border: 1px solid #3f3f46; border-radius: 999px; font-size: 12px; color: #f4f4f5; margin-bottom: 14px; }
+.details-table { width: 100%; border-collapse: collapse; background: #18181b; border: 1px solid #27272a; border-radius: 8px; overflow: hidden; }
+.detail-label { padding: 10px 12px; font-size: 11px; color: #a1a1aa; text-transform: uppercase; border-bottom: 1px solid #27272a; width: 28%; }
+.detail-value { padding: 10px 12px; font-size: 12px; color: #ffffff; border-bottom: 1px solid #27272a; width: 36%; }
+.footer { padding: 20px; text-align: center; color: #52525b; font-size: 12px; border-top: 1px solid #27272a; }
+</style>
+</head>
+<body>
+<div class="wrapper">
+  <div class="container">
+    <div class="header">
+      <div class="logo">BugChase Security</div>
+    </div>
+    <div class="content">
+      <h1 class="title">Profile Update Notice</h1>
+      <p class="sub">Hello ${userName}, an administrator updated your account details.</p>
+      <div class="badge">Section: ${section}</div>
+      <table class="details-table">
+        <tr>
+          <td class="detail-label">Field</td>
+          <td class="detail-label">Previous</td>
+          <td class="detail-label">Updated</td>
+        </tr>
+        ${rows}
+      </table>
+      <p class="sub" style="margin-top:18px;">If you did not expect this change, contact support immediately.</p>
+    </div>
+    <div class="footer">
+      &copy; ${new Date().getFullYear()} BugChase Security Platform. All rights reserved.
+    </div>
+  </div>
+</div>
+</body>
+</html>`;
+
   return juice(html);
 };

@@ -79,6 +79,9 @@ import AdminPrograms from "./pages/admin/AdminPrograms";
 import AdminProgramDetails from "./pages/admin/AdminProgramDetails";
 import AdminAnnouncements from "./pages/admin/AdminAnnouncements";
 import AdminTriagers from "./pages/admin/AdminTriagers";
+import AdminTriagerDetails from "./pages/admin/AdminTriagerDetails";
+import AdminUserDetails from "./pages/admin/AdminUserDetails";
+import AdminReportDetails from "./pages/admin/AdminReportDetails";
 
 const queryClient = new QueryClient();
 
@@ -183,7 +186,10 @@ const App = () => (
                     <Route path="programs" element={<AdminPrograms />} />
                     <Route path="programs/:id" element={<AdminProgramDetails />} />
                     <Route path="users" element={<AdminUsers />} />
+                    <Route path="users/:id" element={<AdminUserDetails />} />
                     <Route path="triagers" element={<AdminTriagers />} />
+                    <Route path="triagers/:id" element={<AdminTriagerDetails />} />
+                    <Route path="reports/:id" element={<AdminReportDetails />} />
                     <Route path="finance" element={<AdminFinance />} />
                     <Route path="disputes" element={<AdminDisputes />} />
                     <Route path="disputes/:id" element={<AdminDisputeDetails />} />

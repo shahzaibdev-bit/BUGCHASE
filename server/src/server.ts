@@ -6,6 +6,7 @@ import helmet from 'helmet';
 import cookieParser from 'cookie-parser';
 import mongoSanitize from 'express-mongo-sanitize';
 import connectDB from './config/db';
+import { releaseExpiredProgramBans } from './services/programModerationService';
 import globalErrorHandler from './middlewares/error';
 import AppError from './utils/AppError';
 import authRoutes from './routes/authRoutes';
@@ -23,6 +24,13 @@ dotenv.config(); // Reload env
 
 // Connect to Database
 connectDB();
+
+const PROGRAM_BAN_CHECK_MS = 60 * 1000;
+setInterval(() => {
+    if (mongoose.connection.readyState === 1) {
+        releaseExpiredProgramBans().catch((err) => console.error('releaseExpiredProgramBans', err));
+    }
+}, PROGRAM_BAN_CHECK_MS);
 
 const app = express();
 

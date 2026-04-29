@@ -32,6 +32,7 @@ export const SubmissionWizard = () => {
         cvssVector: { AV: 'N', AC: 'L', PR: 'N', UI: 'N', S: 'U', C: 'N', I: 'N', A: 'N' },
         cvssScore: 0.0,
         title: '',
+        vulnerableEndpoint: '',
         vulnerabilityDetails: '',
         validationSteps: '',
         impact: '',
@@ -79,6 +80,7 @@ export const SubmissionWizard = () => {
             };
             
             return data.title.trim().length > 2 && 
+                   stripHtml(data.vulnerableEndpoint).length > 2 &&
                    stripHtml(data.vulnerabilityDetails).length > 2 && 
                    stripHtml(data.impact).length > 2 &&
                    stripHtml(data.validationSteps).length > 2;
@@ -114,6 +116,7 @@ export const SubmissionWizard = () => {
             formData.append('cvssVector', cvssString);
             formData.append('cvssScore', data.cvssScore.toString());
             formData.append('title', data.title);
+            formData.append('vulnerableEndpoint', data.vulnerableEndpoint);
             formData.append('vulnerabilityDetails', data.vulnerabilityDetails);
             formData.append('validationSteps', data.validationSteps);
             formData.append('impact', data.impact);

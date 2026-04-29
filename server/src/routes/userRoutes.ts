@@ -3,6 +3,7 @@ import multer from 'multer';
 import { protect } from '../middlewares/authMiddleware';
 import { 
     getPublicProfile, 
+    getResearcherLeaderboard,
     updateKYCStatus, 
     updateMe, 
     uploadAvatar, 
@@ -38,6 +39,7 @@ const publicProfileLimiter = rateLimiter(20, 60, 'profile');
 const uploadLimiter = rateLimiter(5, 60, 'upload'); // 5 uploads per minute
 
 router.get('/p/:username', publicProfileLimiter, getPublicProfile);
+router.get('/leaderboard', protect, getResearcherLeaderboard);
 
 // Protected Routes
 router.patch('/verify-kyc-status', protect, updateKYCStatus);

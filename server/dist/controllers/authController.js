@@ -74,7 +74,7 @@ exports.signup = (0, catchAsync_1.default)(async (req, res, next) => {
         return next(new AppError_1.default('There was an error sending the email. Try again later!', 500));
     }
     // Reset Rate Limit on Successful Signup Attempt
-    await (0, rateLimit_1.resetRateLimit)(req);
+    await (0, rateLimit_1.resetRateLimit)(req, 'auth');
     res.status(201).json({
         status: 'success',
         message: 'OTP sent to email',
@@ -109,7 +109,7 @@ exports.verifyEmail = (0, catchAsync_1.default)(async (req, res, next) => {
     // Inject Reputation
     userObj.reputationScore = (userObj.reputationScore || 0) + calculateDynamicReputation(userObj);
     // Reset Rate Limit on Success
-    await (0, rateLimit_1.resetRateLimit)(req);
+    await (0, rateLimit_1.resetRateLimit)(req, 'auth');
     res.status(200).json({
         status: 'success',
         token,
@@ -148,7 +148,7 @@ exports.login = (0, catchAsync_1.default)(async (req, res, next) => {
     // Inject Reputation
     userObj.reputationScore = (userObj.reputationScore || 0) + calculateDynamicReputation(userObj);
     // Reset Rate Limit on Success
-    await (0, rateLimit_1.resetRateLimit)(req);
+    await (0, rateLimit_1.resetRateLimit)(req, 'auth');
     res.status(200).json({
         status: 'success',
         token,
@@ -249,7 +249,7 @@ exports.updatePassword = (0, catchAsync_1.default)(async (req, res, next) => {
         sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
     });
     // Reset Rate Limit (Optional, but good since they successfully authenticated again)
-    await (0, rateLimit_1.resetRateLimit)(req);
+    await (0, rateLimit_1.resetRateLimit)(req, 'auth');
     res.status(200).json({
         status: 'success',
         token, // Send token to client just in case they need it immediately

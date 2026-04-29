@@ -62,6 +62,7 @@ export interface IUser extends Document {
   status: 'Active' | 'Suspended' | 'Banned';
   statusReason?: string;
   stripeCustomerId?: string;
+  payoutHold?: boolean;
   correctPassword(candidatePassword: string, userPassword: string): Promise<boolean>;
 }
 
@@ -179,6 +180,10 @@ const userSchema = new mongoose.Schema<IUser>({
   },
   statusReason: String,
   stripeCustomerId: String,
+  payoutHold: {
+    type: Boolean,
+    default: false,
+  },
 }, {
   timestamps: true,
 });

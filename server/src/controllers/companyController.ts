@@ -1288,11 +1288,12 @@ export const verifyPaymentMethodOtp = catchAsync(async (req: Request, res: Respo
 });
 
 export const detachPaymentMethod = catchAsync(async (req: Request, res: Response, next: NextFunction) => {
-    const { paymentMethodId } = req.params;
+    const paymentMethodIdParam = req.params.paymentMethodId;
 
-    if (!paymentMethodId) {
+    if (!paymentMethodIdParam || Array.isArray(paymentMethodIdParam)) {
         return next(new AppError('Payment Method ID is required', 400));
     }
+    const paymentMethodId = paymentMethodIdParam;
 
     // Security check: verify the PM belongs to this company's customer
     const customerId = await getOrCreateStripeCustomer(req.user!.id);

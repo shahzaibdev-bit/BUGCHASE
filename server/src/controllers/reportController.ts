@@ -1,12 +1,51 @@
 import { Request, Response, NextFunction } from 'express';
 import Report from '../models/Report';
 import User from '../models/User';
+import Program from '../models/Program';
 import AppError from '../utils/AppError';
 import catchAsync from '../utils/catchAsync';
 import mongoose from 'mongoose';
 import { sendEmail, reportEmailTemplate } from '../services/emailService';
 import { getIO } from '../services/socketService';
 import { uploadToCloudinary } from '../utils/cloudinary';
+
+const randomAlphaNum = (length: number) => {
+  const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+  let out = '';
+  for (let i = 0; i < length; i += 1) {
+    out += chars[Math.floor(Math.random() * chars.length)];
+  }
+  return out;
+};
+
+const toInitials = (value: string, maxLen: number) => {
+  const words = String(value || '')
+    .replace(/[^A-Za-z0-9\s]/g, ' ')
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean);
+
+  let raw = '';
+  if (words.length >= 2) raw = words.map((w) => w[0]).join('');
+  else if (words.length === 1) raw = words[0];
+
+  const compact = raw.replace(/[^A-Za-z0-9]/g, '').toUpperCase();
+  const padded = (compact || 'X').padEnd(maxLen, 'X');
+  return padded.slice(0, maxLen);
+};
+
+const generateUniqueReportId = async (companyName: string, programTitle: string) => {
+  const companyInitials = toInitials(companyName, 2);
+  const programInitials = toInitials(programTitle, 3);
+
+  for (let attempt = 0; attempt < 25; attempt += 1) {
+    const candidate = `${companyInitials}-${programInitials}-${randomAlphaNum(6)}`;
+    const exists = await Report.findOne({ reportId: candidate }).select('_id').lean();
+    if (!exists) return candidate;
+  }
+
+  throw new AppError('Unable to generate unique report ID. Please retry.', 500);
+};
 
 // Create a new report
 export const createReport = catchAsync(async (req: Request, res: Response, next: NextFunction) => {
@@ -19,10 +58,22 @@ export const createReport = catchAsync(async (req: Request, res: Response, next:
     cvssScore,
     target, // asset url
     assetType,
+    vulnerableEndpoint,
     vulnerabilityDetails, // mapped to description
     validationSteps, // mapped to pocSteps
     impact
   } = req.body;
+
+  if (!programId) {
+    return next(new AppError('Program ID is required', 400));
+  }
+
+  const program = await Program.findById(programId).select('title companyName');
+  if (!program) {
+    return next(new AppError('Program not found', 404));
+  }
+
+  const generatedReportId = await generateUniqueReportId(program.companyName || 'BC', program.title || 'PRG');
 
   // Process uploaded files if any
   const uploadedUrls: string[] = [];
@@ -39,8 +90,10 @@ export const createReport = catchAsync(async (req: Request, res: Response, next:
   // Basic validation mapping
   const reportData = {
     researcherId: req.user!.id,
-    programId: programId || new mongoose.Types.ObjectId(), // For now, allow loose program ID if mock, but ideally required
+    programId,
+    reportId: generatedReportId,
     title,
+    vulnerableEndpoint,
     vulnerabilityCategory,
     severity,
     cvssVector,

@@ -11,6 +11,13 @@ const reportSchema = new mongoose.Schema({
     required: true,
   },
   title: { type: String, required: true },
+  reportId: {
+    type: String,
+    unique: true,
+    sparse: true,
+    index: true,
+  },
+  vulnerableEndpoint: { type: String, trim: true },
   description: { type: String, required: true },
   pocSteps: { type: String, required: true },
   severity: {

@@ -19,10 +19,20 @@ const programSchema = new mongoose.Schema({
   },
   status: {
     type: String,
-    enum: ['Draft', 'Pending', 'Active', 'Suspended', 'Rejected'],
+    enum: ['Draft', 'Pending', 'Active', 'Suspended', 'Rejected', 'Banned'],
     default: 'Draft',
   },
   suspensionReason: String,
+  /** Optional HTML from admin moderation dialog (personal notes). */
+  moderationCommentHtml: {
+    type: String,
+    default: '',
+  },
+  /** When set and in the past, releaseExpiredProgramBans() restores Active. Null = permanent ban until manual reactivation. */
+  bannedUntil: {
+    type: Date,
+    default: null,
+  },
   isPrivate: {
     type: Boolean,
     default: false,

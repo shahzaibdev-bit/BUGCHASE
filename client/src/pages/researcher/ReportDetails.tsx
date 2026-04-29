@@ -451,7 +451,7 @@ export default function ReportDetails() {
 
                          <div className="flex flex-col gap-2">
                              <div className="flex items-center gap-2 flex-wrap">
-                                 {comment.sender?.role !== 'company' ? (
+                                {comment.sender?.role === 'researcher' ? (
                                     <div className="flex items-center gap-2">
                                         <HoverCard>
                                             <HoverCardTrigger asChild>
@@ -475,6 +475,24 @@ export default function ReportDetails() {
                                             </HoverCardContent>
                                         </HoverCard>
                                         <Badge variant="outline" className="text-[10px] px-1 py-0 border-zinc-200 dark:border-zinc-800 text-zinc-500 font-normal">Security Researcher</Badge>
+                                    </div>
+                                ) : comment.sender?.role === 'admin' ? (
+                                    <div className="flex items-center gap-2">
+                                        <span className="text-sm font-bold text-zinc-900 dark:text-zinc-100">
+                                            {`Platform Admin @${comment.sender?.username || comment.sender?.name || 'admin'}`}
+                                        </span>
+                                        <Badge variant="outline" className="text-[10px] px-1 py-0 border-zinc-200 dark:border-zinc-800 text-zinc-500 font-normal">
+                                            Platform Admin
+                                        </Badge>
+                                    </div>
+                                ) : comment.sender?.role === 'triager' ? (
+                                    <div className="flex items-center gap-2">
+                                        <span className="text-sm font-bold text-zinc-900 dark:text-zinc-100">
+                                            @{comment.sender?.username || comment.sender?.name || 'triager'}
+                                        </span>
+                                        <Badge variant="outline" className="text-[10px] px-1 py-0 border-zinc-200 dark:border-zinc-800 text-zinc-500 font-normal">
+                                            Bugchase Triage
+                                        </Badge>
                                     </div>
                                  ) : (
                                      <div className="flex items-center gap-2">

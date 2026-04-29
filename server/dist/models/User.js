@@ -100,7 +100,9 @@ const userSchema = new mongoose_1.default.Schema({
                 type: String,
                 enum: ['verified', 'disabled'],
                 default: 'verified'
-            }
+            },
+            inScope: [String],
+            outScope: [String]
         }],
     achievements: [{
             title: String,
@@ -115,6 +117,11 @@ const userSchema = new mongoose_1.default.Schema({
         default: 'Active',
     },
     statusReason: String,
+    stripeCustomerId: String,
+    payoutHold: {
+        type: Boolean,
+        default: false,
+    },
 }, {
     timestamps: true,
 });

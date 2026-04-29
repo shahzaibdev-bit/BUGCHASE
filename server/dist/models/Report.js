@@ -32,12 +32,22 @@ const reportSchema = new mongoose_1.default.Schema({
         enum: ['Submitted', 'Triaging', 'Triaged', 'Pending_Fix', 'Resolved', 'Paid', 'Spam', 'Duplicate', 'NA', 'Needs Info', 'Out-of-Scope', 'Under Review', 'Closed'],
         default: 'Submitted',
     },
+    bounty: {
+        type: Number,
+        default: 0
+    },
     // Attachments (S3 URLs or local paths)
     attachments: [{
             name: String,
             url: String,
             type: String
         }],
+    // Certificates
+    certificateId: {
+        type: String,
+        unique: true,
+        sparse: true
+    },
     // Comments System
     comments: [{
             sender: {
@@ -48,9 +58,10 @@ const reportSchema = new mongoose_1.default.Schema({
             content: { type: String, required: true },
             type: {
                 type: String,
-                enum: ['comment', 'status_change', 'severity_update', 'assignment'],
+                enum: ['comment', 'status_change', 'severity_update', 'assignment', 'bounty_awarded', 'promoted'],
                 default: 'comment'
             },
+            attachments: [String], // Array of Cloudinary URLs
             metadata: { type: mongoose_1.default.Schema.Types.Mixed }, // Flexible for reason, oldStatus, newStatus
             createdAt: { type: Date, default: Date.now }
         }],

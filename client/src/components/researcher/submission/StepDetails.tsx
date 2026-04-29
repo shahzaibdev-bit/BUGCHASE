@@ -113,6 +113,16 @@ export const StepDetails = ({ data, updateData }: StepDetailsProps) => {
             {/* Rich Text Areas (Simulated with Textarea for now) */}
             {/* Rich Text Areas */}
             <div className="space-y-2">
+                 <Label className="text-zinc-500 uppercase font-mono text-xs">Vulnerable Endpoint <span className="text-red-500">*</span></Label>
+                 <Input
+                    placeholder="e.g. POST /api/v1/users/{id}/role or https://app.example.com/admin/users/42"
+                    className="font-mono text-sm py-5 bg-white dark:bg-zinc-900 border-zinc-200 dark:border-zinc-800"
+                    value={data.vulnerableEndpoint || ''}
+                    onChange={(e) => updateData({ vulnerableEndpoint: e.target.value })}
+                 />
+            </div>
+
+            <div className="space-y-2">
                  <Label className="text-zinc-500 uppercase font-mono text-xs">Vulnerability Details <span className="text-red-500">*</span></Label>
                  <CyberpunkEditor 
                      content={data.vulnerabilityDetails}

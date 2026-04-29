@@ -6,8 +6,10 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.generateSummary = exports.updateReportValidation = exports.reopenReport = exports.updateReportStatus = exports.submitDecision = exports.updateReportSeverity = exports.postComment = exports.getReportDetails = exports.claimReport = exports.getGlobalPool = exports.getAssignedReports = exports.getMyQueue = exports.updateTriagerPreferences = exports.getTriagerProfile = exports.getDashboardStats = void 0;
 const catchAsync_1 = __importDefault(require("../utils/catchAsync"));
 const AppError_1 = __importDefault(require("../utils/AppError"));
+const cloudinary_1 = require("../utils/cloudinary");
 const Report_1 = __importDefault(require("../models/Report"));
 const User_1 = __importDefault(require("../models/User"));
+const Program_1 = __importDefault(require("../models/Program"));
 const Notification_1 = __importDefault(require("../models/Notification"));
 const emailService_1 = require("../services/emailService");
 const geminiService_1 = require("../services/geminiService");
@@ -170,6 +172,19 @@ exports.claimReport = (0, catchAsync_1.default)(async (req, res, next) => {
     if (report.triagerId && report.triagerId.toString() !== triagerId) {
         return next(new AppError_1.default('Report already claimed by another triager', 400));
     }
+    // --- NEW: Concurrency Enforcements ---
+    const triagerRecord = await User_1.default.findById(triagerId).select('maxConcurrentReports');
+    if (triagerRecord) {
+        const activeCount = await Report_1.default.countDocuments({
+            triagerId: triagerId,
+            status: { $in: ['Triaging', 'Under Review', 'Needs Info'] }
+        });
+        const currentMax = triagerRecord.maxConcurrentReports || 10;
+        if (activeCount >= currentMax) {
+            return next(new AppError_1.default(`You have reached your maximum concurrent reports limit (${currentMax}). Please resolve active reports before claiming new ones.`, 400));
+        }
+    }
+    // ------------------------------------
     if (report.status === 'Submitted') {
         const researcherName = report.researcherId?.username || report.researcherId?.name || 'Researcher';
         const welcomeMessage = `Hi @${researcherName},
@@ -220,7 +235,18 @@ Best regards,
         const researcherName = report.researcherId?.name || 'Researcher';
         if (researcherEmail) {
             try {
-                await (0, emailService_1.sendEmail)(researcherEmail, `Report Assigned: ${report.title}`, (0, emailService_1.threadNotificationTemplate)(researcherName, triagerName, 'Assignment', report.title, `Your report has been assigned to ${triagerName} for review.`, `${process.env.CLIENT_URL}/researcher/reports/${report._id}`));
+                await (0, emailService_1.sendEmail)(researcherEmail, `Your report is being reviewed: ${report.title}`, (0, emailService_1.reportEmailTemplate)({
+                    recipientName: researcherName,
+                    recipientRole: 'researcher',
+                    actorName: triagerName,
+                    actorRole: 'triager',
+                    actionType: 'claimed',
+                    reportTitle: report.title,
+                    reportId: String(report._id),
+                    severity: report.severity,
+                    newStatus: 'Triaging',
+                    link: `${process.env.CLIENT_URL}/researcher/reports/${report._id}`
+                }));
             }
             catch (error) {
                 console.error('Failed to send assignment email:', error);
@@ -233,7 +259,17 @@ exports.getReportDetails = (0, catchAsync_1.default)(async (req, res, next) => {
     const { id } = req.params;
     const report = await Report_1.default.findById(id)
         .populate('researcherId', 'username name email avatar')
-        .populate('comments.sender', 'username name role avatar');
+        .populate('comments.sender', 'username name role avatar')
+        .populate({
+        path: 'programId',
+        model: 'Program',
+        select: 'title companyName type bountyRange description rewards rulesOfEngagement safeHarbor submissionGuidelines scope',
+        populate: {
+            path: 'companyId',
+            model: 'User',
+            select: 'name avatar'
+        }
+    });
     if (!report) {
         return next(new AppError_1.default('Report not found', 404));
     }
@@ -251,9 +287,21 @@ exports.postComment = (0, catchAsync_1.default)(async (req, res, next) => {
     const report = await Report_1.default.findById(id);
     if (!report)
         return next(new AppError_1.default('Report not found', 404));
+    // Process uploaded files if any
+    const uploadedUrls = [];
+    if (req.files && Array.isArray(req.files)) {
+        const uploadPromises = req.files.map((file) => {
+            return (0, cloudinary_1.uploadToCloudinary)(file);
+        });
+        const results = await Promise.all(uploadPromises);
+        results.forEach(result => {
+            uploadedUrls.push(result.url);
+        });
+    }
     report.comments.push({
         sender: req.user.id,
         content,
+        attachments: uploadedUrls,
         createdAt: new Date()
     });
     await report.save();
@@ -264,11 +312,14 @@ exports.postComment = (0, catchAsync_1.default)(async (req, res, next) => {
         io.to(id).emit('new_activity', {
             id: newComment._id,
             type: 'comment',
-            author: newComment.sender?.role !== 'company' ? (newComment.sender?.username || newComment.sender?.name || 'Unknown User') : (newComment.sender?.name || 'Unknown Company'),
+            author: req.user.role !== 'company' ? (req.user.username || req.user.name || 'Unknown User') : (req.user.name || 'Unknown Company'),
+            authorName: req.user.name,
+            authorUsername: req.user.username,
             role: 'Triager',
             content: newComment.content,
+            attachments: newComment.attachments,
             timestamp: newComment.createdAt,
-            authorAvatar: newComment.sender?.avatar
+            authorAvatar: req.user.avatar
         });
     }
     catch (socketError) {
@@ -286,12 +337,23 @@ exports.postComment = (0, catchAsync_1.default)(async (req, res, next) => {
             await report.populate('researcherId', 'name email avatar');
             const researcher = report.researcherId;
             if (researcher?.email) {
-                const senderName = req.user.name || 'Triager';
-                await (0, emailService_1.sendEmail)(researcher.email, `New Comment on ${report.title}`, (0, emailService_1.threadNotificationTemplate)(researcher.name, senderName, 'Comment', report.title, content, `${process.env.CLIENT_URL}/researcher/reports/${report._id}`));
+                const senderName = req.user.name || req.user.username || 'Triager';
+                await (0, emailService_1.sendEmail)(researcher.email, `New Comment on: ${report.title}`, (0, emailService_1.reportEmailTemplate)({
+                    recipientName: researcher.name || 'Researcher',
+                    recipientRole: 'researcher',
+                    actorName: senderName,
+                    actorRole: 'triager',
+                    actionType: 'comment',
+                    reportTitle: report.title,
+                    reportId: String(report._id),
+                    severity: report.severity,
+                    message: content,
+                    link: `${process.env.CLIENT_URL}/researcher/reports/${report._id}`
+                }));
             }
         }
         catch (error) {
-            console.error("Failed to send comment email:", error);
+            console.error('Failed to send comment email:', error);
         }
     })();
 });
@@ -346,38 +408,51 @@ exports.updateReportSeverity = (0, catchAsync_1.default)(async (req, res, next) 
     });
     // Notify Researcher in background
     (async () => {
-        await report.populate('researcherId', 'name email avatar');
-        const researcher = report.researcherId;
-        if (researcher?.email) {
-            try {
-                const senderName = req.user.name || 'Triager';
-                await (0, emailService_1.sendEmail)(researcher.email, `Severity Updated: ${report.title}`, (0, emailService_1.threadNotificationTemplate)(researcher.name, senderName, 'Severity Update', report.title, `Severity updated to ${severity} (CVSS: ${cvssScore})`, `${process.env.CLIENT_URL}/researcher/reports/${report._id}`));
+        try {
+            await report.populate('researcherId', 'name email avatar');
+            const researcher = report.researcherId;
+            if (researcher?.email) {
+                const senderName = req.user.name || req.user.username || 'Triager';
+                await (0, emailService_1.sendEmail)(researcher.email, `Severity Updated: ${report.title}`, (0, emailService_1.reportEmailTemplate)({
+                    recipientName: researcher.name || 'Researcher',
+                    recipientRole: 'researcher',
+                    actorName: senderName,
+                    actorRole: 'triager',
+                    actionType: 'status_change',
+                    reportTitle: report.title,
+                    reportId: String(report._id),
+                    severity,
+                    newStatus: `Severity updated to ${severity}`,
+                    reason: `CVSS Score: ${cvssScore} | Vector: ${cvssVector}`,
+                    link: `${process.env.CLIENT_URL}/researcher/reports/${report._id}`
+                }));
             }
-            catch (error) {
-                console.error("Failed to send severity email:", error);
-            }
+        }
+        catch (error) {
+            console.error('Failed to send severity email:', error);
         }
     })();
 });
 // Submit Triage Decision
 exports.submitDecision = (0, catchAsync_1.default)(async (req, res, next) => {
     const { id } = req.params;
-    const { status, note, bountyAmount } = req.body; // status: Triaged, Spade, Duplicate, NA...
-    const report = await Report_1.default.findById(id).populate('researcherId programId');
+    const { status, note, bountyAmount } = req.body;
+    // Populate researcherId with explicit fields (including email) at query time
+    const report = await Report_1.default.findById(id)
+        .populate('researcherId', 'name email username avatar');
     if (!report) {
         return next(new AppError_1.default('Report not found', 404));
     }
+    const oldStatus = report.status; // capture BEFORE overwriting
     report.status = status;
     if (note && status === 'Triaged')
         report.triagerNote = note;
-    // If status is "Triaged", notify Company
-    // If status is "Spam", "Duplicate", "NA", notify Researcher
     report.comments.push({
         sender: req.user.id,
         content: `Changed status to ${status}`,
         type: 'status_change',
         metadata: {
-            oldStatus: report.status,
+            oldStatus,
             newStatus: status,
             reason: note
         },
@@ -397,39 +472,88 @@ exports.submitDecision = (0, catchAsync_1.default)(async (req, res, next) => {
             timestamp: newSystemComment.createdAt,
             metadata: newSystemComment.metadata
         });
-        io.to(id).emit('status_updated', {
-            status
-        });
+        io.to(id).emit('status_updated', { status });
     }
     catch (socketError) {
         console.error("Socket emit failed on submit decision:", socketError);
     }
     res.status(200).json({
         status: 'success',
-        data: {
-            report
-        }
+        data: { report }
     });
-    // Create Notification and Email in background
+    // Send Email notifications in background (non-blocking)
     (async () => {
+        const researcher = report.researcherId;
+        console.log('[EMAIL DEBUG] researcher email:', researcher?.email, '| status:', status);
+        // In-App Notification — separate try-catch so it doesn't block email
         try {
-            // Create In-App Notification for Researcher
+            const recipientId = researcher?._id || researcher;
             await Notification_1.default.create({
-                recipient: report.researcherId,
+                recipient: recipientId,
                 title: `Report Status Updated: ${report.title}`,
                 message: `Your report has been marked as ${status}.`,
                 type: 'report_status',
                 link: `/researcher/reports/${report._id}`
             });
-            // Send Email
-            const researcher = report.researcherId;
+        }
+        catch (notifErr) {
+            console.error('[EMAIL DEBUG] Notification.create failed:', notifErr);
+        }
+        // Email Researcher — own try-catch
+        try {
             if (researcher?.email) {
-                const senderName = req.user.name || 'Triager';
-                await (0, emailService_1.sendEmail)(researcher.email, `Status Updated: ${report.title}`, (0, emailService_1.threadNotificationTemplate)(researcher.name, senderName, 'Status Change', report.title, `Status changed to ${status}.\n\nNote: ${note || 'No additional note.'}`, `${process.env.CLIENT_URL}/researcher/reports/${report._id}`));
+                const senderName = req.user.name || req.user.username || 'Triager';
+                console.log('[EMAIL DEBUG] Sending researcher email to:', researcher.email);
+                const html = (0, emailService_1.reportEmailTemplate)({
+                    recipientName: researcher.name || 'Researcher',
+                    recipientRole: 'researcher',
+                    actorName: senderName,
+                    actorRole: 'triager',
+                    actionType: status === 'Triaged' ? 'promoted' : 'status_change',
+                    reportTitle: report.title,
+                    reportId: String(report._id),
+                    severity: report.severity,
+                    oldStatus,
+                    newStatus: status,
+                    reason: note || undefined,
+                    link: `${process.env.CLIENT_URL || 'http://localhost:3000'}/researcher/reports/${report._id}`
+                });
+                await (0, emailService_1.sendEmail)(researcher.email, `Report ${status === 'Triaged' ? 'Promoted' : 'Status Updated'}: ${report.title}`, html);
+                console.log('[EMAIL DEBUG] Researcher email sent successfully');
+            }
+            else {
+                console.warn('[EMAIL DEBUG] No researcher email found — skipping');
             }
         }
-        catch (error) {
-            console.error("Failed to send decision email or notification:", error);
+        catch (researcherEmailErr) {
+            console.error('[EMAIL DEBUG] Researcher email failed:', researcherEmailErr);
+        }
+        // Email Company when Triaged — own try-catch
+        if (status === 'Triaged') {
+            try {
+                const prog = await Program_1.default.findById(report.programId).populate('companyId', 'name email');
+                const company = prog?.companyId;
+                console.log('[EMAIL DEBUG] Company email:', company?.email);
+                if (company?.email) {
+                    const html = (0, emailService_1.reportEmailTemplate)({
+                        recipientName: company.name || 'Security Team',
+                        recipientRole: 'company',
+                        actorName: req.user.name || 'BugChase Triage',
+                        actorRole: 'triager',
+                        actionType: 'promoted',
+                        reportTitle: report.title,
+                        reportId: String(report._id),
+                        severity: report.severity,
+                        newStatus: 'Triaged',
+                        link: `${process.env.CLIENT_URL || 'http://localhost:3000'}/company/reports/${report._id}`
+                    });
+                    await (0, emailService_1.sendEmail)(company.email, `New Report Forwarded to Your Program: ${report.title}`, html);
+                    console.log('[EMAIL DEBUG] Company email sent successfully');
+                }
+            }
+            catch (companyEmailErr) {
+                console.error('[EMAIL DEBUG] Company email failed:', companyEmailErr);
+            }
         }
     })();
 });
@@ -437,18 +561,19 @@ exports.submitDecision = (0, catchAsync_1.default)(async (req, res, next) => {
 exports.updateReportStatus = (0, catchAsync_1.default)(async (req, res, next) => {
     const { id } = req.params;
     const { status, note } = req.body;
-    const report = await Report_1.default.findById(id);
+    // Populate researcherId at query time so email has the address
+    const report = await Report_1.default.findById(id).populate('researcherId', 'name email username');
     if (!report)
         return next(new AppError_1.default('Report not found', 404));
+    const oldStatus = report.status; // capture BEFORE overwriting
     // Persist changes
     report.status = status;
-    // Add to specific timeline/activity logic if needed
     report.comments.push({
         sender: req.user.id,
         content: `Changed status to ${status}`,
         type: 'status_change',
         metadata: {
-            oldStatus: report.status,
+            oldStatus,
             newStatus: status,
             reason: note
         },
@@ -479,18 +604,49 @@ exports.updateReportStatus = (0, catchAsync_1.default)(async (req, res, next) =>
         status: 'success',
         data: { report }
     });
-    // Send Email to Researcher in background
+    // Send Email notifications in background
     (async () => {
-        await report.populate('researcherId', 'name email avatar');
-        const researcher = report.researcherId;
-        if (researcher?.email) {
-            try {
-                const senderName = req.user.name || 'Triager';
-                await (0, emailService_1.sendEmail)(researcher.email, `Status Updated: ${report.title}`, (0, emailService_1.threadNotificationTemplate)(researcher.name, senderName, 'Status Change', report.title, `Status changed to ${status}.\n\nNote: ${note || 'No additional note.'}`, `${process.env.CLIENT_URL}/researcher/reports/${report._id}`));
+        try {
+            const researcher = report.researcherId;
+            if (researcher?.email) {
+                const senderName = req.user.name || req.user.username || 'Triager';
+                await (0, emailService_1.sendEmail)(researcher.email, `Status Updated: ${report.title}`, (0, emailService_1.reportEmailTemplate)({
+                    recipientName: researcher.name || 'Researcher',
+                    recipientRole: 'researcher',
+                    actorName: senderName,
+                    actorRole: 'triager',
+                    actionType: 'status_change',
+                    reportTitle: report.title,
+                    reportId: String(report._id),
+                    severity: report.severity,
+                    oldStatus,
+                    newStatus: status,
+                    reason: note || undefined,
+                    link: `${process.env.CLIENT_URL}/researcher/reports/${report._id}`
+                }));
             }
-            catch (error) {
-                console.error("Failed to send status email:", error);
+            // If promoted to Triaged — also notify the Company
+            if (status === 'Triaged') {
+                const prog = await Program_1.default.findById(report.programId).populate('companyId', 'name email');
+                const company = (prog?.companyId);
+                if (company?.email) {
+                    await (0, emailService_1.sendEmail)(company.email, `Report Promoted to Your Program: ${report.title}`, (0, emailService_1.reportEmailTemplate)({
+                        recipientName: company.name || 'Security Team',
+                        recipientRole: 'company',
+                        actorName: req.user.name || 'BugChase Triage',
+                        actorRole: 'triager',
+                        actionType: 'promoted',
+                        reportTitle: report.title,
+                        reportId: String(report._id),
+                        severity: report.severity,
+                        newStatus: 'Triaged',
+                        link: `${process.env.CLIENT_URL}/company/reports/${report._id}`
+                    }));
+                }
             }
+        }
+        catch (error) {
+            console.error('Failed to send status email:', error);
         }
     })();
 });

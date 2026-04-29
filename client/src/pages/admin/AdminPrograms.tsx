@@ -25,18 +25,21 @@ import {
 
 
 
-import SuspendProgramDialog from '@/components/admin/SuspendProgramDialog';
+import ModerateProgramDialog, { type ModerateProgramPayload } from '@/components/admin/ModerateProgramDialog';
 import { API_URL } from '@/config';
 
 const statusColors: Record<string, string> = {
   Active: 'bg-green-500/10 text-green-500 border-green-500/20',
   Pending: 'bg-yellow-500/10 text-yellow-500 border-yellow-500/20',
   Suspended: 'bg-zinc-500/10 text-zinc-500 border-zinc-500/20',
+  Banned: 'bg-red-500/10 text-red-600 border-red-500/25',
   Rejected: 'bg-red-500/10 text-red-500 border-red-500/20',
 };
 
 export default function AdminPrograms() {
   const navigate = useNavigate();
+  const openProgramDetails = (programId: string) =>
+    navigate(`/admin/programs/${programId}`, { state: { adminReturnTo: '/admin/programs' } });
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
   const [typeFilter, setTypeFilter] = useState('all');
@@ -68,29 +71,39 @@ export default function AdminPrograms() {
     fetchPrograms();
   }, []);
 
-  const handleAction = async (id: string, newStatus: string, reason?: string) => {
-      try {
-          const body: any = { status: newStatus };
-          if (reason) body.reason = reason;
+  const handleAction = async (
+    id: string,
+    newStatus: string,
+    extra?: { reason?: string; commentHtml?: string; banDurationKey?: string }
+  ): Promise<boolean> => {
+    try {
+      const body: Record<string, string> = { status: newStatus };
+      if (extra?.reason) body.reason = extra.reason;
+      if (extra?.commentHtml) body.commentHtml = extra.commentHtml;
+      if (extra?.banDurationKey) body.banDurationKey = extra.banDurationKey;
 
-          const token = localStorage.getItem('token');
-          const res = await fetch(`${API_URL}/admin/programs/${id}/status`, {
-              method: 'PATCH',
-              headers: { 
-                  'Content-Type': 'application/json',
-                  'Authorization': `Bearer ${token}`
-              },
-              body: JSON.stringify(body)
-          });
-          if (res.ok) {
-              const data = await res.json();
-              // Update local state directly
-              setPrograms(prev => prev.map(p => p._id === id ? { ...p, status: newStatus } : p));
-              toast.success(`Program marked as ${newStatus}`);
-          }
-      } catch (error) {
-          console.error("Failed to update status");
+      const token = localStorage.getItem('token');
+      const res = await fetch(`${API_URL}/admin/programs/${id}/status`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify(body),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (res.ok && data.data?.program) {
+        setPrograms((prev) => prev.map((p) => (p._id === id ? { ...p, ...data.data.program } : p)));
+        toast.success(`Program marked as ${newStatus}`);
+        return true;
       }
+      toast.error(data.message || 'Failed to update status');
+      return false;
+    } catch (error) {
+      console.error('Failed to update status');
+      toast.error('Failed to update status');
+      return false;
+    }
   };
 
   const openSuspendDialog = (program: any) => {
@@ -98,10 +111,15 @@ export default function AdminPrograms() {
       setIsSuspendOpen(true);
   };
 
-  const handleSuspendSubmit = async (reason: string) => {
-      if (selectedProgram) {
-          await handleAction(selectedProgram._id, 'Suspended', reason);
-      }
+  const handleModerationSubmit = async (p: ModerateProgramPayload) => {
+    if (!selectedProgram) return;
+    const reason = p.presetReason === 'Other' ? p.otherSpecify : p.presetReason;
+    if (!reason?.trim()) return;
+    const ok = await handleAction(selectedProgram._id, 'Suspended', {
+      reason: reason.trim(),
+      commentHtml: p.commentHtml,
+    });
+    if (!ok) throw new Error('suspend_failed');
   };
 
   const filteredPrograms = programs.filter(program => {
@@ -120,10 +138,11 @@ export default function AdminPrograms() {
 
   return (
     <div className="space-y-8 animate-fade-in relative">
-      <SuspendProgramDialog 
-        isOpen={isSuspendOpen} 
-        onClose={() => setIsSuspendOpen(false)} 
-        onSubmit={handleSuspendSubmit}
+      <ModerateProgramDialog
+        isOpen={isSuspendOpen}
+        onClose={() => setIsSuspendOpen(false)}
+        mode="suspend"
+        onSubmit={handleModerationSubmit}
         programName={selectedProgram?.title || 'Program'}
       />
 
@@ -190,7 +209,8 @@ export default function AdminPrograms() {
             <SelectItem value="Active">ACTIVE</SelectItem>
             <SelectItem value="Pending">PENDING</SelectItem>
             <SelectItem value="Suspended">PAUSED</SelectItem>
-             <SelectItem value="Rejected">REJECTED</SelectItem>
+            <SelectItem value="Banned">BANNED</SelectItem>
+            <SelectItem value="Rejected">REJECTED</SelectItem>
           </SelectContent>
         </Select>
         <Select value={typeFilter} onValueChange={setTypeFilter}>
@@ -214,7 +234,7 @@ export default function AdminPrograms() {
                     <div 
                         key={program._id} 
                         className="bg-background border border-border p-4 rounded-xl shadow-sm flex flex-col gap-4 cursor-pointer hover:border-zinc-500 transition-colors"
-                        onClick={() => navigate(`/admin/programs/${program._id}`)}
+                        onClick={() => openProgramDetails(program._id)}
                     >
                         <div className="flex justify-between items-start">
                             <div className="flex items-center gap-3">
@@ -242,7 +262,7 @@ export default function AdminPrograms() {
                               <DropdownMenuContent align="end" className="bg-background border-border">
                                 <DropdownMenuItem 
                                     className="focus:bg-muted font-mono text-xs"
-                                    onClick={(e) => { e.stopPropagation(); navigate(`/admin/programs/${program._id}`); }}
+                                    onClick={(e) => { e.stopPropagation(); openProgramDetails(program._id); }}
                                 >
                                   <Eye className="h-3 w-3 mr-2" />
                                   VIEW_DETAILS
@@ -266,7 +286,7 @@ export default function AdminPrograms() {
                                       PAUSE_PROGRAM
                                    </DropdownMenuItem>
                                 )}
-                                {(program.status === 'Suspended' || program.status === 'Rejected') && (
+                                {(program.status === 'Suspended' || program.status === 'Rejected' || program.status === 'Banned') && (
                                      <DropdownMenuItem onClick={(e) => { e.stopPropagation(); handleAction(program._id, 'Active'); }} className="text-green-500 focus:bg-green-500/10 focus:text-green-500 font-mono text-xs">
                                      <CheckCircle className="h-3 w-3 mr-2" />
                                      ACTIVATE
@@ -317,7 +337,7 @@ export default function AdminPrograms() {
                     <tr 
                         key={program._id} 
                         className="hover:bg-muted/50 transition-colors cursor-pointer"
-                        onClick={() => navigate(`/admin/programs/${program._id}`)}
+                        onClick={() => openProgramDetails(program._id)}
                     >
                       <td className="px-6 py-4">
                         <div className="flex items-center gap-3">
@@ -361,7 +381,7 @@ export default function AdminPrograms() {
                           <DropdownMenuContent align="end" className="bg-background border-border">
                             <DropdownMenuItem 
                                 className="focus:bg-muted font-mono text-xs"
-                                onClick={(e) => { e.stopPropagation(); navigate(`/admin/programs/${program._id}`); }}
+                                onClick={(e) => { e.stopPropagation(); openProgramDetails(program._id); }}
                             >
                               <Eye className="h-3 w-3 mr-2" />
                               VIEW_DETAILS
@@ -385,12 +405,12 @@ export default function AdminPrograms() {
                                   PAUSE_PROGRAM
                                </DropdownMenuItem>
                             )}
-                            {(program.status === 'Suspended' || program.status === 'Rejected') && (
-                                 <DropdownMenuItem onClick={(e) => { e.stopPropagation(); handleAction(program._id, 'Active'); }} className="text-green-500 focus:bg-green-500/10 focus:text-green-500 font-mono text-xs">
-                                 <CheckCircle className="h-3 w-3 mr-2" />
-                                 ACTIVATE
-                                 </DropdownMenuItem>
-                            )}
+                            {(program.status === 'Suspended' || program.status === 'Rejected' || program.status === 'Banned') && (
+                                     <DropdownMenuItem onClick={(e) => { e.stopPropagation(); handleAction(program._id, 'Active'); }} className="text-green-500 focus:bg-green-500/10 focus:text-green-500 font-mono text-xs">
+                                     <CheckCircle className="h-3 w-3 mr-2" />
+                                     ACTIVATE
+                                     </DropdownMenuItem>
+                                )}
                           </DropdownMenuContent>
                         </DropdownMenu>
                       </td>

@@ -65,7 +65,7 @@ export default function CyberpunkEditor({ content, onChange, placeholder }: Edit
     editorProps: {
       attributes: {
         class: cn(
-            "prose prose-sm dark:prose-invert max-w-none p-3 min-h-[80px] outline-none font-sans text-sm", // Reduced min-height
+            "prose prose-sm dark:prose-invert max-w-none p-3 min-h-[80px] outline-none font-sans text-sm break-words [overflow-wrap:anywhere]",
             "prose-ul:list-disc prose-ul:pl-4 prose-ol:list-decimal prose-ol:pl-4",
             "prose-blockquote:border-l-2 prose-blockquote:border-zinc-900 dark:prose-blockquote:border-white prose-blockquote:pl-4 prose-blockquote:italic"
         ),
@@ -180,11 +180,14 @@ export default function CyberpunkEditor({ content, onChange, placeholder }: Edit
       <div className="flex-1 overflow-y-auto cursor-text bg-transparent">
           {isPreview ? (
             <div 
-                className="prose prose-sm dark:prose-invert max-w-none p-2 outline-none prose-ul:list-disc prose-ul:pl-4 prose-ol:list-decimal prose-ol:pl-4 prose-blockquote:border-l-2 prose-blockquote:border-foreground prose-blockquote:pl-4 prose-blockquote:italic animate-in fade-in duration-200"
+                className="prose prose-sm dark:prose-invert max-w-none p-2 outline-none break-words [overflow-wrap:anywhere] prose-ul:list-disc prose-ul:pl-4 prose-ol:list-decimal prose-ol:pl-4 prose-blockquote:border-l-2 prose-blockquote:border-foreground prose-blockquote:pl-4 prose-blockquote:italic animate-in fade-in duration-200"
                 dangerouslySetInnerHTML={{ __html: editor.getHTML() }}
             />
           ) : (
-            <EditorContent editor={editor} className="h-full w-full [&>div]:min-h-full" />
+            <EditorContent
+              editor={editor}
+              className="h-full w-full [&>div]:min-h-full [&_.ProseMirror]:break-words [&_.ProseMirror]:[overflow-wrap:anywhere] [&_.ProseMirror]:whitespace-pre-wrap"
+            />
           )}
       </div>
       

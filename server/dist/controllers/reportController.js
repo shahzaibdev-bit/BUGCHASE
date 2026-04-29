@@ -5,18 +5,30 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.getReportsByProgram = exports.addComment = exports.getReport = exports.getMyReports = exports.createReport = void 0;
 const Report_1 = __importDefault(require("../models/Report"));
+const User_1 = __importDefault(require("../models/User"));
 const AppError_1 = __importDefault(require("../utils/AppError"));
 const catchAsync_1 = __importDefault(require("../utils/catchAsync"));
 const mongoose_1 = __importDefault(require("mongoose"));
 const emailService_1 = require("../services/emailService");
 const socketService_1 = require("../services/socketService");
+const cloudinary_1 = require("../utils/cloudinary");
 // Create a new report
 exports.createReport = (0, catchAsync_1.default)(async (req, res, next) => {
     const { programId, title, vulnerabilityCategory, severity, cvssVector, cvssScore, target, // asset url
     assetType, vulnerabilityDetails, // mapped to description
     validationSteps, // mapped to pocSteps
-    impact, assets // additional files/urls
-     } = req.body;
+    impact } = req.body;
+    // Process uploaded files if any
+    const uploadedUrls = [];
+    if (req.files && Array.isArray(req.files)) {
+        const uploadPromises = req.files.map((file) => {
+            return (0, cloudinary_1.uploadToCloudinary)(file);
+        });
+        const results = await Promise.all(uploadPromises);
+        results.forEach(result => {
+            uploadedUrls.push(result.url);
+        });
+    }
     // Basic validation mapping
     const reportData = {
         researcherId: req.user.id,
@@ -29,7 +41,7 @@ exports.createReport = (0, catchAsync_1.default)(async (req, res, next) => {
         description: vulnerabilityDetails,
         pocSteps: validationSteps,
         impact,
-        assets: target ? [target] : [], // Use target as primary asset
+        assets: target ? [target, ...uploadedUrls] : uploadedUrls, // Use target as primary asset, append Cloudinary URLs
         status: 'Submitted'
     };
     const newReport = await Report_1.default.create(reportData);
@@ -37,10 +49,44 @@ exports.createReport = (0, catchAsync_1.default)(async (req, res, next) => {
         status: 'success',
         data: newReport
     });
+    // Send submission confirmation to researcher in background
+    (async () => {
+        try {
+            const researcher = await User_1.default.findById(req.user.id).select('name email');
+            if (researcher?.email) {
+                await (0, emailService_1.sendEmail)(researcher.email, `Report Received: ${title}`, (0, emailService_1.reportEmailTemplate)({
+                    recipientName: researcher.name || 'Researcher',
+                    recipientRole: 'researcher',
+                    actorName: 'BugChase',
+                    actorRole: 'triager',
+                    actionType: 'submitted',
+                    reportTitle: title,
+                    reportId: String(newReport._id),
+                    severity,
+                    newStatus: 'Submitted',
+                    link: `${process.env.CLIENT_URL}/researcher/reports/${newReport._id}`
+                }));
+            }
+        }
+        catch (e) {
+            console.error('Failed to send submission confirmation email:', e);
+        }
+    })();
 });
 // Get reports for logged-in researcher
 exports.getMyReports = (0, catchAsync_1.default)(async (req, res, next) => {
-    const reports = await Report_1.default.find({ researcherId: req.user.id }).sort({ createdAt: -1 });
+    const reports = await Report_1.default.find({ researcherId: req.user.id })
+        .populate({
+        path: 'programId',
+        model: 'Program',
+        select: 'title companyId companyName type bountyRange description rewards rulesOfEngagement safeHarbor submissionGuidelines scope',
+        populate: {
+            path: 'companyId',
+            model: 'User',
+            select: 'avatar name'
+        }
+    })
+        .sort({ createdAt: -1 });
     res.status(200).json({
         status: 'success',
         results: reports.length,
@@ -53,8 +99,8 @@ exports.getReport = (0, catchAsync_1.default)(async (req, res, next) => {
         .populate('researcherId', 'username name nickname avatar')
         .populate({
         path: 'programId',
-        model: 'Program', // Explicitly provide model since schema lacks ref
-        select: 'companyId companyName', // The Program schema has companyId ref
+        model: 'Program',
+        select: 'title companyId companyName type bountyRange description rewards rulesOfEngagement safeHarbor submissionGuidelines scope',
         populate: {
             path: 'companyId',
             model: 'User',
@@ -89,9 +135,21 @@ exports.addComment = (0, catchAsync_1.default)(async (req, res, next) => {
         req.user.role !== 'triager') {
         return next(new AppError_1.default('You do not have permission to comment on this report', 403));
     }
+    // Process uploaded files if any
+    const uploadedUrls = [];
+    if (req.files && Array.isArray(req.files)) {
+        const uploadPromises = req.files.map((file) => {
+            return (0, cloudinary_1.uploadToCloudinary)(file);
+        });
+        const results = await Promise.all(uploadPromises);
+        results.forEach(result => {
+            uploadedUrls.push(result.url);
+        });
+    }
     report.comments.push({
         sender: req.user.id,
         content,
+        attachments: uploadedUrls,
         createdAt: new Date()
     });
     await report.save();
@@ -101,22 +159,24 @@ exports.addComment = (0, catchAsync_1.default)(async (req, res, next) => {
     try {
         const io = (0, socketService_1.getIO)();
         // Determine role based on sender
-        const senderObj = newComment.sender;
         let roleLabel = 'System';
-        if (senderObj.role === 'researcher')
+        if (req.user.role === 'researcher')
             roleLabel = 'Researcher';
-        else if (senderObj.role === 'triager')
+        else if (req.user.role === 'triager')
             roleLabel = 'Triager';
-        else if (senderObj.role === 'admin')
+        else if (req.user.role === 'admin')
             roleLabel = 'Admin';
         io.to(req.params.id).emit('new_activity', {
             id: newComment._id,
             type: 'comment',
-            author: senderObj?.role !== 'company' ? (senderObj?.username || senderObj?.name || 'Unknown User') : (senderObj?.name || 'Unknown Company'),
+            author: req.user.role !== 'company' ? (req.user.username || req.user.name || 'Unknown User') : (req.user.name || 'Unknown Company'),
+            authorName: req.user.name,
+            authorUsername: req.user.username,
             role: roleLabel,
             content: newComment.content,
+            attachments: newComment.attachments,
             timestamp: newComment.createdAt,
-            authorAvatar: senderObj?.avatar
+            authorAvatar: req.user.avatar
         });
     }
     catch (socketError) {
@@ -130,28 +190,89 @@ exports.addComment = (0, catchAsync_1.default)(async (req, res, next) => {
     (async () => {
         try {
             const senderId = req.user.id;
+            const senderRole = req.user.role;
             const isResearcher = report.researcherId.toString() === senderId;
+            const isCompany = senderRole === 'company';
             if (isResearcher) {
-                // Notify Triager if assigned
+                // Researcher commented → notify triager
                 if (report.triagerId) {
                     await report.populate('triagerId', 'email name');
                     const triager = report.triagerId;
                     if (triager?.email) {
-                        await (0, emailService_1.sendEmail)(triager.email, `New Comment on Report #${report._id}`, (0, emailService_1.threadNotificationTemplate)(triager.name || 'Triager', req.user.name || 'Researcher', 'Comment', report.title, content, `${process.env.CLIENT_URL}/triager/app/reports/${report._id}`));
+                        await (0, emailService_1.sendEmail)(triager.email, `New Comment on: ${report.title}`, (0, emailService_1.reportEmailTemplate)({
+                            recipientName: triager.name || 'Triager',
+                            recipientRole: 'triager',
+                            actorName: req.user.name || req.user.username || 'Researcher',
+                            actorRole: 'researcher',
+                            actionType: 'comment',
+                            reportTitle: report.title,
+                            reportId: String(report._id),
+                            severity: report.severity,
+                            message: content,
+                            link: `${process.env.CLIENT_URL}/triager/app/reports/${report._id}`
+                        }));
+                    }
+                }
+            }
+            else if (isCompany) {
+                // Company commented → notify BOTH researcher and triager
+                await report.populate('researcherId', 'email name');
+                const researcher = report.researcherId;
+                if (researcher?.email) {
+                    await (0, emailService_1.sendEmail)(researcher.email, `New Comment on: ${report.title}`, (0, emailService_1.reportEmailTemplate)({
+                        recipientName: researcher.name || 'Researcher',
+                        recipientRole: 'researcher',
+                        actorName: req.user.name || 'Company',
+                        actorRole: 'company',
+                        actionType: 'comment',
+                        reportTitle: report.title,
+                        reportId: String(report._id),
+                        severity: report.severity,
+                        message: content,
+                        link: `${process.env.CLIENT_URL}/researcher/reports/${report._id}`
+                    }));
+                }
+                if (report.triagerId) {
+                    await report.populate('triagerId', 'email name');
+                    const triager = report.triagerId;
+                    if (triager?.email) {
+                        await (0, emailService_1.sendEmail)(triager.email, `New Comment on: ${report.title}`, (0, emailService_1.reportEmailTemplate)({
+                            recipientName: triager.name || 'Triager',
+                            recipientRole: 'triager',
+                            actorName: req.user.name || 'Company',
+                            actorRole: 'company',
+                            actionType: 'comment',
+                            reportTitle: report.title,
+                            reportId: String(report._id),
+                            severity: report.severity,
+                            message: content,
+                            link: `${process.env.CLIENT_URL}/triager/app/reports/${report._id}`
+                        }));
                     }
                 }
             }
             else {
-                // Notify Researcher (if sender is Triager/Admin)
+                // Triager/Admin commented → notify researcher
                 await report.populate('researcherId', 'email name');
                 const researcher = report.researcherId;
                 if (researcher?.email) {
-                    await (0, emailService_1.sendEmail)(researcher.email, `New Comment on ${report.title}`, (0, emailService_1.threadNotificationTemplate)(researcher.name || 'Researcher', req.user.name || 'Triager', 'Comment', report.title, content, `${process.env.CLIENT_URL}/researcher/reports/${report._id}`));
+                    await (0, emailService_1.sendEmail)(researcher.email, `New Comment on: ${report.title}`, (0, emailService_1.reportEmailTemplate)({
+                        recipientName: researcher.name || 'Researcher',
+                        recipientRole: 'researcher',
+                        actorName: req.user.name || req.user.username || 'Triager',
+                        actorRole: 'triager',
+                        actionType: 'comment',
+                        reportTitle: report.title,
+                        reportId: String(report._id),
+                        severity: report.severity,
+                        message: content,
+                        link: `${process.env.CLIENT_URL}/researcher/reports/${report._id}`
+                    }));
                 }
             }
         }
         catch (emailError) {
-            console.error("Failed to send comment notification email:", emailError);
+            console.error('Failed to send comment notification email:', emailError);
         }
     })();
 });
