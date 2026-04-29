@@ -313,6 +313,7 @@ export default function CompanyDashboard() {
                 <div key={report.id} className="flex items-center gap-4 p-3 rounded-lg bg-muted/20 hover:bg-muted/30 transition-colors cursor-pointer">
                 <Badge variant={report.severity as any}>{report.severity}</Badge>
                 <span className="flex-1 truncate font-mono text-sm">{report.title}</span>
+                <span className="text-[10px] text-muted-foreground font-mono">{report.reportId || report.id}</span>
                 <Badge variant={report.status === 'new' ? 'info' : 'secondary'} className="uppercase text-[10px]">{report.status}</Badge>
                 </div>
             ))

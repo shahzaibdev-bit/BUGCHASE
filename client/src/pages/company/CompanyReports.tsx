@@ -98,6 +98,7 @@ export default function CompanyReports() {
     .filter(report => {
       const matchesSearch =
         (report.title || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+        (report.reportId || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
         (report.id || '').toLowerCase().includes(searchTerm.toLowerCase());
       const matchesSeverity = severityFilter === 'all' || report.severity === severityFilter;
       const matchesStatus = statusFilter === 'all' || report.status === statusFilter;
@@ -197,7 +198,7 @@ export default function CompanyReports() {
                   >
                     {/* ID */}
                     <td className="p-4 font-mono text-sm text-primary">
-                      {report.id.toString().substring(0, 8)}...
+                      {report.reportId || `${report.id.toString().substring(0, 8)}...`}
                     </td>
 
                     {/* Title + NEW badge */}

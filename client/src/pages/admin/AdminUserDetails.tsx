@@ -1277,7 +1277,7 @@ export default function AdminUserDetails() {
                                 navigate(`/admin/reports/${report.id}`, { state: { adminReturnTo: userDetailPath } })
                               }
                             >
-                              <td className="px-4 py-3 font-mono text-primary">{String(report.id).slice(0, 8)}…</td>
+                              <td className="px-4 py-3 font-mono text-primary">{report.reportId || `${String(report.id).slice(0, 8)}…`}</td>
                               <td className="px-4 py-3 max-w-[200px] truncate font-medium">{report.title}</td>
                               <td className="px-4 py-3 max-w-[160px] truncate text-muted-foreground text-xs font-mono">
                                 {report.program?.title || '—'}
@@ -1359,7 +1359,7 @@ export default function AdminUserDetails() {
                         className="hover:bg-muted/40 cursor-pointer transition-colors"
                         onClick={() => navigate(`/admin/reports/${report.id}`, { state: { adminReturnTo: userDetailPath } })}
                       >
-                        <td className="px-4 py-3 font-mono text-primary">{String(report.id).slice(0, 8)}…</td>
+                        <td className="px-4 py-3 font-mono text-primary">{report.reportId || `${String(report.id).slice(0, 8)}…`}</td>
                         <td className="px-4 py-3 max-w-[200px] truncate font-medium">{report.title}</td>
                         <td className="px-4 py-3 max-w-[160px] truncate text-muted-foreground text-xs font-mono">
                           {report.program?.title || '—'}

@@ -128,7 +128,7 @@ export const getWalletData = catchAsync(async (req: Request, res: Response, next
       amount: `+${r.bounty.toLocaleString()}`,
       status: 'CLEARED',
       timestamp: new Date(r.updatedAt).getTime(),
-      reportId: r._id
+      reportId: r.reportId || r._id
   }));
 
   // Fetch real withdrawal transactions

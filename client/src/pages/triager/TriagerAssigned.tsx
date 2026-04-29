@@ -48,9 +48,12 @@ export default function TriagerAssigned() {
       if (user) fetchReports();
   }, [user]);
 
+  const getDisplayReportId = (report: any) => report.reportId || report._id?.slice(-6) || 'N/A';
+
 
   const filteredReports = reports.filter(report => {
     const matchesSearch = report.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                         (report.reportId || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
                          report._id.toLowerCase().includes(searchTerm.toLowerCase());
     const matchesStatus = statusFilter === 'all' || report.status === statusFilter;
     return matchesSearch && matchesStatus;
@@ -145,7 +148,7 @@ export default function TriagerAssigned() {
                 <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
                 <div className="space-y-2 flex-1">
                     <div className="flex items-center gap-3 flex-wrap">
-                    <span className="font-mono text-primary text-sm">#{report._id.slice(-6)}</span>
+                    <span className="font-mono text-primary text-sm">#{getDisplayReportId(report)}</span>
                     <Badge className={
                         report.severity === 'Critical' ? 'bg-red-500/10 text-red-500 border-red-500/20' :
                         report.severity === 'High' ? 'bg-orange-500/10 text-orange-500 border-orange-500/20' :

@@ -127,7 +127,7 @@ export const createReport = catchAsync(async (req: Request, res: Response, next:
             actorRole: 'triager',
             actionType: 'submitted',
             reportTitle: title,
-            reportId: String(newReport._id),
+            reportId: newReport.reportId || String(newReport._id),
             severity,
             newStatus: 'Submitted',
             link: `${process.env.CLIENT_URL}/researcher/reports/${newReport._id}`
@@ -294,7 +294,7 @@ export const addComment = catchAsync(async (req: Request, res: Response, next: N
                             actorRole: 'researcher',
                             actionType: 'comment',
                             reportTitle: report.title,
-                            reportId: String(report._id),
+                            reportId: report.reportId || String(report._id),
                             severity: report.severity,
                             message: content,
                             link: `${process.env.CLIENT_URL}/triager/app/reports/${report._id}`
@@ -317,7 +317,7 @@ export const addComment = catchAsync(async (req: Request, res: Response, next: N
                         actorRole: 'company',
                         actionType: 'comment',
                         reportTitle: report.title,
-                        reportId: String(report._id),
+                        reportId: report.reportId || String(report._id),
                         severity: report.severity,
                         message: content,
                         link: `${process.env.CLIENT_URL}/researcher/reports/${report._id}`
@@ -338,7 +338,7 @@ export const addComment = catchAsync(async (req: Request, res: Response, next: N
                             actorRole: 'company',
                             actionType: 'comment',
                             reportTitle: report.title,
-                            reportId: String(report._id),
+                            reportId: report.reportId || String(report._id),
                             severity: report.severity,
                             message: content,
                             link: `${process.env.CLIENT_URL}/triager/app/reports/${report._id}`
@@ -361,7 +361,7 @@ export const addComment = catchAsync(async (req: Request, res: Response, next: N
                         actorRole: 'triager',
                         actionType: 'comment',
                         reportTitle: report.title,
-                        reportId: String(report._id),
+                        reportId: report.reportId || String(report._id),
                         severity: report.severity,
                         message: content,
                         link: `${process.env.CLIENT_URL}/researcher/reports/${report._id}`

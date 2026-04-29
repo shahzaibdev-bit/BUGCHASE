@@ -95,6 +95,8 @@ export default function ResearcherReports() {
     fetchReports();
   }, []);
 
+  const getDisplayReportId = (report: any) => report.reportId || report._id?.substring(report._id.length - 6) || 'N/A';
+
   // --- Filtering Logic ---
   const filteredReports = useMemo(() => {
     return reports.filter(report => {
@@ -111,6 +113,7 @@ export default function ResearcherReports() {
         const query = searchQuery.toLowerCase();
         const matchesSearch = (
           report.title.toLowerCase().includes(query) ||
+          (report.reportId || '').toLowerCase().includes(query) ||
           report._id.toLowerCase().includes(query) ||
           (report.programId && report.programId.toString().toLowerCase().includes(query)) // or program name if populated
         );
@@ -313,7 +316,7 @@ export default function ResearcherReports() {
             className="p-4 rounded-lg border bg-white/40 border-zinc-200 dark:bg-zinc-900/20 dark:border-zinc-800/50 backdrop-blur-sm active:scale-[0.98] transition-transform"
           >
             <div className="flex items-center justify-between mb-3">
-              <span className="font-mono text-xs text-zinc-500 dark:text-zinc-400">{report._id.substring(report._id.length - 6)}</span>
+              <span className="font-mono text-xs text-zinc-500 dark:text-zinc-400">{getDisplayReportId(report)}</span>
               <span className="text-[10px] uppercase px-1.5 py-0.5 rounded border bg-transparent text-zinc-600 border-zinc-300 dark:text-zinc-400 dark:border-zinc-700">
                 {report.status}
               </span>
@@ -375,7 +378,7 @@ export default function ResearcherReports() {
                 className="group transition-colors cursor-pointer border-b last:border-0 border-zinc-100 hover:bg-black/5 dark:border-zinc-800/50 dark:hover:bg-white/5"
               >
                 <td className="py-3 px-4 font-mono text-sm text-zinc-500 dark:text-zinc-400 group-hover:text-black dark:group-hover:text-white transition-colors">
-                  {report._id.substring(report._id.length - 6)}
+                  {getDisplayReportId(report)}
                 </td>
                 <td className="py-3 px-4 font-medium text-sm text-zinc-900 dark:text-white">
                   {report.title}

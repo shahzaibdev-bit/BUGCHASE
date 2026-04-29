@@ -628,7 +628,7 @@ export default function TriagerReportDetails() {
                  </Button>
                  <div className="flex items-center gap-2">
                      <span className="text-sm font-mono text-zinc-400">REPORT ID:</span>
-                     <span className="font-mono font-bold text-lg text-black dark:text-white">{report.id || id}</span>
+                     <span className="font-mono font-bold text-lg text-black dark:text-white">{report.reportId || report.id || id}</span>
                  </div>
              </div>
 

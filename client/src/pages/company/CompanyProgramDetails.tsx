@@ -654,7 +654,7 @@ const CompanyProgramDetails = () => {
                                                         report.severity === 'High' ? "bg-orange-500" :
                                                         report.severity === 'Medium' ? "bg-yellow-500" : "bg-blue-500"
                                                     )} />
-                                                    <span className="font-mono text-xs text-muted-foreground">{report.id}</span>
+                                                    <span className="font-mono text-xs text-muted-foreground">{report.reportId || report.id}</span>
                                                     <h4 className="font-medium text-foreground">{report.title}</h4>
                                                 </div>
                                                 <div className="flex items-center gap-6">

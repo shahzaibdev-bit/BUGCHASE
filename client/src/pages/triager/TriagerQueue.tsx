@@ -96,6 +96,8 @@ export default function TriagerQueue() {
     fetchData();
   }, []);
 
+  const getDisplayReportId = (report: any) => report.reportId || report.id || report._id?.slice(-6) || 'N/A';
+
   const filteredPool = unassignedPool.filter(r => {
     if (expertiseFilter === 'all') return true;
     if (expertiseFilter === 'matched') {
@@ -249,7 +251,7 @@ export default function TriagerQueue() {
                             <div className="flex-1 space-y-2">
                                 <div className="flex items-center gap-3">
                                     <span className="font-mono text-xs font-bold text-zinc-500 dark:text-zinc-400">
-                                        {report.id}
+                                        {getDisplayReportId(report)}
                                     </span>
                                     <SeverityBadge severity={report.severity} />
                                     <Badge variant="outline" className="uppercase font-mono text-[10px] border-zinc-300 dark:border-zinc-700 text-zinc-600 dark:text-zinc-400">
@@ -340,7 +342,7 @@ export default function TriagerQueue() {
                             <div className="flex-1 space-y-2">
                                  <div className="flex items-center gap-3">
                                     <span className="font-mono text-xs font-bold text-zinc-500 dark:text-zinc-400">
-                                        {report.id}
+                                        {getDisplayReportId(report)}
                                     </span>
                                     <SeverityBadge severity={report.severity} />
                                     <Badge variant="secondary" className="bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-400 font-mono text-[10px] uppercase">

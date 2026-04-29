@@ -566,6 +566,7 @@ export const getUserDetails = catchAsync(async (req: Request, res: Response, nex
         const programIdStr = prog?._id?.toString() || (r.programId && typeof r.programId !== 'object' ? String(r.programId) : '');
         return {
             id: r._id,
+            reportId: r.reportId || String(r._id),
             title: r.title,
             severity: (r.severity || 'Low').toLowerCase(),
             status: (r.status || 'Submitted').toLowerCase(),
@@ -834,7 +835,7 @@ const notifyReportParticipants = async (
                     actorRole,
                     actionType,
                     reportTitle: report.title,
-                    reportId: String(report._id),
+                    reportId: report.reportId || String(report._id),
                     severity: report.severity,
                     newStatus,
                     message,
@@ -1253,6 +1254,7 @@ export const getProgramDetails = catchAsync(async (req: Request, res: Response, 
 
     const programReports = programReportsRaw.map((r: any) => ({
         id: r._id,
+        reportId: r.reportId || String(r._id),
         title: r.title,
         severity: (r.severity || 'Low').toLowerCase(),
         status: (r.status || 'Submitted').toLowerCase(),

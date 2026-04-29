@@ -26,6 +26,13 @@ const mockTargets = [
 export const StepClassification = ({ data, updateData, programScope = [], isLoading = false }: StepClassificationProps) => {
     const [search, setSearch] = useState('');
     const [groupFilter, setGroupFilter] = useState('All');
+    const [isCategoryMenuOpen, setIsCategoryMenuOpen] = useState(true);
+
+    useEffect(() => {
+        if (!data.target) {
+            setIsCategoryMenuOpen(true);
+        }
+    }, [data.target]);
 
     // Filter Logic
     const filteredGroups = vulnerabilityGroups
@@ -41,6 +48,7 @@ export const StepClassification = ({ data, updateData, programScope = [], isLoad
 
     const handleSelectCategory = (heading: string, item: { label: string; cwe: string }) => {
         updateData({ category: heading, bugType: item.label, cwe: item.cwe });
+        setIsCategoryMenuOpen(false);
     };
 
     // Determine targets to display
@@ -117,84 +125,107 @@ export const StepClassification = ({ data, updateData, programScope = [], isLoad
                     </div>
 
                     <div className="border border-zinc-200 dark:border-white/10 rounded-xl bg-zinc-50 dark:bg-zinc-950 overflow-hidden shadow-lg">
-                        {/* Toolbar */}
-                        <div className="flex items-center gap-2 p-2 border-b border-zinc-200 dark:border-white/10 bg-white dark:bg-zinc-900">
-                             <DropdownMenu>
-                                <DropdownMenuTrigger asChild>
-                                    <button className="flex items-center gap-2 px-3 py-1.5 text-sm font-medium text-zinc-700 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800 rounded-lg transition-colors min-w-[120px] justify-between">
-                                        {groupFilter}
-                                        <ChevronDown className="w-4 h-4 text-zinc-500" />
-                                    </button>
-                                </DropdownMenuTrigger>
-                                <DropdownMenuContent align="start" className="w-[200px]">
-                                    <DropdownMenuItem onClick={() => setGroupFilter('All')}>All</DropdownMenuItem>
-                                    {vulnerabilityGroups.map(g => (
-                                        <DropdownMenuItem key={g.heading} onClick={() => setGroupFilter(g.heading)}>
-                                            {g.heading}
-                                        </DropdownMenuItem>
-                                    ))}
-                                </DropdownMenuContent>
-                            </DropdownMenu>
+                        {isCategoryMenuOpen ? (
+                            <>
+                                {/* Toolbar */}
+                                <div className="flex items-center gap-2 p-2 border-b border-zinc-200 dark:border-white/10 bg-white dark:bg-zinc-900">
+                                    <DropdownMenu>
+                                        <DropdownMenuTrigger asChild>
+                                            <button className="flex items-center gap-2 px-3 py-1.5 text-sm font-medium text-zinc-700 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800 rounded-lg transition-colors min-w-[120px] justify-between">
+                                                {groupFilter}
+                                                <ChevronDown className="w-4 h-4 text-zinc-500" />
+                                            </button>
+                                        </DropdownMenuTrigger>
+                                        <DropdownMenuContent align="start" className="w-[200px]">
+                                            <DropdownMenuItem onClick={() => setGroupFilter('All')}>All</DropdownMenuItem>
+                                            {vulnerabilityGroups.map(g => (
+                                                <DropdownMenuItem key={g.heading} onClick={() => setGroupFilter(g.heading)}>
+                                                    {g.heading}
+                                                </DropdownMenuItem>
+                                            ))}
+                                        </DropdownMenuContent>
+                                    </DropdownMenu>
 
-                            <div className="h-6 w-px bg-zinc-200 dark:bg-zinc-800 mx-2" />
+                                    <div className="h-6 w-px bg-zinc-200 dark:bg-zinc-800 mx-2" />
 
-                            <div className="flex-1 relative">
-                                <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-400" />
-                                <Input 
-                                    className="border-0 bg-transparent focus-visible:ring-0 pl-8 h-9" 
-                                    placeholder="Search..." 
-                                    value={search}
-                                    onChange={(e) => setSearch(e.target.value)}
-                                />
-                            </div>
-                        </div>
-
-                        {/* List Area */}
-                        <div className="h-[400px] overflow-y-auto scrollbar-thin scrollbar-thumb-zinc-700 scrollbar-track-transparent p-2 space-y-2">
-                             {filteredGroups.length > 0 ? (
-                                filteredGroups.map((group) => (
-                                    <div key={group.heading} className="space-y-1">
-                                        <div className="px-3 py-2 text-xs font-bold text-zinc-500 uppercase font-mono tracking-wider sticky top-0 bg-zinc-50/95 dark:bg-zinc-950/95 backdrop-blur-sm z-10">
-                                            {group.heading}
-                                        </div>
-                                        {group.items.map((item) => {
-                                            const isSelected = data.bugType === item.label;
-                                            return (
-                                                <div
-                                                    key={item.label}
-                                                    onClick={() => handleSelectCategory(group.heading, item)}
-                                                    className={cn(
-                                                        "flex items-center justify-between p-3 rounded-lg cursor-pointer transition-all duration-200 border",
-                                                        isSelected 
-                                                            ? "bg-zinc-100 dark:bg-zinc-800 border-black/10 dark:border-white/10 shadow-sm" 
-                                                            : "bg-white dark:bg-white/5 border-transparent hover:bg-zinc-50 dark:hover:bg-white/10"
-                                                    )}
-                                                >
-                                                    <div className="space-y-0.5">
-                                                        <div className={cn("text-sm font-medium", isSelected ? "text-black dark:text-white" : "text-zinc-700 dark:text-zinc-300")}>
-                                                            {item.label}
-                                                        </div>
-                                                        <div className="text-[10px] font-mono text-zinc-500">{item.cwe}</div>
-                                                    </div>
-                                                    
-                                                    <div className={cn(
-                                                        "w-5 h-5 rounded-full border-2 flex items-center justify-center transition-colors",
-                                                        isSelected ? "border-black dark:border-white" : "border-zinc-300 dark:border-zinc-700"
-                                                    )}>
-                                                        {isSelected && <div className="w-2.5 h-2.5 rounded-full bg-black dark:bg-white animate-in zoom-in-50 duration-200" />}
-                                                    </div>
-                                                </div>
-                                            );
-                                        })}
+                                    <div className="flex-1 relative">
+                                        <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-400" />
+                                        <Input
+                                            className="border-0 bg-transparent focus-visible:ring-0 pl-8 h-9"
+                                            placeholder="Search..."
+                                            value={search}
+                                            onChange={(e) => setSearch(e.target.value)}
+                                        />
                                     </div>
-                                ))
-                             ) : (
-                                <div className="flex flex-col items-center justify-center h-full text-zinc-500">
-                                    <Search className="w-8 h-8 mb-2 opacity-50" />
-                                    <p>No categories found</p>
                                 </div>
-                             )}
-                        </div>
+
+                                {/* List Area */}
+                                <div className="h-[400px] overflow-y-auto scrollbar-thin scrollbar-thumb-zinc-700 scrollbar-track-transparent p-2 space-y-2">
+                                    {filteredGroups.length > 0 ? (
+                                        filteredGroups.map((group) => (
+                                            <div key={group.heading} className="space-y-1">
+                                                <div className="px-3 py-2 text-xs font-bold text-zinc-500 uppercase font-mono tracking-wider sticky top-0 bg-zinc-50/95 dark:bg-zinc-950/95 backdrop-blur-sm z-10">
+                                                    {group.heading}
+                                                </div>
+                                                {group.items.map((item) => {
+                                                    const isSelected = data.bugType === item.label;
+                                                    return (
+                                                        <div
+                                                            key={item.label}
+                                                            onClick={() => handleSelectCategory(group.heading, item)}
+                                                            className={cn(
+                                                                "flex items-center justify-between p-3 rounded-lg cursor-pointer transition-all duration-200 border",
+                                                                isSelected
+                                                                    ? "bg-zinc-100 dark:bg-zinc-800 border-black/10 dark:border-white/10 shadow-sm"
+                                                                    : "bg-white dark:bg-white/5 border-transparent hover:bg-zinc-50 dark:hover:bg-white/10"
+                                                            )}
+                                                        >
+                                                            <div className="space-y-0.5">
+                                                                <div className={cn("text-sm font-medium", isSelected ? "text-black dark:text-white" : "text-zinc-700 dark:text-zinc-300")}>
+                                                                    {item.label}
+                                                                </div>
+                                                                <div className="text-[10px] font-mono text-zinc-500">{item.cwe}</div>
+                                                            </div>
+
+                                                            <div className={cn(
+                                                                "w-5 h-5 rounded-full border-2 flex items-center justify-center transition-colors",
+                                                                isSelected ? "border-black dark:border-white" : "border-zinc-300 dark:border-zinc-700"
+                                                            )}>
+                                                                {isSelected && <div className="w-2.5 h-2.5 rounded-full bg-black dark:bg-white animate-in zoom-in-50 duration-200" />}
+                                                            </div>
+                                                        </div>
+                                                    );
+                                                })}
+                                            </div>
+                                        ))
+                                    ) : (
+                                        <div className="flex flex-col items-center justify-center h-full text-zinc-500">
+                                            <Search className="w-8 h-8 mb-2 opacity-50" />
+                                            <p>No categories found</p>
+                                        </div>
+                                    )}
+                                </div>
+                            </>
+                        ) : (
+                            <div className="p-4 bg-white dark:bg-zinc-900 border-l-4 border-l-emerald-500">
+                                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                                    <div>
+                                        <div className="text-xs font-mono uppercase text-zinc-500">Selected Category</div>
+                                        <div className="text-sm font-semibold text-zinc-900 dark:text-zinc-100">
+                                            {data.bugType || 'Category selected'}
+                                        </div>
+                                        {data.cwe && <div className="text-xs font-mono text-zinc-500 mt-0.5">{data.cwe}</div>}
+                                    </div>
+                                    <button
+                                        type="button"
+                                        onClick={() => setIsCategoryMenuOpen(true)}
+                                        className="px-3 py-1.5 text-xs font-medium rounded-md border border-zinc-200 dark:border-zinc-700 text-zinc-700 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors"
+                                    >
+                                        Change Category
+                                    </button>
+                                </div>
+                            </div>
+                        )}
                     </div>
                 </div>
             )}

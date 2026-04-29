@@ -95,6 +95,7 @@ export default function ReportDetails() {
   const [previewMedia, setPreviewMedia] = useState<{ url: string; type: 'image' | 'video' } | null>(null);
   const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const displayReportId = report?.reportId || report?._id?.substring(report._id.length - 6) || 'N/A';
 
   const fetchReport = async () => {
     try {
@@ -805,7 +806,7 @@ export default function ReportDetails() {
                      </div>
                      <div className="flex justify-between items-center">
                         <span className="text-sm text-zinc-500">Report ID</span>
-                        <span className="text-sm font-mono text-zinc-900 dark:text-white">{report._id.substring(report._id.length - 6)}</span>
+                        <span className="text-sm font-mono text-zinc-900 dark:text-white">{displayReportId}</span>
                      </div>
                      <div className="flex justify-between items-center">
                         <span className="text-sm text-zinc-500">Created</span>
