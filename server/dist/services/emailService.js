@@ -3,7 +3,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.adminProfileUpdateTemplate = exports.payoutSuccessTemplate = exports.walletTopUpTemplate = exports.threadNotificationTemplate = exports.reportEmailTemplate = exports.userStatusChangedTemplate = exports.programBannedTemplate = exports.programSuspendedTemplate = exports.broadcastTemplate = exports.inviteMemberTemplate = exports.cardDeletionOtpTemplate = exports.otpTemplate = exports.sendEmail = void 0;
+exports.adminProfileUpdateTemplate = exports.payoutSuccessTemplate = exports.walletTopUpTemplate = exports.threadNotificationTemplate = exports.reportEmailTemplate = exports.adminDirectMessageTemplate = exports.userStatusChangedTemplate = exports.programBannedTemplate = exports.programSuspendedTemplate = exports.broadcastTemplate = exports.inviteMemberTemplate = exports.cardDeletionOtpTemplate = exports.otpTemplate = exports.sendEmail = void 0;
 const nodemailer_1 = __importDefault(require("nodemailer"));
 const juice_1 = __importDefault(require("juice"));
 const transporter = nodemailer_1.default.createTransport({
@@ -377,13 +377,25 @@ body { margin: 0; padding: 0; background-color: #000000; }
     return (0, juice_1.default)(html);
 };
 exports.programBannedTemplate = programBannedTemplate;
+const escapeHtml = (value) => String(value || '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
 const userStatusChangedTemplate = (userName, status, reason) => {
-    const isBanned = status === 'Banned';
-    const color = isBanned ? '#ef4444' : '#eab308';
-    const title = isBanned ? 'Account Banned' : 'Account Suspended';
+    const normalized = String(status || '').toLowerCase();
+    const isBanned = normalized === 'banned';
+    const isSuspended = normalized === 'suspended';
+    const isActive = normalized === 'active';
+    const color = isBanned ? '#ef4444' : isSuspended ? '#eab308' : '#22c55e';
+    const title = isBanned ? 'Account Banned' : isSuspended ? 'Account Suspended' : 'Account Activated';
     const message = isBanned
-        ? `Your account has been permanently <strong>BANNED</strong> from the BugChase platform.`
-        : `Your account has been temporarily <strong>SUSPENDED</strong> from the BugChase platform.`;
+        ? `Your account has been set to <strong>BANNED</strong> on the BugChase platform.`
+        : isSuspended
+            ? `Your account has been set to <strong>SUSPENDED</strong> on the BugChase platform.`
+            : `Your account has been <strong>ACTIVATED</strong> and access has been restored.`;
+    const safeReason = escapeHtml(reason || (isActive ? 'Your account is now active and fully operational.' : 'Administrative policy enforcement.'));
     const html = `
 <!DOCTYPE html>
 <html lang="en">
@@ -400,9 +412,9 @@ body { margin: 0; padding: 0; background-color: #000000; }
 .content { padding: 40px 20px; text-align: left; font-family: 'Courier New', Courier, monospace; }
 .title { font-size: 24px; margin: 0 0 20px; color: ${color}; text-align: center; text-transform: uppercase; }
 .text { font-size: 16px; color: #a1a1aa; line-height: 1.6; margin: 0 0 30px; }
-.reason-box { background-color: ${isBanned ? '#2f1212' : '#2a2005'}; border: 1px solid ${isBanned ? '#7f1d1d' : '#854d0e'}; border-radius: 8px; padding: 20px; margin-bottom: 30px; }
+.reason-box { background-color: ${isBanned ? '#2f1212' : isSuspended ? '#2a2005' : '#0f2415'}; border: 1px solid ${isBanned ? '#7f1d1d' : isSuspended ? '#854d0e' : '#166534'}; border-radius: 8px; padding: 20px; margin-bottom: 30px; }
 .label { font-size: 12px; color: ${color}; margin-bottom: 5px; text-transform: uppercase; letter-spacing: 1px; font-weight: bold; }
-.value { font-size: 16px; color: #ffffff; font-weight: bold; font-family: monospace; }
+.value { font-size: 15px; color: #ffffff; font-weight: bold; font-family: monospace; white-space: pre-wrap; }
 .button { display: inline-block; background-color: #27272a; color: #ffffff; padding: 14px 28px; border-radius: 6px; text-decoration: none; font-weight: bold; font-size: 14px; border: 1px solid #3f3f46; font-family: 'Courier New', Courier, monospace; text-transform: uppercase; }
 .footer { padding: 20px; text-align: center; color: #52525b; font-size: 12px; font-family: 'Courier New', Courier, monospace; border-top: 1px solid #27272a; background-color: #09090b; }
 @media only screen and (max-width: 800px) {
@@ -420,18 +432,19 @@ body { margin: 0; padding: 0; background-color: #000000; }
       <div class="content">
         <h1 class="title">${title}</h1>
         <p class="text">
-          Hello ${userName},<br/><br/>
+          Hello ${escapeHtml(userName)},<br/><br/>
           ${message}
         </p>
         
         <div class="reason-box">
           <div class="label">Action Reason</div>
-          <div class="value">${reason}</div>
+          <div class="value">${safeReason}</div>
         </div>
 
         <p class="text">
-          During this period, you will not be able to access your dashboard or perform any actions.
-          If you believe this is a mistake, you may contact support for an appeal.
+          ${isActive
+        ? 'You can now sign in and continue normal activity. Please maintain compliance with BugChase policy requirements.'
+        : 'During this period, your account actions may be restricted. If you believe this decision is incorrect, you may contact support for review.'}
         </p>
 
         <div style="text-align: center;">
@@ -449,6 +462,56 @@ body { margin: 0; padding: 0; background-color: #000000; }
     return (0, juice_1.default)(html);
 };
 exports.userStatusChangedTemplate = userStatusChangedTemplate;
+const adminDirectMessageTemplate = (userName, subject, message) => {
+    const safeName = escapeHtml(userName);
+    const safeSubject = escapeHtml(subject);
+    const safeMessage = escapeHtml(message).replace(/\n/g, '<br/>');
+    const html = `
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>${safeSubject}</title>
+<style>
+body { margin: 0; padding: 0; background-color: #000000; font-family: 'Courier New', Courier, monospace; }
+.wrapper { width: 100%; table-layout: fixed; background-color: #000000; padding: 40px 0; }
+.container { background-color: #09090b; margin: 0 auto; width: 100%; max-width: 620px; border: 1px solid #27272a; border-radius: 10px; overflow: hidden; }
+.header { background-color: #09090b; padding: 24px 32px; border-bottom: 1px solid #27272a; }
+.logo { color: #ffffff; font-weight: bold; font-size: 18px; letter-spacing: 2px; text-transform: uppercase; text-decoration: none; }
+.hero { background: linear-gradient(135deg, #18181b 0%, #09090b 100%); padding: 40px 32px; border-bottom: 1px solid #27272a; }
+.hero-label { font-size: 11px; color: #a1a1aa; letter-spacing: 2px; text-transform: uppercase; margin-bottom: 12px; }
+.hero-title { font-size: 22px; font-weight: bold; color: #ffffff; line-height: 1.4; margin: 0; }
+.content { padding: 32px; }
+.greeting { font-size: 14px; color: #a1a1aa; line-height: 1.7; margin-bottom: 20px; }
+.greeting strong { color: #ffffff; }
+.message-box { background: #18181b; border: 1px solid #27272a; border-left: 3px solid #ffffff; border-radius: 6px; padding: 16px 20px; margin-bottom: 24px; }
+.message-text { font-size: 14px; color: #d4d4d8; line-height: 1.7; white-space: pre-wrap; }
+.footer { padding: 24px 32px; text-align: center; color: #52525b; font-size: 11px; border-top: 1px solid #27272a; background: #09090b; line-height: 1.7; }
+</style>
+</head>
+<body>
+<div class="wrapper">
+  <div class="container">
+    <div class="header"><a href="#" class="logo">BugChase Security</a></div>
+    <div class="hero">
+      <div class="hero-label">Admin Message</div>
+      <h1 class="hero-title">${safeSubject}</h1>
+    </div>
+    <div class="content">
+      <p class="greeting">Hello <strong>${safeName}</strong>,</p>
+      <div class="message-box"><div class="message-text">${safeMessage}</div></div>
+      <p class="greeting">Regards,<br/>BugChase Admin Team</p>
+    </div>
+    <div class="footer">&copy; ${new Date().getFullYear()} BugChase Security Platform. All rights reserved.</div>
+  </div>
+</div>
+</body>
+</html>
+  `;
+    return (0, juice_1.default)(html);
+};
+exports.adminDirectMessageTemplate = adminDirectMessageTemplate;
 const ACTION_HEADLINES = {
     submitted: (o) => `New Report Submitted: ${o.reportTitle}`,
     claimed: (o) => `${o.actorName} has started reviewing your report`,

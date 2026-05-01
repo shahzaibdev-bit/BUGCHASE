@@ -15,6 +15,13 @@ const reportSchema = new mongoose_1.default.Schema({
         required: true,
     },
     title: { type: String, required: true },
+    reportId: {
+        type: String,
+        unique: true,
+        sparse: true,
+        index: true,
+    },
+    vulnerableEndpoint: { type: String, trim: true },
     description: { type: String, required: true },
     pocSteps: { type: String, required: true },
     severity: {
@@ -35,6 +42,11 @@ const reportSchema = new mongoose_1.default.Schema({
     bounty: {
         type: Number,
         default: 0
+    },
+    duplicateOf: {
+        type: mongoose_1.default.Schema.Types.ObjectId,
+        ref: 'Report',
+        default: null,
     },
     // Attachments (S3 URLs or local paths)
     attachments: [{

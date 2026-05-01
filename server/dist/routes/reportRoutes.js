@@ -15,10 +15,14 @@ router
     .route('/')
     .post(upload.array('files', 5), reportController_1.createReport)
     .get(reportController_1.getMyReports);
+router.post('/submit', upload.array('files', 5), reportController_1.createReport);
+router.post('/check-duplicates/:id', reportController_1.checkReportDuplicates);
+router.post('/reindex-all', reportController_1.reindexAllReports);
 router.get('/program/:programId', reportController_1.getReportsByProgram);
 router
     .route('/:id')
     .get(reportController_1.getReport);
+router.patch('/:id/mark-duplicate', reportController_1.markReportAsDuplicate);
 router
     .route('/:id/comments')
     .post(upload.array('files', 5), reportController_1.addComment);

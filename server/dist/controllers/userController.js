@@ -36,7 +36,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.uploadAvatar = exports.updateMe = exports.updateKYCStatus = exports.removePayoutMethod = exports.verifyPayoutMethodOtp = exports.requestPayoutMethodOtp = exports.requestPayout = exports.getPayoutMethods = exports.setupPayoutMethod = exports.getWalletData = exports.getMe = exports.getPublicProfile = void 0;
+exports.uploadAvatar = exports.updateMe = exports.updateKYCStatus = exports.removePayoutMethod = exports.verifyPayoutMethodOtp = exports.requestPayoutMethodOtp = exports.requestPayout = exports.getPayoutMethods = exports.setupPayoutMethod = exports.getWalletData = exports.getMe = exports.getResearcherLeaderboard = exports.getPublicProfile = void 0;
 const User_1 = __importDefault(require("../models/User"));
 const AppError_1 = __importDefault(require("../utils/AppError"));
 const catchAsync_1 = __importDefault(require("../utils/catchAsync"));
@@ -55,6 +55,66 @@ exports.getPublicProfile = (0, catchAsync_1.default)(async (req, res, next) => {
             ...user.toObject(),
             nickname: user.username
         },
+    });
+});
+exports.getResearcherLeaderboard = (0, catchAsync_1.default)(async (req, res, next) => {
+    const ReportModel = (await Promise.resolve().then(() => __importStar(require('../models/Report')))).default;
+    const [researchers, paidReportStats] = await Promise.all([
+        User_1.default.find({ role: 'researcher', status: 'Active' })
+            .select('_id name username avatar country city reputationScore')
+            .lean(),
+        ReportModel.aggregate([
+            {
+                $match: {
+                    researcherId: { $ne: null },
+                    bounty: { $gt: 0 }
+                }
+            },
+            {
+                $group: {
+                    _id: '$researcherId',
+                    paidReports: { $sum: 1 },
+                    totalBounties: { $sum: '$bounty' }
+                }
+            }
+        ])
+    ]);
+    const statsByResearcher = new Map();
+    paidReportStats.forEach((row) => {
+        statsByResearcher.set(String(row._id), {
+            paidReports: Number(row.paidReports || 0),
+            totalBounties: Number(row.totalBounties || 0)
+        });
+    });
+    const ranked = researchers
+        .map((researcher) => {
+        const stats = statsByResearcher.get(String(researcher._id)) || { paidReports: 0, totalBounties: 0 };
+        return {
+            userId: String(researcher._id),
+            name: researcher.name || researcher.username || 'Researcher',
+            username: researcher.username || '',
+            reputation: Number(researcher.reputationScore || 0),
+            bounties: stats.totalBounties,
+            reportsSubmitted: stats.paidReports,
+            country: researcher.country || 'Unknown',
+            city: researcher.city || '',
+            avatar: researcher.avatar || ''
+        };
+    })
+        .sort((a, b) => {
+        if (b.reputation !== a.reputation)
+            return b.reputation - a.reputation;
+        if (b.bounties !== a.bounties)
+            return b.bounties - a.bounties;
+        return b.reportsSubmitted - a.reportsSubmitted;
+    })
+        .map((entry, index) => ({ ...entry, rank: index + 1 }));
+    res.status(200).json({
+        status: 'success',
+        results: ranked.length,
+        data: {
+            leaderboard: ranked
+        }
     });
 });
 const stripe_1 = __importDefault(require("stripe"));
@@ -94,7 +154,7 @@ exports.getWalletData = (0, catchAsync_1.default)(async (req, res, next) => {
         amount: `+${r.bounty.toLocaleString()}`,
         status: 'CLEARED',
         timestamp: new Date(r.updatedAt).getTime(),
-        reportId: r._id
+        reportId: r.reportId || r._id
     }));
     // Fetch real withdrawal transactions
     const withdrawalRecords = await Transaction_1.default.find({

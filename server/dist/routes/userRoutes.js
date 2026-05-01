@@ -28,6 +28,7 @@ const upload = (0, multer_1.default)({
 const publicProfileLimiter = (0, rateLimit_1.rateLimiter)(20, 60, 'profile');
 const uploadLimiter = (0, rateLimit_1.rateLimiter)(5, 60, 'upload'); // 5 uploads per minute
 router.get('/p/:username', publicProfileLimiter, userController_1.getPublicProfile);
+router.get('/leaderboard', authMiddleware_1.protect, userController_1.getResearcherLeaderboard);
 // Protected Routes
 router.patch('/verify-kyc-status', authMiddleware_1.protect, userController_1.updateKYCStatus);
 router.patch('/updateMe', authMiddleware_1.protect, userController_1.updateMe);

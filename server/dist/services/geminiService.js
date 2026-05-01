@@ -23,7 +23,7 @@ const generateWithRetry = async (model, prompt, retries = 3, delay = 1000) => {
 const generateReportSummary = async (report, timeline) => {
     try {
         const model = genAI.getGenerativeModel({
-            model: "gemini-flash-latest",
+            model: "gemini-1.5-flash",
             generationConfig: {
                 responseMimeType: "application/json"
             }
@@ -78,7 +78,7 @@ exports.generateReportSummary = generateReportSummary;
 const suggestBountyAmount = async (report, timeline, rewardRange) => {
     try {
         const model = genAI.getGenerativeModel({
-            model: "gemini-flash-latest",
+            model: "gemini-1.5-flash",
             generationConfig: {
                 responseMimeType: "application/json"
             }
@@ -135,7 +135,7 @@ exports.suggestBountyAmount = suggestBountyAmount;
 const generateReportMessage = async (report, timeline, type, bountyAmount) => {
     try {
         const model = genAI.getGenerativeModel({
-            model: "gemini-flash-latest",
+            model: "gemini-1.5-flash",
             generationConfig: {
                 responseMimeType: "application/json"
             }

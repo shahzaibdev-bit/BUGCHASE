@@ -529,9 +529,13 @@ export const getReportDetails = catchAsync(async (req: Request, res: Response, n
     }
     // If program not found (e.g. legacy/test data), allow access
 
+    const payload: any = report.toJSON ? report.toJSON() : report;
+    delete payload.duplicateCandidates;
+    delete payload.duplicateReviewStatus;
+
     res.status(200).json({
         status: 'success',
-        data: { report }
+        data: { report: payload }
     });
 });
 

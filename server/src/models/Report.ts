@@ -40,6 +40,34 @@ const reportSchema = new mongoose.Schema({
     type: Number,
     default: 0
   },
+  duplicateOf: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Report',
+    default: null,
+  },
+
+  /** AI duplicate candidates (triager/admin only in API responses). */
+  duplicateCandidates: [{
+    reportMongoId: { type: mongoose.Schema.Types.ObjectId, ref: 'Report', required: true },
+    similarityScore: { type: Number, required: true },
+    candidateReportId: { type: String },
+    candidateTitle: { type: String },
+    candidateSubmittedAt: { type: Date },
+    detectedAt: { type: Date, default: Date.now },
+  }],
+  /**
+   * not_applicable — no candidates at submit time
+   * pending — triager must confirm duplicate or dismiss before promote/resolve
+   * cleared — triager dismissed candidates
+   * confirmed_duplicate — marked duplicate of another report
+   */
+  duplicateReviewStatus: {
+    type: String,
+    enum: ['not_applicable', 'pending', 'cleared', 'confirmed_duplicate'],
+    default: 'not_applicable',
+  },
+  /** Throttles automatic re-scans when triager opens details (no candidates yet). */
+  duplicateLastScannedAt: { type: Date },
   
   // Attachments (S3 URLs or local paths)
   attachments: [{

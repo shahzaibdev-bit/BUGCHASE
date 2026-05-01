@@ -36,7 +36,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.updateProgramByAdmin = exports.getProgramDetails = exports.updateProgramStatus = exports.getAllPrograms = exports.addAdminComment = exports.updateReportSeverityByAdmin = exports.updateReportStatusByAdmin = exports.updateReportByAdmin = exports.getReportDetailsForAdmin = exports.setWalletHold = exports.adjustUserPoints = exports.updateUserDetails = exports.checkUsernameAvailability = exports.getUserDetails = exports.updateUserStatus = exports.getAllUsers = exports.getDashboardAnalytics = exports.broadcastAnnouncement = exports.getTriagers = exports.createTriager = void 0;
+exports.updateProgramByAdmin = exports.getProgramDetails = exports.updateProgramStatus = exports.getAllPrograms = exports.addAdminComment = exports.updateReportSeverityByAdmin = exports.updateReportStatusByAdmin = exports.updateReportByAdmin = exports.getReportDetailsForAdmin = exports.setWalletHold = exports.adjustUserPoints = exports.updateUserDetails = exports.checkUsernameAvailability = exports.getUserDetails = exports.updateUserStatus = exports.deleteUserByAdmin = exports.getAllUsers = exports.sendUserEmailByAdmin = exports.getFinanceAnalytics = exports.getDashboardAnalytics = exports.broadcastAnnouncement = exports.getTriagers = exports.createTriager = void 0;
 const catchAsync_1 = __importDefault(require("../utils/catchAsync"));
 const AppError_1 = __importDefault(require("../utils/AppError"));
 const Notification_1 = __importDefault(require("../models/Notification"));
@@ -264,6 +264,149 @@ exports.getDashboardAnalytics = (0, catchAsync_1.default)(async (req, res, next)
         }
     });
 });
+exports.getFinanceAnalytics = (0, catchAsync_1.default)(async (req, res, next) => {
+    const now = new Date();
+    const startOfYear = new Date(now.getFullYear(), 0, 1);
+    const startOfSixMonthWindow = new Date(now.getFullYear(), now.getMonth() - 5, 1);
+    const companies = await User_1.default.find({ role: 'company' })
+        .select('_id name email companyName walletBalance status')
+        .sort({ walletBalance: 1 });
+    const companyIds = companies.map((company) => company._id);
+    const [programs, recentTransactions, ytdTransactions] = await Promise.all([
+        Program_1.default.find({ companyId: { $in: companyIds } }).select('companyId status'),
+        Transaction_1.default.find({
+            user: { $in: companyIds },
+            createdAt: { $gte: startOfSixMonthWindow }
+        }).select('user type amount status createdAt'),
+        Transaction_1.default.find({
+            user: { $in: companyIds },
+            createdAt: { $gte: startOfYear }
+        }).select('type amount status')
+    ]);
+    const monthSeries = Array.from({ length: 6 }).map((_, index) => {
+        const date = new Date(now.getFullYear(), now.getMonth() - (5 - index), 1);
+        return {
+            key: `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`,
+            month: date.toLocaleString('en-US', { month: 'short' }),
+            revenue: 0,
+            payouts: 0
+        };
+    });
+    const monthMap = new Map(monthSeries.map((row) => [row.key, row]));
+    const breakdownTotals = {
+        topup: 0,
+        platform_fee: 0,
+        bounty_payment: 0,
+        withdrawal: 0
+    };
+    const pendingByCompany = new Map(companyIds.map((id) => [String(id), 0]));
+    for (const tx of recentTransactions) {
+        const d = new Date(tx.createdAt);
+        const monthKey = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+        const monthRow = monthMap.get(monthKey);
+        if (!monthRow)
+            continue;
+        const amount = Number(tx.amount || 0);
+        if (tx.status === 'completed') {
+            if (tx.type === 'topup' || tx.type === 'platform_fee') {
+                monthRow.revenue += Math.abs(amount);
+            }
+            else if (tx.type === 'bounty_payment' || tx.type === 'withdrawal') {
+                monthRow.payouts += Math.abs(amount);
+            }
+        }
+        if (tx.status === 'pending' && (tx.type === 'bounty_payment' || tx.type === 'withdrawal')) {
+            const key = String(tx.user);
+            pendingByCompany.set(key, (pendingByCompany.get(key) || 0) + Math.abs(amount));
+        }
+    }
+    for (const tx of ytdTransactions) {
+        if (tx.status !== 'completed')
+            continue;
+        const amount = Math.abs(Number(tx.amount || 0));
+        if (Object.prototype.hasOwnProperty.call(breakdownTotals, tx.type)) {
+            breakdownTotals[tx.type] += amount;
+        }
+    }
+    const totalLiquidity = companies.reduce((sum, c) => sum + Number(c.walletBalance || 0), 0);
+    const totalRevenueYtd = breakdownTotals.topup + breakdownTotals.platform_fee;
+    const pendingPayouts = Array.from(pendingByCompany.values()).reduce((sum, value) => sum + value, 0);
+    const currentMonthRevenue = monthSeries[5]?.revenue || 0;
+    const previousMonthRevenue = monthSeries[4]?.revenue || 0;
+    const monthlyGrowth = previousMonthRevenue > 0
+        ? ((currentMonthRevenue - previousMonthRevenue) / previousMonthRevenue) * 100
+        : currentMonthRevenue > 0
+            ? 100
+            : 0;
+    const activeProgramCountByCompany = new Map(companyIds.map((id) => [String(id), 0]));
+    for (const program of programs) {
+        const key = String(program.companyId);
+        if ((program.status || '').toLowerCase() === 'active') {
+            activeProgramCountByCompany.set(key, (activeProgramCountByCompany.get(key) || 0) + 1);
+        }
+    }
+    const LOW_BALANCE_THRESHOLD = 100000;
+    const lowBalanceCompanies = companies
+        .filter((company) => Number(company.walletBalance || 0) < LOW_BALANCE_THRESHOLD)
+        .map((company) => ({
+        id: String(company._id),
+        name: company.companyName || company.name,
+        email: company.email,
+        status: company.status || 'Active',
+        balance: Number(company.walletBalance || 0),
+        activePrograms: activeProgramCountByCompany.get(String(company._id)) || 0,
+        pendingPayouts: pendingByCompany.get(String(company._id)) || 0
+    }))
+        .slice(0, 12);
+    const revenueBreakdown = [
+        { name: 'Topups', value: breakdownTotals.topup },
+        { name: 'Platform Fees', value: breakdownTotals.platform_fee },
+        { name: 'Bounty Payouts', value: breakdownTotals.bounty_payment },
+        { name: 'Withdrawals', value: breakdownTotals.withdrawal }
+    ];
+    res.status(200).json({
+        status: 'success',
+        data: {
+            stats: {
+                totalLiquidity,
+                monthlyGrowth: Number(monthlyGrowth.toFixed(2)),
+                pendingPayouts,
+                totalRevenueYtd
+            },
+            charts: {
+                monthlyRevenue: monthSeries,
+                revenueBreakdown
+            },
+            lowBalanceCompanies
+        }
+    });
+});
+exports.sendUserEmailByAdmin = (0, catchAsync_1.default)(async (req, res, next) => {
+    const { id } = req.params;
+    const subject = String(req.body?.subject || '').trim();
+    const message = String(req.body?.message || '').trim();
+    if (!subject)
+        return next(new AppError_1.default('Email subject is required', 400));
+    if (!message)
+        return next(new AppError_1.default('Email message is required', 400));
+    const user = await User_1.default.findById(id).select('name email');
+    if (!user)
+        return next(new AppError_1.default('No user found with that ID', 404));
+    if (!user.email)
+        return next(new AppError_1.default('User does not have an email address', 400));
+    const html = (0, emailService_1.adminDirectMessageTemplate)(user.name || 'there', subject, message);
+    await (0, emailService_1.sendEmail)(user.email, subject, html);
+    await Notification_1.default.create({
+        recipient: user._id,
+        title: 'Message from Admin',
+        message: subject,
+        type: 'system',
+    });
+    res.status(200).json({
+        status: 'success',
+        message: 'Email sent successfully',
+    });
+});
 exports.getAllUsers = (0, catchAsync_1.default)(async (req, res, next) => {
     const users = await User_1.default.find({ role: { $ne: 'admin' } });
     res.status(200).json({
@@ -272,6 +415,35 @@ exports.getAllUsers = (0, catchAsync_1.default)(async (req, res, next) => {
         data: {
             users
         }
+    });
+});
+exports.deleteUserByAdmin = (0, catchAsync_1.default)(async (req, res, next) => {
+    const { id } = req.params;
+    const user = await User_1.default.findById(id).select('_id role name email');
+    if (!user) {
+        return next(new AppError_1.default('No user found with that ID', 404));
+    }
+    const Report = (await Promise.resolve().then(() => __importStar(require('../models/Report')))).default;
+    // Remove records directly tied to the user.
+    await Promise.all([
+        Notification_1.default.deleteMany({ recipient: user._id }),
+        Transaction_1.default.deleteMany({ user: user._id }),
+        Report.deleteMany({ $or: [{ researcherId: user._id }, { triagerId: user._id }] })
+    ]);
+    // If company is deleted, remove their programs + associated reports.
+    if (user.role === 'company') {
+        const programs = await Program_1.default.find({ companyId: user._id }).select('_id');
+        const programIds = programs.map((p) => String(p._id));
+        if (programIds.length) {
+            await Report.deleteMany({ programId: { $in: programIds } });
+        }
+        await Program_1.default.deleteMany({ companyId: user._id });
+        await User_1.default.deleteMany({ parentCompany: user._id });
+    }
+    await User_1.default.findByIdAndDelete(user._id);
+    res.status(200).json({
+        status: 'success',
+        message: 'User deleted successfully'
     });
 });
 exports.updateUserStatus = (0, catchAsync_1.default)(async (req, res, next) => {
@@ -306,17 +478,18 @@ exports.updateUserStatus = (0, catchAsync_1.default)(async (req, res, next) => {
     // Notifications & Email
     const notifTitle = `Account ${status}`;
     let notifMsg = `Your account has been set to ${status}.`;
-    if ((status === 'Suspended' || status === 'Banned') && reason) {
+    if (reason) {
         notifMsg += ` Reason: ${reason}`;
-        // Send Email
-        if (user.email) {
-            const emailHtml = (0, emailService_1.userStatusChangedTemplate)(user.name, status, reason);
-            try {
-                await (0, emailService_1.sendEmail)(user.email, `URGENT: Account ${status} - BugChase`, emailHtml);
-            }
-            catch (error) {
-                console.error(`Failed to send ${status} email to user`, error);
-            }
+    }
+    // Send managed-account email for suspend/ban/activate actions
+    if (user.email) {
+        const emailHtml = (0, emailService_1.userStatusChangedTemplate)(user.name, status, reason);
+        const subject = status === 'Active' ? 'Account Reactivated - BugChase' : `URGENT: Account ${status} - BugChase`;
+        try {
+            await (0, emailService_1.sendEmail)(user.email, subject, emailHtml);
+        }
+        catch (error) {
+            console.error(`Failed to send ${status} email to user`, error);
         }
     }
     await Notification_1.default.create({
@@ -351,6 +524,7 @@ exports.getUserDetails = (0, catchAsync_1.default)(async (req, res, next) => {
         const programIdStr = prog?._id?.toString() || (r.programId && typeof r.programId !== 'object' ? String(r.programId) : '');
         return {
             id: r._id,
+            reportId: r.reportId || String(r._id),
             title: r.title,
             severity: (r.severity || 'Low').toLowerCase(),
             status: (r.status || 'Submitted').toLowerCase(),
@@ -375,6 +549,18 @@ exports.getUserDetails = (0, catchAsync_1.default)(async (req, res, next) => {
     };
     const submittedReports = submittedReportsRaw.map(mapReportRow);
     const triagedReports = triagedReportsRaw.map(mapReportRow);
+    /** Terminal triage outcomes → history; everything else → active queue (status is lowercased in mapReportRow). */
+    const triagerPastStatuses = new Set([
+        'resolved',
+        'paid',
+        'closed',
+        'spam',
+        'duplicate',
+        'out-of-scope',
+        'na',
+    ]);
+    const triagerPastReports = triagedReports.filter((r) => triagerPastStatuses.has(r.status));
+    const triagerActiveReports = triagedReports.filter((r) => !triagerPastStatuses.has(r.status));
     const walletTransactions = transactions.map((tx) => ({
         id: tx._id,
         date: new Date(tx.createdAt).toLocaleString(),
@@ -391,7 +577,9 @@ exports.getUserDetails = (0, catchAsync_1.default)(async (req, res, next) => {
             user,
             reports: {
                 submitted: submittedReports,
-                triaged: triagedReports
+                triaged: triagedReports,
+                triagerActive: triagerActiveReports,
+                triagerPast: triagerPastReports,
             },
             programs,
             wallet: {
@@ -402,6 +590,7 @@ exports.getUserDetails = (0, catchAsync_1.default)(async (req, res, next) => {
         }
     });
 });
+const escapeRegex = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 exports.checkUsernameAvailability = (0, catchAsync_1.default)(async (req, res, next) => {
     const username = String(req.query.username || '').trim();
     const excludeId = String(req.query.excludeId || '').trim();
@@ -409,7 +598,7 @@ exports.checkUsernameAvailability = (0, catchAsync_1.default)(async (req, res, n
         return next(new AppError_1.default('username query is required', 400));
     }
     const existing = await User_1.default.findOne({
-        username: { $regex: new RegExp(`^${username}$`, 'i') },
+        username: { $regex: new RegExp(`^${escapeRegex(username)}$`, 'i') },
         ...(excludeId ? { _id: { $ne: excludeId } } : {})
     }).select('_id');
     res.status(200).json({
@@ -423,7 +612,8 @@ exports.updateUserDetails = (0, catchAsync_1.default)(async (req, res, next) => 
     const allowedFields = [
         'name', 'username', 'email', 'country', 'bio', 'companyName', 'industry', 'website', 'city',
         'isVerified', 'isEmailVerified', 'walletBalance', 'reputationScore', 'trustScore', 'status',
-        'statusReason', 'skills', 'expertise', 'verifiedAssets', 'payoutHold', 'isPrivate'
+        'statusReason', 'skills', 'expertise', 'verifiedAssets', 'payoutHold', 'isPrivate',
+        'severityPreferences', 'maxConcurrentReports', 'isAvailable', 'linkedAccounts',
     ];
     const safeUpdates = {};
     allowedFields.forEach((field) => {
@@ -438,12 +628,13 @@ exports.updateUserDetails = (0, catchAsync_1.default)(async (req, res, next) => 
     if (!existingUser)
         return next(new AppError_1.default('No user found with that ID', 404));
     if (safeUpdates.username) {
+        const uname = String(safeUpdates.username).trim();
         const usernameExists = await User_1.default.findOne({
             _id: { $ne: id },
-            username: { $regex: new RegExp(`^${String(safeUpdates.username).trim()}$`, 'i') }
+            username: { $regex: new RegExp(`^${escapeRegex(uname)}$`, 'i') }
         }).select('_id');
         if (usernameExists) {
-            return next(new AppError_1.default('Username is already taken', 400));
+            return next(new AppError_1.default('This username already exists in the system', 400));
         }
     }
     const user = await User_1.default.findByIdAndUpdate(id, safeUpdates, { new: true, runValidators: true }).select('-password');
@@ -538,7 +729,7 @@ const notifyReportParticipants = async (report, actionType, message, newStatus, 
         actorRole,
         actionType,
         reportTitle: report.title,
-        reportId: String(report._id),
+        reportId: report.reportId || String(report._id),
         severity: report.severity,
         newStatus,
         message,
@@ -548,7 +739,7 @@ const notifyReportParticipants = async (report, actionType, message, newStatus, 
 exports.updateReportByAdmin = (0, catchAsync_1.default)(async (req, res, next) => {
     const { id } = req.params;
     const updates = req.body || {};
-    const allowedFields = ['title', 'description', 'impact', 'pocSteps', 'vulnerabilityCategory', 'severity', 'status', 'cvssScore', 'cvssVector', 'bounty'];
+    const allowedFields = ['title', 'vulnerableEndpoint', 'description', 'impact', 'pocSteps', 'vulnerabilityCategory', 'severity', 'status', 'cvssScore', 'cvssVector', 'bounty'];
     const safeUpdates = {};
     allowedFields.forEach((field) => {
         if (Object.prototype.hasOwnProperty.call(updates, field)) {
@@ -893,6 +1084,7 @@ exports.getProgramDetails = (0, catchAsync_1.default)(async (req, res, next) => 
         .populate('researcherId', 'username name');
     const programReports = programReportsRaw.map((r) => ({
         id: r._id,
+        reportId: r.reportId || String(r._id),
         title: r.title,
         severity: (r.severity || 'Low').toLowerCase(),
         status: (r.status || 'Submitted').toLowerCase(),

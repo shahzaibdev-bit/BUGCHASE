@@ -20,7 +20,7 @@ import {
   User,
   Building,
   History,
-  Search,
+  ExternalLink,
   CheckSquare,
   Square,
   ArrowLeft,
@@ -67,6 +67,7 @@ import { io } from 'socket.io-client';
 import { CvssInteractiveModal } from '@/components/CvssInteractiveModal';
 import { ReportTimelineNode } from '@/components/reports/ReportTimelineNode';
 import type { ReportTimelineEvent } from '@/components/reports/ReportTimelineNode';
+import { cn } from '@/lib/utils';
 
 // --- Types ---
 import { useAuth } from '@/contexts/AuthContext';
@@ -277,8 +278,21 @@ export default function TriagerReportDetails() {
 
     const [pendingStatus, setPendingStatus] = useState<ReportStatus | null>(null);
     const [statusReason, setStatusReason] = useState('');
-    const [duplicateScanning, setDuplicateScanning] = useState(false);
-    const [duplicateFound, setDuplicateFound] = useState<{ id: string, confidence: number } | null>(null);
+    const [duplicateMatches, setDuplicateMatches] = useState<Array<{
+        reportMongoId: string;
+        score: number;
+        similarityPercent: number;
+        confidence: 'HIGH_CONFIDENCE' | 'POTENTIAL' | 'LOW';
+        metadata?: Record<string, any>;
+    }>>([]);
+    const [selectedDuplicate, setSelectedDuplicate] = useState<{
+        reportMongoId: string;
+        score: number;
+        similarityPercent: number;
+        confidence: 'HIGH_CONFIDENCE' | 'POTENTIAL' | 'LOW';
+        metadata?: Record<string, any>;
+    } | null>(null);
+    const [duplicateModalOpen, setDuplicateModalOpen] = useState(false);
     const [summaryForm, setSummaryForm] = useState({ title: '', technical: '', remediation: '' });
 
     const getActorThreadKey = (event: ReportTimelineEvent) => {
@@ -356,6 +370,23 @@ export default function TriagerReportDetails() {
                 });
 
                 if (r.title) setSummaryForm(p => ({ ...p, title: r.title }));
+
+                const fromDb = (r.duplicateCandidates || []).map((c: any) => ({
+                    reportMongoId: String(c.reportMongoId?._id ?? c.reportMongoId),
+                    score: Number(c.similarityScore),
+                    similarityPercent: Math.round(Number(c.similarityScore) * 100),
+                    confidence:
+                        Number(c.similarityScore) > 0.85
+                            ? ('HIGH_CONFIDENCE' as const)
+                            : ('POTENTIAL' as const),
+                    metadata: {
+                        title: c.candidateTitle,
+                        reportId: c.candidateReportId,
+                        submittedAt: c.candidateSubmittedAt,
+                    },
+                }));
+                setDuplicateMatches(fromDb);
+                setSelectedDuplicate(fromDb[0] || null);
             }
         } catch (error) {
             console.error(error);
@@ -433,6 +464,17 @@ export default function TriagerReportDetails() {
     // --- Handlers ---
     
     const handleStatusSelect = (status: ReportStatus) => {
+        const dupBlock =
+            report?.duplicateReviewStatus === 'pending' &&
+            (report?.duplicateCandidates?.length ?? 0) > 0;
+        if (dupBlock && (status === 'Triaged' || status === 'Resolved')) {
+            toast({
+                title: 'Duplicate review required',
+                description: 'Use the comparison modal to mark as duplicate or confirm not a duplicate first.',
+                variant: 'destructive',
+            });
+            return;
+        }
         setPendingStatus(status);
         if (status === 'Triaged') {
             setSummaryModalOpen(true);
@@ -483,14 +525,47 @@ export default function TriagerReportDetails() {
         performStatusUpdate(pendingStatus, reason);
     };
 
-    const handleDuplicateScan = () => {
-        setDuplicateScanning(true);
-        setDuplicateFound(null);
-        // Mock Scan
-        setTimeout(() => {
-             setDuplicateScanning(false);
-             setDuplicateFound({ id: 'MINAPR-12', confidence: 98 }); 
-        }, 1500);
+    const confirmMarkDuplicate = async () => {
+        if (!selectedDuplicate) return;
+        try {
+            const token = localStorage.getItem('token');
+            const res = await fetch(`${API_URL}/reports/${id}/mark-duplicate`, {
+                method: 'PATCH',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${token}`
+                },
+                body: JSON.stringify({
+                    duplicateOf: selectedDuplicate.reportMongoId,
+                    reason: `Marked duplicate after triager review (similarity ${selectedDuplicate.similarityPercent}%).`
+                })
+            });
+            const data = await res.json();
+            if (!res.ok) throw new Error(data?.message || 'Failed to mark duplicate');
+            setDuplicateModalOpen(false);
+            setState(p => ({ ...p, status: 'Duplicate' }));
+            toast({ title: "Marked as duplicate", description: "Researcher notified by email." });
+            await fetchReport();
+        } catch (error: any) {
+            toast({ title: "Update failed", description: error.message, variant: 'destructive' });
+        }
+    };
+
+    const handleClearDuplicateReview = async () => {
+        try {
+            const token = localStorage.getItem('token');
+            const res = await fetch(`${API_URL}/reports/${id}/duplicate-review/clear`, {
+                method: 'PATCH',
+                headers: { Authorization: `Bearer ${token}` },
+            });
+            const data = await res.json().catch(() => ({}));
+            if (!res.ok) throw new Error((data as any)?.message || 'Failed to clear duplicate review');
+            toast({ title: "Not a duplicate", description: "You can promote or resolve this report." });
+            setDuplicateModalOpen(false);
+            await fetchReport();
+        } catch (error: any) {
+            toast({ title: "Error", description: error.message, variant: "destructive" });
+        }
     };
 
     const handleSendMessage = async () => {
@@ -619,8 +694,21 @@ export default function TriagerReportDetails() {
 
     if (loading || !report) return <div className="p-10 text-center">Loading Report Details...</div>;
 
+    const duplicateBlocking =
+        report.duplicateReviewStatus === 'pending' && (report.duplicateCandidates?.length ?? 0) > 0;
+
+    const openPeekTab = (reportMongoId: string) => {
+        window.open(`/triager/peek/${reportMongoId}`, '_blank', 'noopener,noreferrer');
+    };
+
     return (
         <div className="h-[calc(100vh-4rem)] overflow-hidden flex flex-col pt-4">
+             {duplicateBlocking && (
+                 <div className="mx-6 mb-2 rounded-lg border border-amber-200 dark:border-amber-900/50 bg-amber-50 dark:bg-amber-950/30 px-4 py-3 text-sm text-amber-900 dark:text-amber-100 shrink-0">
+                     <span className="font-semibold">Duplicate review required.</span>{' '}
+                     Similar reports were found when this submission was filed. Open the comparison, inspect candidates in a new tab, then mark as duplicate or confirm it is not a duplicate before promoting or resolving.
+                 </div>
+             )}
              {/* Top Bar for Navigation */}
              <div className="px-6 pb-4 flex items-center justify-between shrink-0">
                   <Button variant="ghost" className="pl-0 text-zinc-500 hover:text-black dark:hover:text-white" onClick={() => navigate('/triager')}>
@@ -782,7 +870,7 @@ export default function TriagerReportDetails() {
                                                         <DropdownMenuContent align="end" className="w-[150px]">
                                                             <DropdownMenuItem 
                                                                 onClick={() => handleStatusSelect('Triaged')}
-                                                                disabled={state.status === 'Triaged'}
+                                                                disabled={state.status === 'Triaged' || duplicateBlocking}
                                                             >
                                                                 Triaged (Promote)
                                                             </DropdownMenuItem>
@@ -800,7 +888,7 @@ export default function TriagerReportDetails() {
                                                             </DropdownMenuItem>
                                                             <DropdownMenuItem 
                                                                 onClick={() => handleStatusSelect('Resolved')}
-                                                                disabled={state.status === 'Resolved'}
+                                                                disabled={state.status === 'Resolved' || duplicateBlocking}
                                                             >
                                                                 Resolved
                                                             </DropdownMenuItem>
@@ -1047,27 +1135,23 @@ export default function TriagerReportDetails() {
                                 </div>
                              </div>
 
-                             <Button variant="outline" className="w-full text-xs font-mono justify-between bg-white dark:bg-black" onClick={handleDuplicateScan} disabled={duplicateScanning}>
-                                <span>{duplicateScanning ? 'SCANNING...' : 'DUPLICATE CHECK'}</span>
-                                <Search className={`h-3 w-3 ${duplicateScanning ? 'animate-spin' : ''}`} />
-                             </Button>
-
-                             {/* INLINE Duplicate Result */}
-                             {duplicateFound && (
-                                 <div className="mt-2 p-3 bg-zinc-50 dark:bg-zinc-900/50 border border-zinc-200 dark:border-zinc-800 rounded-lg animate-in slide-in-from-top-2">
+                             {duplicateMatches.length > 0 && (
+                                 <div className="mt-2 p-3 bg-zinc-50 dark:bg-zinc-900/50 border border-orange-200 dark:border-orange-900/50 rounded-lg animate-in slide-in-from-top-2">
                                      <div className="flex items-start gap-3">
                                          <AlertTriangle className="h-4 w-4 text-orange-500 mt-0.5 shrink-0" />
-                                         <div className="space-y-2">
+                                         <div className="space-y-2 w-full">
                                              <div className="text-xs">
-                                                 <p className="font-bold text-zinc-900 dark:text-zinc-100">Possible Duplicate Found</p>
-                                                 <p className="text-zinc-500">Report #{duplicateFound.id} ({duplicateFound.confidence}%)</p>
+                                                 <p className="font-bold text-zinc-900 dark:text-zinc-100">Potential duplicate</p>
+                                                 <p className="text-zinc-500">
+                                                    {duplicateMatches.length} similar report(s) in this program (best match {duplicateMatches[0].similarityPercent}%). Sorted by original submission time.
+                                                 </p>
                                              </div>
                                              <Button 
                                                 size="sm" 
                                                 className="w-full h-7 text-xs bg-orange-500 hover:bg-orange-600 text-white border-0"
-                                                onClick={() => handleStatusSelect('Duplicate')}
+                                                onClick={() => setDuplicateModalOpen(true)}
                                              >
-                                                MARK AS DUPLICATE
+                                                OPEN COMPARISON
                                              </Button>
                                          </div>
                                      </div>
@@ -1089,6 +1173,8 @@ export default function TriagerReportDetails() {
                                 <Button 
                                     className="w-full bg-black hover:bg-zinc-800 dark:bg-white dark:hover:bg-zinc-200 text-white dark:text-black font-bold h-12 text-sm tracking-wide shadow-xl shadow-zinc-200 dark:shadow-none"
                                     onClick={() => setSummaryModalOpen(true)}
+                                    disabled={duplicateBlocking}
+                                    title={duplicateBlocking ? 'Complete duplicate review first' : undefined}
                                 >
                                     SUBMIT DECISION
                                 </Button>
@@ -1165,6 +1251,113 @@ export default function TriagerReportDetails() {
                         <Button variant="ghost" onClick={() => setSummaryModalOpen(false)}>CANCEL</Button>
                         <Button className="bg-black hover:bg-zinc-800 dark:bg-white dark:hover:bg-zinc-200 text-white dark:text-black font-bold" onClick={submitFinalDecision}>
                             SEND TO COMPANY
+                        </Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
+
+            <Dialog open={duplicateModalOpen} onOpenChange={setDuplicateModalOpen}>
+                <DialogContent className="max-w-4xl bg-white dark:bg-zinc-950 border-zinc-200 dark:border-zinc-800 max-h-[90vh] overflow-y-auto">
+                    <DialogHeader>
+                        <DialogTitle>Duplicate comparison</DialogTitle>
+                        <DialogDescription>
+                            Open any candidate in a new tab (read-only). Submission times help determine which report was filed first. Select the canonical report this submission duplicates, or confirm it is not a duplicate.
+                        </DialogDescription>
+                    </DialogHeader>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 py-2">
+                        <div className="rounded-lg border border-zinc-200 dark:border-zinc-800 p-3">
+                            <div className="text-xs uppercase text-zinc-500 font-mono mb-2">This report</div>
+                            <div className="text-sm font-semibold">{report?.title}</div>
+                            <div className="text-xs text-zinc-500 mt-1">{report?.reportId || report?._id}</div>
+                            <div className="text-xs text-zinc-400 mt-2">
+                                Submitted: {report?.createdAt ? new Date(report.createdAt).toLocaleString() : '—'}
+                            </div>
+                        </div>
+                        <div className="rounded-lg border border-zinc-200 dark:border-zinc-800 p-3">
+                            <div className="text-xs uppercase text-zinc-500 font-mono mb-2">Selected candidate</div>
+                            {selectedDuplicate ? (
+                                <>
+                                    <div className="text-sm font-semibold">{selectedDuplicate.metadata?.title || 'Untitled'}</div>
+                                    <div className="text-xs text-zinc-500 mt-1">
+                                        {selectedDuplicate.metadata?.reportId || selectedDuplicate.reportMongoId}
+                                    </div>
+                                    <div className="mt-2 text-sm">
+                                        Similarity: <span className="font-bold">{selectedDuplicate.similarityPercent}%</span>
+                                    </div>
+                                    {selectedDuplicate.metadata?.submittedAt && (
+                                        <div className="text-xs text-zinc-400 mt-1">
+                                            Submitted:{' '}
+                                            {new Date(selectedDuplicate.metadata.submittedAt).toLocaleString()}
+                                        </div>
+                                    )}
+                                    <Button
+                                        type="button"
+                                        variant="outline"
+                                        size="sm"
+                                        className="mt-3 h-8 text-xs gap-1"
+                                        onClick={() => openPeekTab(selectedDuplicate.reportMongoId)}
+                                    >
+                                        <ExternalLink className="h-3 w-3" />
+                                        Open read-only in new tab
+                                    </Button>
+                                </>
+                            ) : (
+                                <div className="text-sm text-zinc-500">Select a candidate below</div>
+                            )}
+                        </div>
+                    </div>
+
+                    {duplicateMatches.length > 0 && (
+                        <div className="space-y-2 max-h-52 overflow-y-auto border border-zinc-200 dark:border-zinc-800 rounded-lg p-2">
+                            {duplicateMatches.map((m) => (
+                                <div
+                                    key={m.reportMongoId}
+                                    className={cn(
+                                        "flex flex-col sm:flex-row sm:items-center gap-2 p-2 rounded border transition-colors",
+                                        selectedDuplicate?.reportMongoId === m.reportMongoId
+                                            ? "border-black dark:border-white bg-zinc-100 dark:bg-zinc-900"
+                                            : "border-zinc-200 dark:border-zinc-800 hover:bg-zinc-50 dark:hover:bg-zinc-900/60"
+                                    )}
+                                >
+                                    <button
+                                        type="button"
+                                        onClick={() => setSelectedDuplicate(m)}
+                                        className="flex-1 text-left min-w-0"
+                                    >
+                                        <div className="text-sm font-medium truncate">{m.metadata?.title || 'Untitled Report'}</div>
+                                        <div className="text-xs text-zinc-500 mt-0.5 truncate">
+                                            {m.metadata?.reportId || m.reportMongoId} · {m.similarityPercent}% ·{' '}
+                                            {m.metadata?.submittedAt
+                                                ? new Date(m.metadata.submittedAt).toLocaleDateString()
+                                                : ''}
+                                        </div>
+                                    </button>
+                                    <Button
+                                        type="button"
+                                        variant="ghost"
+                                        size="sm"
+                                        className="shrink-0 h-8 text-xs"
+                                        onClick={() => openPeekTab(m.reportMongoId)}
+                                    >
+                                        <ExternalLink className="h-3 w-3 mr-1" />
+                                        Peek
+                                    </Button>
+                                </div>
+                            ))}
+                        </div>
+                    )}
+
+                    <DialogFooter className="flex-col sm:flex-row gap-2">
+                        <Button variant="ghost" onClick={() => setDuplicateModalOpen(false)}>Close</Button>
+                        <Button variant="outline" onClick={handleClearDuplicateReview}>
+                            Not a duplicate — continue triage
+                        </Button>
+                        <Button
+                            className="bg-orange-500 hover:bg-orange-600 text-white"
+                            onClick={confirmMarkDuplicate}
+                            disabled={!selectedDuplicate}
+                        >
+                            Mark as duplicate of selected
                         </Button>
                     </DialogFooter>
                 </DialogContent>

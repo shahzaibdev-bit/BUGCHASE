@@ -25,7 +25,9 @@ import {
   Bug,
   BadgeCheck,
   Github,
-  Pencil
+  Pencil,
+  Check,
+  ChevronsUpDown,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -42,22 +44,17 @@ import {
 } from "@/components/ui/select";
 import { toast } from '@/hooks/use-toast';
 import ImageCropper from '@/components/ImageCropper';
-
-// Simple Country List with Flags
-const countries = [
-  { code: 'US', name: 'United States', flag: '🇺🇸' },
-  { code: 'GB', name: 'United Kingdom', flag: '🇬🇧' },
-  { code: 'IN', name: 'India', flag: '🇮🇳' },
-  { code: 'PK', name: 'Pakistan', flag: '🇵🇰' },
-  { code: 'CA', name: 'Canada', flag: '🇨🇦' },
-  { code: 'AU', name: 'Australia', flag: '🇦🇺' },
-  { code: 'DE', name: 'Germany', flag: '🇩🇪' },
-  { code: 'FR', name: 'France', flag: '🇫🇷' },
-  { code: 'JP', name: 'Japan', flag: '🇯🇵' },
-  { code: 'BR', name: 'Brazil', flag: '🇧🇷' },
-  { code: 'RU', name: 'Russia', flag: '🇷🇺' },
-  { code: 'CN', name: 'China', flag: '🇨🇳' },
-];
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import {
+  Command,
+  CommandEmpty,
+  CommandGroup,
+  CommandInput,
+  CommandItem,
+  CommandList,
+} from '@/components/ui/command';
+import { PROFILE_COUNTRIES, getProfileCountryByName } from '@/lib/profileCountries';
+import { CountryFlagImg } from '@/components/CountryFlagImg';
 
 // Mock Data Types
 interface ProfileState {
@@ -100,7 +97,8 @@ export default function ResearcherProfile() {
   const [isKYCOpen, setIsKYCOpen] = useState(false);
   const [imageSrc, setImageSrc] = useState<string | null>(null);
   const [showCropper, setShowCropper] = useState(false);
-  
+  const [countryPickerOpen, setCountryPickerOpen] = useState(false);
+
   // Edit Mode State
   const [editMode, setEditMode] = useState({
     general: false,
@@ -175,7 +173,7 @@ export default function ResearcherProfile() {
       
       const socialKeys = ['twitter', 'linkedin', 'github'];
       const active = socialKeys.filter(k => (user as any).linkedAccounts?.[k]);
-      setActiveSocials(active.length > 0 ? active : ['linkedin', 'twitter']);
+      setActiveSocials(active);
     }
   }, [user]);
 
@@ -505,21 +503,67 @@ export default function ResearcherProfile() {
                                             </div>
                                             <div className="space-y-2">
                                                 <label className="text-sm text-zinc-500 dark:text-zinc-400">Country</label>
-                                                <Select 
-                                                    value={profile.country} 
-                                                    onValueChange={(val) => setProfile({...profile, country: val})}
-                                                >
-                                                  <SelectTrigger className="bg-zinc-50 dark:bg-zinc-950 border-zinc-200 dark:border-zinc-800 focus:ring-0">
-                                                    <SelectValue placeholder="Select country" />
-                                                  </SelectTrigger>
-                                                  <SelectContent>
-                                                    {countries.map((c) => (
-                                                      <SelectItem key={c.code} value={c.name}>
-                                                        <span className="mr-2 text-lg">{c.flag}</span> {c.name}
-                                                      </SelectItem>
-                                                    ))}
-                                                  </SelectContent>
-                                                </Select>
+                                                <Popover open={countryPickerOpen} onOpenChange={setCountryPickerOpen}>
+                                                  <PopoverTrigger asChild>
+                                                    <Button
+                                                      type="button"
+                                                      variant="outline"
+                                                      role="combobox"
+                                                      aria-expanded={countryPickerOpen}
+                                                      className="w-full justify-between font-normal h-10 px-3 bg-zinc-50 dark:bg-zinc-950 border-zinc-200 dark:border-zinc-800 hover:bg-zinc-50 dark:hover:bg-zinc-950"
+                                                    >
+                                                      {profile.country ? (
+                                                        <span className="flex items-center gap-2 truncate">
+                                                          {(() => {
+                                                            const sel = getProfileCountryByName(profile.country);
+                                                            return sel ? (
+                                                              <CountryFlagImg isoCode={sel.isoCode} name={sel.name} width={22} />
+                                                            ) : (
+                                                              <Globe className="h-5 w-5 shrink-0 text-zinc-400" aria-hidden />
+                                                            );
+                                                          })()}
+                                                          <span className="truncate">{profile.country}</span>
+                                                        </span>
+                                                      ) : (
+                                                        <span className="text-zinc-500">Search or select country</span>
+                                                      )}
+                                                      <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                                                    </Button>
+                                                  </PopoverTrigger>
+                                                  <PopoverContent
+                                                    className="p-0 w-[min(calc(100vw-2rem),24rem)] max-h-[min(24rem,70vh)]"
+                                                    align="start"
+                                                  >
+                                                    <Command>
+                                                      <CommandInput placeholder="Search country..." className="h-11" />
+                                                      <CommandList className="max-h-[min(20rem,60vh)]">
+                                                        <CommandEmpty>No country found.</CommandEmpty>
+                                                        <CommandGroup>
+                                                          {PROFILE_COUNTRIES.map((c) => (
+                                                            <CommandItem
+                                                              key={c.isoCode}
+                                                              value={`${c.name} ${c.isoCode}`}
+                                                              onSelect={() => {
+                                                                setProfile({ ...profile, country: c.name });
+                                                                setCountryPickerOpen(false);
+                                                              }}
+                                                              className="gap-2"
+                                                            >
+                                                              <Check
+                                                                className={cn(
+                                                                  'h-4 w-4 shrink-0',
+                                                                  profile.country === c.name ? 'opacity-100' : 'opacity-0',
+                                                                )}
+                                                              />
+                                                              <CountryFlagImg isoCode={c.isoCode} name={c.name} width={22} />
+                                                              <span className="truncate">{c.name}</span>
+                                                            </CommandItem>
+                                                          ))}
+                                                        </CommandGroup>
+                                                      </CommandList>
+                                                    </Command>
+                                                  </PopoverContent>
+                                                </Popover>
                                             </div>
                                         </div>
 
@@ -546,8 +590,15 @@ export default function ResearcherProfile() {
                                             <div>
                                                 <span className="text-xs text-zinc-500 uppercase tracking-widest font-semibold block mb-1">Country</span>
                                                 <div className="flex items-center gap-2 text-lg font-medium text-zinc-900 dark:text-white">
-                                                    <span className="text-2xl">{countries.find(c => c.name === profile.country)?.flag || '🌍'}</span>
-                                                    {profile.country || 'Global'}
+                                                    {(() => {
+                                                      const sel = getProfileCountryByName(profile.country);
+                                                      return sel ? (
+                                                        <CountryFlagImg isoCode={sel.isoCode} name={sel.name} width={28} />
+                                                      ) : (
+                                                        <Globe className="h-7 w-7 shrink-0 text-zinc-400" aria-hidden />
+                                                      );
+                                                    })()}
+                                                    {profile.country || 'Not set'}
                                                 </div>
                                             </div>
                                         </div>
@@ -968,11 +1019,17 @@ export default function ResearcherProfile() {
                 <div className="absolute top-0 inset-x-0 h-1 bg-gradient-to-r from-zinc-300 via-zinc-500 to-zinc-300 dark:from-zinc-700 dark:via-zinc-500 dark:to-zinc-700" />
                 
                 <div className="relative inline-block mb-3">
-                    <img 
-                        src={user?.avatar && user.avatar !== 'default.jpg' ? user.avatar : "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?ixlib=rb-4.0.3"} 
-                        alt="Profile" 
-                        className="w-20 h-20 rounded-full border-4 border-white dark:border-zinc-800 object-cover shadow-lg"
-                    />
+                    {user?.avatar && user.avatar !== 'default.jpg' ? (
+                        <img
+                            src={user.avatar}
+                            alt="Profile"
+                            className="w-20 h-20 rounded-full border-4 border-white dark:border-zinc-800 object-cover shadow-lg"
+                        />
+                    ) : (
+                        <div className="w-20 h-20 rounded-full border-4 border-white dark:border-zinc-800 bg-zinc-100 dark:bg-zinc-800 flex items-center justify-center shadow-lg">
+                            <User className="w-9 h-9 text-zinc-400 dark:text-zinc-500" />
+                        </div>
+                    )}
                     {user?.isVerified && (
                         <div className="absolute -bottom-1 -right-1 text-blue-500 z-10 drop-shadow-md" title="Verified">
                             <BadgeCheck className="w-7 h-7 fill-blue-500 text-white" />

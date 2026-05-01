@@ -63,6 +63,7 @@ import TriagerQueue from "./pages/triager/TriagerQueue";
 import TriagerAssigned from "./pages/triager/TriagerAssigned";
 import TriagerExpertise from "./pages/triager/TriagerExpertise";
 import TriagerReportDetails from "./pages/triager/TriagerReportDetails";
+import TriagerReportPeek from "./pages/triager/TriagerReportPeek";
 import TriagerProfile from "./pages/triager/TriagerProfile";
 
 // Components
@@ -175,6 +176,7 @@ const App = () => (
                     <Route path="assigned" element={<TriagerAssigned />} />
                     <Route path="settings" element={<TriagerExpertise />} />
                     <Route path="reports/:id" element={<TriagerReportDetails />} />
+                    <Route path="peek/:id" element={<TriagerReportPeek />} />
                     <Route path="profile" element={<TriagerProfile />} />
                   </Route>
               </Route>

@@ -11,6 +11,22 @@ import Notification from '../models/Notification';
 import { sendEmail, reportEmailTemplate } from '../services/emailService';
 import { generateReportSummary } from '../services/geminiService';
 import { getIO } from '../services/socketService';
+import { runInitialDuplicateScanForNewReport } from '../services/duplicateDetectionService';
+
+const duplicateReviewBlocksPromoteOrResolve = (report: any, nextStatus: string) => {
+  if (
+    report.duplicateReviewStatus === 'pending' &&
+    Array.isArray(report.duplicateCandidates) &&
+    report.duplicateCandidates.length > 0 &&
+    (nextStatus === 'Triaged' || nextStatus === 'Resolved')
+  ) {
+    return new AppError(
+      'This report has possible duplicates from automatic screening. Use the duplicate comparison to mark it as a duplicate or confirm it is not a duplicate before promoting or resolving.',
+      400
+    );
+  }
+  return null;
+};
 
 // Dashboard Stats
 export const getDashboardStats = catchAsync(async (req: Request, res: Response, next: NextFunction) => {
@@ -240,6 +256,22 @@ Best regards,
     await report.save();
 
     try {
+        const dupStatus = String(report.duplicateReviewStatus || 'not_applicable');
+        const hasCandidates = Array.isArray(report.duplicateCandidates) && report.duplicateCandidates.length > 0;
+        if (!['cleared', 'confirmed_duplicate'].includes(dupStatus) && !hasCandidates) {
+            const { candidates, reviewStatus } = await runInitialDuplicateScanForNewReport(report);
+            report.duplicateLastScannedAt = new Date();
+            if (candidates.length > 0) {
+                report.duplicateCandidates = candidates as any;
+                report.duplicateReviewStatus = reviewStatus;
+            }
+            await report.save();
+        }
+    } catch (dupErr) {
+        console.error('[claimReport] duplicate scan:', dupErr);
+    }
+
+    try {
         const io = getIO();
         const newAssignmentComment = report.comments[report.comments.length - 1];
         
@@ -296,22 +328,59 @@ Best regards,
 // Get Report Details
 export const getReportDetails = catchAsync(async (req: Request, res: Response, next: NextFunction) => {
     const { id } = req.params;
-    const report = await Report.findById(id)
-        .populate('researcherId', 'username name email avatar')
-        .populate('comments.sender', 'username name role avatar')
-        .populate({
-            path: 'programId',
-            model: 'Program',
-            select: 'title companyName type bountyRange description rewards rulesOfEngagement safeHarbor submissionGuidelines scope',
-            populate: {
-                path: 'companyId',
-                model: 'User',
-                select: 'name avatar'
-            }
-        });
+
+    const loadPopulated = () =>
+        Report.findById(id)
+            .populate('researcherId', 'username name email avatar')
+            .populate('comments.sender', 'username name role avatar')
+            .populate({
+                path: 'programId',
+                model: 'Program',
+                select: 'title companyName type bountyRange description rewards rulesOfEngagement safeHarbor submissionGuidelines scope',
+                populate: {
+                    path: 'companyId',
+                    model: 'User',
+                    select: 'name avatar'
+                }
+            });
+
+    let report = await loadPopulated();
 
     if (!report) {
         return next(new AppError('Report not found', 404));
+    }
+
+    const role = req.user!.role;
+    const dupStatus = String(report.duplicateReviewStatus || 'not_applicable');
+    const hasCandidates = Array.isArray(report.duplicateCandidates) && report.duplicateCandidates.length > 0;
+    const lastScanMs = report.duplicateLastScannedAt
+        ? new Date(report.duplicateLastScannedAt).getTime()
+        : 0;
+    const staleMs = Number(process.env.DUPLICATE_AUTOSCAN_COOLDOWN_MS || 120000);
+
+    const tryAutoScan =
+        ['triager', 'admin'].includes(role) &&
+        report.status !== 'Duplicate' &&
+        !['cleared', 'confirmed_duplicate'].includes(dupStatus) &&
+        !hasCandidates &&
+        (Date.now() - lastScanMs > staleMs || !report.duplicateLastScannedAt);
+
+    if (tryAutoScan) {
+        try {
+            const { candidates, reviewStatus } = await runInitialDuplicateScanForNewReport(report);
+            report.duplicateLastScannedAt = new Date();
+            if (candidates.length > 0) {
+                report.duplicateCandidates = candidates as any;
+                report.duplicateReviewStatus = reviewStatus;
+            }
+            await report.save();
+            report = await loadPopulated();
+            if (!report) {
+                return next(new AppError('Report not found', 404));
+            }
+        } catch (e) {
+            console.error('[getReportDetails] auto duplicate scan:', e);
+        }
     }
 
     res.status(200).json({
@@ -512,6 +581,9 @@ export const submitDecision = catchAsync(async (req: Request, res: Response, nex
         return next(new AppError('Report not found', 404));
     }
 
+    const dupErr = duplicateReviewBlocksPromoteOrResolve(report, status);
+    if (dupErr) return next(dupErr);
+
     const oldStatus = report.status; // capture BEFORE overwriting
 
     report.status = status;
@@ -651,6 +723,9 @@ export const updateReportStatus = catchAsync(async (req: Request, res: Response,
     // Populate researcherId at query time so email has the address
     const report = await Report.findById(id).populate('researcherId', 'name email username');
     if (!report) return next(new AppError('Report not found', 404));
+
+    const dupErr = duplicateReviewBlocksPromoteOrResolve(report, status);
+    if (dupErr) return next(dupErr);
 
     const oldStatus = report.status; // capture BEFORE overwriting
 
