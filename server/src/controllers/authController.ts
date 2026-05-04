@@ -7,36 +7,7 @@ import redisClient from '../config/redis';
 import { sendEmail, otpTemplate } from '../services/emailService';
 import { signToken, signRefreshToken } from '../services/tokenService';
 import { rateLimiter, resetRateLimit } from '../middlewares/rateLimit';
-
-// Helper to calculate reputation based on profile completeness
-const calculateDynamicReputation = (user: any) => {
-    let score = 0;
-
-    // 1. Signup Bonus (Base) - 10 points
-    score += 10;
-
-    // 2. Username Set - 10 points
-    if (user.username) score += 10;
-
-    // 3. Bio Added (Must be updated from default) - 20 points
-    if (user.bioUpdated && user.bio && user.bio.length > 0) score += 20;
-
-    // 4. Country Set - 10 points
-    if (user.country) score += 10;
-
-    // 5. Social Links (20 points for at least one)
-    let socialCount = 0;
-    if (user.linkedAccounts?.github) socialCount++;
-    if (user.linkedAccounts?.linkedin) socialCount++;
-    if (user.linkedAccounts?.twitter) socialCount++;
-    // score += Math.min(socialCount * 10, 20); // Old logic
-    if (socialCount >= 1) score += 20; // New logic: All 20 points for just one link
-
-    // 6. KYC Verified - 80 points
-    if (user.isVerified) score += 80;
-
-    return score;
-};
+import { getProfileCompletionReputationScore } from '../utils/profileCompletionReputation';
 
 export const signup = catchAsync(async (req: Request, res: Response, next: NextFunction) => {
   const { name, email, password, role } = req.body;
@@ -119,9 +90,8 @@ export const verifyEmail = catchAsync(async (req: Request, res: Response, next: 
   // Remove password from output
   const userObj = user.toObject();
   delete (userObj as any).password;
-  
-  // Inject Reputation
-  (userObj as any).reputationScore = ((userObj as any).reputationScore || 0) + calculateDynamicReputation(userObj);
+
+  (userObj as any).profileCompletionScore = getProfileCompletionReputationScore(userObj);
 
   // Reset Rate Limit on Success
   await resetRateLimit(req, 'auth');
@@ -170,8 +140,7 @@ export const login = catchAsync(async (req: Request, res: Response, next: NextFu
   const userObj = user.toObject();
   delete userObj.password;
 
-  // Inject Reputation
-  (userObj as any).reputationScore = ((userObj as any).reputationScore || 0) + calculateDynamicReputation(userObj);
+  (userObj as any).profileCompletionScore = getProfileCompletionReputationScore(userObj);
 
   // Reset Rate Limit on Success
   await resetRateLimit(req, 'auth');
@@ -198,12 +167,11 @@ import Report from '../models/Report';
 export const getMe = catchAsync(async (req: Request, res: Response, next: NextFunction) => {
   // User is already attached to req by protect middleware
   const userObj = (req.user as any).toObject ? (req.user as any).toObject() : req.user;
-  
-  // Inject Reputation
-  (userObj as any).reputationScore = ((userObj as any).reputationScore || 0) + calculateDynamicReputation(userObj);
+
+  (userObj as any).profileCompletionScore = getProfileCompletionReputationScore(userObj);
 
   // Inject Reports Count
-  const reportsCount = await Report.countDocuments({ researcher: (req.user as any)._id });
+  const reportsCount = await Report.countDocuments({ researcherId: (req.user as any)._id });
   (userObj as any).reportsCount = reportsCount;
 
   res.status(200).json({
@@ -253,7 +221,7 @@ export const updateMe = async (req: Request, res: Response, next: NextFunction) 
   });
 
   const userObj = updatedUser!.toObject();
-  (userObj as any).reputationScore = ((userObj as any).reputationScore || 0) + calculateDynamicReputation(userObj);
+  (userObj as any).profileCompletionScore = getProfileCompletionReputationScore(userObj);
 
   res.status(200).json({
     status: 'success',

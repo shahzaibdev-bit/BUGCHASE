@@ -21,6 +21,8 @@ export interface User {
   status?: 'Active' | 'Suspended' | 'Banned';
   walletBalance?: number;
   reputationScore?: number;
+  /** Profile + KYC checklist points (0–150), not stored in DB; see server `getProfileCompletionReputationScore`. */
+  profileCompletionScore?: number;
 }
 
 export interface TeamMember extends User {

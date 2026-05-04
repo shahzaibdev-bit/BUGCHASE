@@ -37,23 +37,104 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 };
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.uploadAvatar = exports.updateMe = exports.updateKYCStatus = exports.removePayoutMethod = exports.verifyPayoutMethodOtp = exports.requestPayoutMethodOtp = exports.requestPayout = exports.getPayoutMethods = exports.setupPayoutMethod = exports.getWalletData = exports.getMe = exports.getResearcherLeaderboard = exports.getPublicProfile = void 0;
+const mongoose_1 = __importDefault(require("mongoose"));
 const User_1 = __importDefault(require("../models/User"));
 const AppError_1 = __importDefault(require("../utils/AppError"));
 const catchAsync_1 = __importDefault(require("../utils/catchAsync"));
+const profileCompletionReputation_1 = require("../utils/profileCompletionReputation");
 exports.getPublicProfile = (0, catchAsync_1.default)(async (req, res, next) => {
-    const { username } = req.params;
+    const raw = req.params.username?.trim();
+    if (!raw) {
+        return next(new AppError_1.default('Profile not found', 404));
+    }
+    const safeUsername = raw.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
     const user = await User_1.default.findOne({
-        username: { $regex: new RegExp(`^${(username || '').trim()}$`, 'i') },
-        isPrivate: false
-    }).select('username name description bio avatar country socialLinks stats reputationScore trustScore linkedAccounts createdAt skills isPrivate isVerified status');
+        username: { $regex: new RegExp(`^${safeUsername}$`, 'i') },
+        isPrivate: false,
+    }).select('username name bio bioUpdated avatar country city socialLinks reputationScore linkedAccounts createdAt skills achievements isPrivate isVerified status');
     if (!user) {
         return next(new AppError_1.default('Profile not found', 404));
     }
+    const ReportModel = (await Promise.resolve().then(() => __importStar(require('../models/Report')))).default;
+    const rid = user._id instanceof mongoose_1.default.Types.ObjectId ? user._id : new mongoose_1.default.Types.ObjectId(String(user._id));
+    const [agg] = await ReportModel.aggregate([
+        { $match: { researcherId: rid } },
+        {
+            $facet: {
+                summary: [
+                    {
+                        $group: {
+                            _id: null,
+                            submitted: { $sum: 1 },
+                            resolvedOrPaid: {
+                                $sum: {
+                                    $cond: [{ $in: ['$status', ['Resolved', 'Paid']] }, 1, 0],
+                                },
+                            },
+                            paidOnly: { $sum: { $cond: [{ $eq: ['$status', 'Paid'] }, 1, 0] } },
+                            duplicate: { $sum: { $cond: [{ $eq: ['$status', 'Duplicate'] }, 1, 0] } },
+                            spam: { $sum: { $cond: [{ $eq: ['$status', 'Spam'] }, 1, 0] } },
+                            na: { $sum: { $cond: [{ $eq: ['$status', 'NA'] }, 1, 0] } },
+                            activeReports: {
+                                $sum: {
+                                    $cond: [
+                                        {
+                                            $in: [
+                                                '$status',
+                                                [
+                                                    'Submitted',
+                                                    'Triaging',
+                                                    'Needs Info',
+                                                    'Triaged',
+                                                    'Under Review',
+                                                    'Pending_Fix',
+                                                ],
+                                            ],
+                                        },
+                                        1,
+                                        0,
+                                    ],
+                                },
+                            },
+                        },
+                    },
+                ],
+                bySeverity: [{ $group: { _id: '$severity', count: { $sum: 1 } } }],
+            },
+        },
+    ]);
+    const summary = agg?.summary?.[0];
+    const submitted = summary?.submitted ?? 0;
+    const resolvedOrPaid = summary?.resolvedOrPaid ?? 0;
+    const resolutionRatePercent = submitted > 0 ? Math.round((resolvedOrPaid / submitted) * 100) : null;
+    const severityOrder = ['Critical', 'High', 'Medium', 'Low', 'None'];
+    const bySeverity = (agg?.bySeverity || [])
+        .filter((x) => x._id)
+        .map((x) => ({ severity: x._id, count: x.count }))
+        .sort((a, b) => severityOrder.indexOf(a.severity) - severityOrder.indexOf(b.severity));
+    const plain = user.toObject();
+    delete plain.email;
+    delete plain.password;
+    delete plain.walletBalance;
+    const profileCompletionScore = (0, profileCompletionReputation_1.getProfileCompletionReputationScore)(plain);
     res.status(200).json({
         status: 'success',
         data: {
-            ...user.toObject(),
-            nickname: user.username
+            ...plain,
+            nickname: user.username,
+            reportsSubmitted: submitted,
+            profileCompletionScore,
+            reportStats: {
+                submitted,
+                resolvedOrPaid,
+                paid: summary?.paidOnly ?? 0,
+                duplicate: summary?.duplicate ?? 0,
+                spam: summary?.spam ?? 0,
+                na: summary?.na ?? 0,
+                active: summary?.activeReports ?? 0,
+                resolutionRatePercent,
+                bySeverity,
+            },
         },
     });
 });
@@ -364,17 +445,13 @@ exports.updateKYCStatus = (0, catchAsync_1.default)(async (req, res, next) => {
     const user = await User_1.default.findById(req.user.id);
     if (!user)
         return next(new AppError_1.default('User not found', 404));
+    const wasVerified = user.isVerified;
     user.isVerified = true;
-    // Logic: Only award points if not already verified to prevent abuse? 
-    // For now assuming idempotent or untrusted clients won't spam this.
-    // In prod, check if user.isVerified is already true.
-    if (!user.isVerified) {
-        user.trustScore = (user.trustScore || 0) + 100; // Award points
-        user.reputationScore = (user.reputationScore || 0) + 50;
+    if (!wasVerified) {
+        user.reputationScore = (user.reputationScore || 0) + 80;
     }
     else {
-        // Double check/re-verify logic if needed
-        user.trustScore = (user.trustScore || 0) + 10; // Small bonus for re-verify?
+        user.reputationScore = (user.reputationScore || 0) + 5;
     }
     // Add "Identity Verified" skill/badge if not present
     if (!user.skills.includes('Identity Verified')) {
@@ -385,8 +462,8 @@ exports.updateKYCStatus = (0, catchAsync_1.default)(async (req, res, next) => {
         status: 'success',
         message: 'KYC Verified Successfully',
         data: {
-            trustScore: user.trustScore,
-            isVerified: user.isVerified
+            reputationScore: user.reputationScore,
+            isVerified: user.isVerified,
         }
     });
 });

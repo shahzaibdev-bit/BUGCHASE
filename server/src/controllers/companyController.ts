@@ -13,6 +13,10 @@ import { uploadToCloudinary } from '../utils/cloudinary';
 import Stripe from 'stripe';
 import Transaction from '../models/Transaction';
 import redisClient from '../config/redis';
+import {
+  applyResearcherReputationOnStatusTransition,
+  clearReputationMilestonesForReTriage,
+} from '../services/researcherReputationService';
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY as string, {
     apiVersion: '2026-04-22.dahlia',
@@ -901,6 +905,9 @@ export const updateReportStatus = catchAsync(async (req: Request, res: Response,
     if (!report) return next(new AppError('Report not found', 404));
 
     const oldStatus = report.status;
+    if (status === 'Triaging' && oldStatus !== 'Triaging') {
+        clearReputationMilestonesForReTriage(report);
+    }
     report.status = status;
 
     // Add Timeline Event
@@ -912,6 +919,8 @@ export const updateReportStatus = catchAsync(async (req: Request, res: Response,
         createdAt: new Date()
     };
     report.comments.push(newComment as any);
+
+    await applyResearcherReputationOnStatusTransition(report, oldStatus, status, 'company');
 
     await report.save();
     await report.populate('comments.sender', 'name username role avatar');
@@ -1035,7 +1044,7 @@ export const awardBounty = catchAsync(async (req: Request, res: Response, next: 
     await company.save();
 
     await User.findByIdAndUpdate(report.researcherId, {
-        $inc: { walletBalance: bountyAmount, reputationScore: Math.floor(bountyAmount / 10) }
+        $inc: { walletBalance: bountyAmount },
     });
 
     (report as any).bounty = bountyAmount;

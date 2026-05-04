@@ -15,6 +15,11 @@ import {
   buildEmbeddingText,
   runInitialDuplicateScanForNewReport,
 } from '../services/duplicateDetectionService';
+import {
+  formatDuplicateClosureMarkdown,
+  duplicateClosureTimelineSummary,
+} from '../utils/duplicateClosureNotice';
+import { applyResearcherReputationOnStatusTransition } from '../services/researcherReputationService';
 
 const randomAlphaNum = (length: number) => {
   const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
@@ -475,7 +480,7 @@ export const checkReportDuplicates = catchAsync(async (req: Request, res: Respon
 
 export const markReportAsDuplicate = catchAsync(async (req: Request, res: Response, next: NextFunction) => {
   const { id } = req.params;
-  const { duplicateOf, reason } = req.body || {};
+  const { duplicateOf } = req.body || {};
 
   if (!['triager', 'admin'].includes(req.user!.role)) {
     return next(new AppError('Only triagers/admin can mark duplicates', 403));
@@ -486,7 +491,7 @@ export const markReportAsDuplicate = catchAsync(async (req: Request, res: Respon
 
   const [report, duplicateParent] = await Promise.all([
     Report.findById(id),
-    Report.findById(duplicateOf).select('_id reportId title'),
+    Report.findById(duplicateOf).select('_id reportId title createdAt'),
   ]);
 
   if (!report) return next(new AppError('Report not found', 404));
@@ -497,26 +502,30 @@ export const markReportAsDuplicate = catchAsync(async (req: Request, res: Respon
   report.duplicateOf = duplicateParent._id as any;
   report.duplicateReviewStatus = 'confirmed_duplicate';
   const parentRid = duplicateParent.reportId || String(duplicateParent._id);
+  const thisRid = report.reportId || String(report._id);
+  const actorDisplay = req.user!.name || req.user!.username || 'BugChase Triage';
+  const closureNotice = formatDuplicateClosureMarkdown({
+    thisReportPublicId: thisRid,
+    canonicalReportPublicId: parentRid,
+    canonicalSubmittedAt: duplicateParent.createdAt,
+    actorDisplayName: actorDisplay,
+  });
+
   report.comments.push({
     sender: req.user!.id as any,
-    content: reason || `Marked as duplicate of ${parentRid}`,
+    content: duplicateClosureTimelineSummary(),
     type: 'status_change',
     metadata: {
       oldStatus,
       newStatus: 'Duplicate',
       duplicateOf: String(duplicateParent._id),
       duplicateOfReportId: parentRid,
-      reason: reason || '',
+      reason: closureNotice,
     },
     createdAt: new Date(),
   } as any);
 
-  report.comments.push({
-    sender: req.user!.id as any,
-    content: `Duplicate resolution: this report is closed as a duplicate of report **${parentRid}**. The researcher has been notified by email.`,
-    type: 'comment',
-    createdAt: new Date(),
-  } as any);
+  await applyResearcherReputationOnStatusTransition(report, oldStatus, 'Duplicate', 'mark_duplicate');
 
   await report.save();
 
@@ -539,7 +548,7 @@ export const markReportAsDuplicate = catchAsync(async (req: Request, res: Respon
       if (researcher?.email) {
         await sendEmail(
           researcher.email,
-          `Report marked as duplicate: ${report.title}`,
+          `Duplicate resolution`,
           reportEmailTemplate({
             recipientName: researcher.name || 'Researcher',
             recipientRole: 'researcher',
@@ -547,11 +556,15 @@ export const markReportAsDuplicate = catchAsync(async (req: Request, res: Respon
             actorRole: 'triager',
             actionType: 'status_change',
             reportTitle: report.title,
-            reportId: report.reportId || String(report._id),
+            reportId: thisRid,
             severity: report.severity,
             oldStatus,
+            previousStatus: oldStatus,
+            canonicalReportId: parentRid,
             newStatus: 'Duplicate',
-            reason: `This submission was marked as a duplicate of report ${parentRid}. ${reason || ''}`.trim(),
+            message: closureNotice,
+            messageSectionLabel: 'Duplicate resolution',
+            suppressVulnerabilitySummary: true,
             link: `${process.env.CLIENT_URL}/researcher/reports/${report._id}`,
           })
         );

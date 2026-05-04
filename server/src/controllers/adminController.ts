@@ -8,6 +8,10 @@ import { releaseExpiredProgramBans } from '../services/programModerationService'
 import Program from '../models/Program';
 import Transaction from '../models/Transaction';
 import { getIO } from '../services/socketService';
+import {
+  applyResearcherReputationOnStatusTransition,
+  clearReputationMilestonesForReTriage,
+} from '../services/researcherReputationService';
 
 const toDisplay = (v: any) => {
     if (v === undefined || v === null || v === '') return '-';
@@ -662,7 +666,7 @@ export const updateUserDetails = catchAsync(async (req: Request, res: Response, 
     const updates = req.body || {};
     const allowedFields = [
         'name', 'username', 'email', 'country', 'bio', 'companyName', 'industry', 'website', 'city',
-        'isVerified', 'isEmailVerified', 'walletBalance', 'reputationScore', 'trustScore', 'status',
+        'isVerified', 'isEmailVerified', 'walletBalance', 'reputationScore', 'status',
         'statusReason', 'skills', 'expertise', 'verifiedAssets', 'payoutHold', 'isPrivate',
         'severityPreferences', 'maxConcurrentReports', 'isAvailable', 'linkedAccounts',
     ];
@@ -720,17 +724,16 @@ export const updateUserDetails = catchAsync(async (req: Request, res: Response, 
 
 export const adjustUserPoints = catchAsync(async (req: Request, res: Response, next: NextFunction) => {
     const { id } = req.params;
-    const { reputationDelta = 0, trustDelta = 0 } = req.body;
+    const { reputationDelta = 0 } = req.body;
 
     const rep = Number(reputationDelta);
-    const trust = Number(trustDelta);
-    if (Number.isNaN(rep) || Number.isNaN(trust)) {
+    if (Number.isNaN(rep)) {
         return next(new AppError('Invalid points delta', 400));
     }
 
     const user = await User.findByIdAndUpdate(
         id,
-        { $inc: { reputationScore: rep, trustScore: trust } },
+        { $inc: { reputationScore: rep } },
         { new: true }
     ).select('-password');
 
@@ -739,10 +742,9 @@ export const adjustUserPoints = catchAsync(async (req: Request, res: Response, n
     await notifyAdminChange(
         user,
         'Points Adjustment',
-        `Reputation ${rep >= 0 ? '+' : ''}${rep}, Trust ${trust >= 0 ? '+' : ''}${trust}`,
+        `Reputation ${rep >= 0 ? '+' : ''}${rep}`,
         [
             { field: 'reputationScore', before: 'Adjusted', after: `${rep >= 0 ? '+' : ''}${rep}` },
-            { field: 'trustScore', before: 'Adjusted', after: `${trust >= 0 ? '+' : ''}${trust}` }
         ]
     );
 
@@ -781,7 +783,7 @@ export const getReportDetailsForAdmin = catchAsync(async (req: Request, res: Res
     const Report = (await import('../models/Report')).default;
 
     const report = await Report.findById(id)
-        .populate('researcherId', 'name username email avatar reputationScore trustScore')
+        .populate('researcherId', 'name username email avatar reputationScore')
         .populate('triagerId', 'name username email avatar')
         .populate('comments.sender', 'name username role avatar')
         .populate('programId', 'title companyId');
@@ -915,6 +917,9 @@ export const updateReportStatusByAdmin = catchAsync(async (req: Request, res: Re
     if (!report) return next(new AppError('Report not found', 404));
 
     const oldStatus = report.status;
+    if (status === 'Triaging' && oldStatus !== 'Triaging') {
+        clearReputationMilestonesForReTriage(report);
+    }
     report.status = status;
     report.comments.push({
         sender: req.user!._id,
@@ -923,6 +928,7 @@ export const updateReportStatusByAdmin = catchAsync(async (req: Request, res: Re
         metadata: { oldStatus, newStatus: status, reason: reason || undefined },
         createdAt: new Date()
     });
+    await applyResearcherReputationOnStatusTransition(report, oldStatus, status, 'admin');
     await report.save();
     await report.populate('comments.sender', 'name username role avatar');
 

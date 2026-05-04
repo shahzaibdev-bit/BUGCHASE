@@ -1,25 +1,128 @@
 import { Request, Response, NextFunction } from 'express';
+import mongoose from 'mongoose';
 import User from '../models/User';
 import AppError from '../utils/AppError';
 import catchAsync from '../utils/catchAsync';
+import { getProfileCompletionReputationScore } from '../utils/profileCompletionReputation';
 
 export const getPublicProfile = catchAsync(async (req: Request, res: Response, next: NextFunction) => {
-  const { username } = req.params;
+  const raw = (req.params.username as string | undefined)?.trim();
+  if (!raw) {
+    return next(new AppError('Profile not found', 404));
+  }
+  const safeUsername = raw.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
-  const user = await User.findOne({ 
-      username: { $regex: new RegExp(`^${(username as string || '').trim()}$`, 'i') },
-      isPrivate: false 
-  }).select('username name description bio avatar country socialLinks stats reputationScore trustScore linkedAccounts createdAt skills isPrivate isVerified status');
+  const user = await User.findOne({
+    username: { $regex: new RegExp(`^${safeUsername}$`, 'i') },
+    isPrivate: false,
+  }).select(
+    'username name bio bioUpdated avatar country city socialLinks reputationScore linkedAccounts createdAt skills achievements isPrivate isVerified status'
+  );
 
   if (!user) {
     return next(new AppError('Profile not found', 404));
   }
 
+  const ReportModel = (await import('../models/Report')).default;
+  const rid = user._id instanceof mongoose.Types.ObjectId ? user._id : new mongoose.Types.ObjectId(String(user._id));
+
+  const [agg] = await ReportModel.aggregate([
+    { $match: { researcherId: rid } },
+    {
+      $facet: {
+        summary: [
+          {
+            $group: {
+              _id: null,
+              submitted: { $sum: 1 },
+              resolvedOrPaid: {
+                $sum: {
+                  $cond: [{ $in: ['$status', ['Resolved', 'Paid']] }, 1, 0],
+                },
+              },
+              paidOnly: { $sum: { $cond: [{ $eq: ['$status', 'Paid'] }, 1, 0] } },
+              duplicate: { $sum: { $cond: [{ $eq: ['$status', 'Duplicate'] }, 1, 0] } },
+              spam: { $sum: { $cond: [{ $eq: ['$status', 'Spam'] }, 1, 0] } },
+              na: { $sum: { $cond: [{ $eq: ['$status', 'NA'] }, 1, 0] } },
+              activeReports: {
+                $sum: {
+                  $cond: [
+                    {
+                      $in: [
+                        '$status',
+                        [
+                          'Submitted',
+                          'Triaging',
+                          'Needs Info',
+                          'Triaged',
+                          'Under Review',
+                          'Pending_Fix',
+                        ],
+                      ],
+                    },
+                    1,
+                    0,
+                  ],
+                },
+              },
+            },
+          },
+        ],
+        bySeverity: [{ $group: { _id: '$severity', count: { $sum: 1 } } }],
+      },
+    },
+  ]);
+
+  const summary = agg?.summary?.[0] as
+    | {
+        submitted?: number;
+        resolvedOrPaid?: number;
+        paidOnly?: number;
+        duplicate?: number;
+        spam?: number;
+        na?: number;
+        activeReports?: number;
+      }
+    | undefined;
+
+  const submitted = summary?.submitted ?? 0;
+  const resolvedOrPaid = summary?.resolvedOrPaid ?? 0;
+  const resolutionRatePercent =
+    submitted > 0 ? Math.round((resolvedOrPaid / submitted) * 100) : null;
+
+  const severityOrder = ['Critical', 'High', 'Medium', 'Low', 'None'];
+  const bySeverity = (agg?.bySeverity || [])
+    .filter((x: { _id?: string | null }) => x._id)
+    .map((x: { _id: string; count: number }) => ({ severity: x._id, count: x.count }))
+    .sort(
+      (a: { severity: string; count: number }, b: { severity: string; count: number }) =>
+        severityOrder.indexOf(a.severity) - severityOrder.indexOf(b.severity),
+    );
+
+  const plain = user.toObject() as any;
+  delete plain.email;
+  delete plain.password;
+  delete plain.walletBalance;
+  const profileCompletionScore = getProfileCompletionReputationScore(plain);
+
   res.status(200).json({
     status: 'success',
     data: {
-      ...user.toObject(),
-      nickname: user.username
+      ...plain,
+      nickname: user.username,
+      reportsSubmitted: submitted,
+      profileCompletionScore,
+      reportStats: {
+        submitted,
+        resolvedOrPaid,
+        paid: summary?.paidOnly ?? 0,
+        duplicate: summary?.duplicate ?? 0,
+        spam: summary?.spam ?? 0,
+        na: summary?.na ?? 0,
+        active: summary?.activeReports ?? 0,
+        resolutionRatePercent,
+        bySeverity,
+      },
     },
   });
 });
@@ -380,17 +483,13 @@ export const updateKYCStatus = catchAsync(async (req: Request, res: Response, ne
     const user = await User.findById(req.user!.id);
     if (!user) return next(new AppError('User not found', 404));
 
+    const wasVerified = user.isVerified;
     user.isVerified = true;
-    
-    // Logic: Only award points if not already verified to prevent abuse? 
-    // For now assuming idempotent or untrusted clients won't spam this.
-    // In prod, check if user.isVerified is already true.
-    if (!user.isVerified) { 
-        user.trustScore = (user.trustScore || 0) + 100; // Award points
-        user.reputationScore = (user.reputationScore || 0) + 50; 
+
+    if (!wasVerified) {
+        user.reputationScore = (user.reputationScore || 0) + 80;
     } else {
-        // Double check/re-verify logic if needed
-        user.trustScore = (user.trustScore || 0) + 10; // Small bonus for re-verify?
+        user.reputationScore = (user.reputationScore || 0) + 5;
     }
     
     // Add "Identity Verified" skill/badge if not present
@@ -404,8 +503,8 @@ export const updateKYCStatus = catchAsync(async (req: Request, res: Response, ne
         status: 'success',
         message: 'KYC Verified Successfully',
         data: {
-            trustScore: user.trustScore,
-            isVerified: user.isVerified
+            reputationScore: user.reputationScore,
+            isVerified: user.isVerified,
         }
     });
 });

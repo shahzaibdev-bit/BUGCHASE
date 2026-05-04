@@ -109,6 +109,15 @@ const reportSchema = new mongoose.Schema({
   triagerNote: String,
   isReproduced: { type: Boolean, default: false },
   isValidAsset: { type: Boolean, default: false },
+
+  /** One-time researcher reputation awards/penalties per report (see researcherReputationService). */
+  reputationSnapshot: {
+    triagePromoteAwarded: { type: Boolean, default: false },
+    companyResolvedAwarded: { type: Boolean, default: false },
+    duplicateAwarded: { type: Boolean, default: false },
+    naPenaltyAwarded: { type: Boolean, default: false },
+    spamPenaltyAwarded: { type: Boolean, default: false },
+  },
 }, {
   timestamps: true,
 });

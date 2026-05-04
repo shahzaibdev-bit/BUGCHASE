@@ -50,6 +50,7 @@ const cloudinary_1 = require("../utils/cloudinary");
 const stripe_1 = __importDefault(require("stripe"));
 const Transaction_1 = __importDefault(require("../models/Transaction"));
 const redis_1 = __importDefault(require("../config/redis"));
+const researcherReputationService_1 = require("../services/researcherReputationService");
 const stripe = new stripe_1.default(process.env.STRIPE_SECRET_KEY, {
     apiVersion: '2026-04-22.dahlia',
 });
@@ -476,9 +477,12 @@ exports.getReportDetails = (0, catchAsync_1.default)(async (req, res, next) => {
         }
     }
     // If program not found (e.g. legacy/test data), allow access
+    const payload = report.toJSON ? report.toJSON() : report;
+    delete payload.duplicateCandidates;
+    delete payload.duplicateReviewStatus;
     res.status(200).json({
         status: 'success',
-        data: { report }
+        data: { report: payload }
     });
 });
 exports.getCompanyReports = (0, catchAsync_1.default)(async (req, res, next) => {
@@ -782,6 +786,9 @@ exports.updateReportStatus = (0, catchAsync_1.default)(async (req, res, next) =>
     if (!report)
         return next(new AppError_1.default('Report not found', 404));
     const oldStatus = report.status;
+    if (status === 'Triaging' && oldStatus !== 'Triaging') {
+        (0, researcherReputationService_1.clearReputationMilestonesForReTriage)(report);
+    }
     report.status = status;
     // Add Timeline Event
     const newComment = {
@@ -792,6 +799,7 @@ exports.updateReportStatus = (0, catchAsync_1.default)(async (req, res, next) =>
         createdAt: new Date()
     };
     report.comments.push(newComment);
+    await (0, researcherReputationService_1.applyResearcherReputationOnStatusTransition)(report, oldStatus, status, 'company');
     await report.save();
     await report.populate('comments.sender', 'name username role avatar');
     const populatedComment = report.comments[report.comments.length - 1];
@@ -892,7 +900,7 @@ exports.awardBounty = (0, catchAsync_1.default)(async (req, res, next) => {
     company.walletBalance = (company.walletBalance || 0) - totalCost;
     await company.save();
     await User_1.default.findByIdAndUpdate(report.researcherId, {
-        $inc: { walletBalance: bountyAmount, reputationScore: Math.floor(bountyAmount / 10) }
+        $inc: { walletBalance: bountyAmount },
     });
     report.bounty = bountyAmount;
     await Transaction_1.default.insertMany([

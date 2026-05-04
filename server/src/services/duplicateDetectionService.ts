@@ -118,8 +118,25 @@ export type DuplicateCandidatePayload = {
   detectedAt: Date;
 };
 
+/** When the report was filed, in ms. Uses `createdAt` (ms precision from Mongoose timestamps); falls back to ObjectId clock (second precision). */
+const reportSubmittedAtMs = (doc: any): number => {
+  if (doc?.createdAt != null) {
+    const t = new Date(doc.createdAt).getTime();
+    if (!Number.isNaN(t)) return t;
+  }
+  try {
+    const id = doc?._id;
+    if (id instanceof mongoose.Types.ObjectId) return id.getTimestamp().getTime();
+    return new mongoose.Types.ObjectId(String(id)).getTimestamp().getTime();
+  } catch {
+    return 0;
+  }
+};
+
 /**
  * After a report is indexed, search for similar reports in the same program.
+ * Only reports submitted **strictly before** this one are candidates (this submission may duplicate them).
+ * Later similar reports do not trigger duplicate review on the original.
  * Returns candidates sorted by submission time (earliest first) for fair triage.
  */
 export const runInitialDuplicateScanForNewReport = async (
@@ -157,6 +174,7 @@ export const runInitialDuplicateScanForNewReport = async (
 
     const byId = new Map(others.map((o: any) => [String(o._id), o]));
     const candidates: DuplicateCandidatePayload[] = [];
+    const thisSubmittedMs = reportSubmittedAtMs(newReport);
 
     for (const m of above) {
       const oid = String(m.report_id || '');
@@ -167,6 +185,9 @@ export const runInitialDuplicateScanForNewReport = async (
         String(o.programId ?? '').trim() === String(newReport.programId ?? '').trim();
       if (!sameProgram) continue;
       if (['Duplicate', 'Spam'].includes(o.status)) continue;
+
+      const candidateSubmittedMs = reportSubmittedAtMs(o);
+      if (candidateSubmittedMs >= thisSubmittedMs) continue;
 
       seen.add(oid);
       candidates.push({
@@ -193,4 +214,25 @@ export const runInitialDuplicateScanForNewReport = async (
     console.error('[duplicate-scan] initial scan failed:', err);
     return { candidates: [], reviewStatus: 'not_applicable' };
   }
+};
+
+/**
+ * Drops duplicate candidates that are not strictly older than this report (fixes legacy scans
+ * before submit-time filtering). Mutates the mongoose document; returns whether save is needed.
+ */
+export const pruneDuplicateCandidatesNotOlderThanSelf = (report: any): boolean => {
+  const raw = report?.duplicateCandidates;
+  if (!Array.isArray(raw) || raw.length === 0) return false;
+  const selfMs = reportSubmittedAtMs(report);
+  const pruned = raw.filter((c: any) => {
+    if (!c?.candidateSubmittedAt) return false;
+    const t = new Date(c.candidateSubmittedAt).getTime();
+    return !Number.isNaN(t) && t < selfMs;
+  });
+  if (pruned.length === raw.length) return false;
+  report.duplicateCandidates = pruned;
+  if (pruned.length === 0 && report.duplicateReviewStatus === 'pending') {
+    report.duplicateReviewStatus = 'not_applicable';
+  }
+  return true;
 };

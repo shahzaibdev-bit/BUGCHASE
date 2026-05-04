@@ -23,6 +23,7 @@ router
     .route('/:id')
     .get(reportController_1.getReport);
 router.patch('/:id/mark-duplicate', reportController_1.markReportAsDuplicate);
+router.patch('/:id/duplicate-review/clear', reportController_1.clearDuplicateReview);
 router
     .route('/:id/comments')
     .post(upload.array('files', 5), reportController_1.addComment);

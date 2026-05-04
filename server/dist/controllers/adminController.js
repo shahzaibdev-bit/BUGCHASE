@@ -46,6 +46,7 @@ const programModerationService_1 = require("../services/programModerationService
 const Program_1 = __importDefault(require("../models/Program"));
 const Transaction_1 = __importDefault(require("../models/Transaction"));
 const socketService_1 = require("../services/socketService");
+const researcherReputationService_1 = require("../services/researcherReputationService");
 const toDisplay = (v) => {
     if (v === undefined || v === null || v === '')
         return '-';
@@ -611,7 +612,7 @@ exports.updateUserDetails = (0, catchAsync_1.default)(async (req, res, next) => 
     const updates = req.body || {};
     const allowedFields = [
         'name', 'username', 'email', 'country', 'bio', 'companyName', 'industry', 'website', 'city',
-        'isVerified', 'isEmailVerified', 'walletBalance', 'reputationScore', 'trustScore', 'status',
+        'isVerified', 'isEmailVerified', 'walletBalance', 'reputationScore', 'status',
         'statusReason', 'skills', 'expertise', 'verifiedAssets', 'payoutHold', 'isPrivate',
         'severityPreferences', 'maxConcurrentReports', 'isAvailable', 'linkedAccounts',
     ];
@@ -656,18 +657,16 @@ exports.updateUserDetails = (0, catchAsync_1.default)(async (req, res, next) => 
 });
 exports.adjustUserPoints = (0, catchAsync_1.default)(async (req, res, next) => {
     const { id } = req.params;
-    const { reputationDelta = 0, trustDelta = 0 } = req.body;
+    const { reputationDelta = 0 } = req.body;
     const rep = Number(reputationDelta);
-    const trust = Number(trustDelta);
-    if (Number.isNaN(rep) || Number.isNaN(trust)) {
+    if (Number.isNaN(rep)) {
         return next(new AppError_1.default('Invalid points delta', 400));
     }
-    const user = await User_1.default.findByIdAndUpdate(id, { $inc: { reputationScore: rep, trustScore: trust } }, { new: true }).select('-password');
+    const user = await User_1.default.findByIdAndUpdate(id, { $inc: { reputationScore: rep } }, { new: true }).select('-password');
     if (!user)
         return next(new AppError_1.default('No user found with that ID', 404));
-    await notifyAdminChange(user, 'Points Adjustment', `Reputation ${rep >= 0 ? '+' : ''}${rep}, Trust ${trust >= 0 ? '+' : ''}${trust}`, [
+    await notifyAdminChange(user, 'Points Adjustment', `Reputation ${rep >= 0 ? '+' : ''}${rep}`, [
         { field: 'reputationScore', before: 'Adjusted', after: `${rep >= 0 ? '+' : ''}${rep}` },
-        { field: 'trustScore', before: 'Adjusted', after: `${trust >= 0 ? '+' : ''}${trust}` }
     ]);
     res.status(200).json({
         status: 'success',
@@ -693,7 +692,7 @@ exports.getReportDetailsForAdmin = (0, catchAsync_1.default)(async (req, res, ne
     const { id } = req.params;
     const Report = (await Promise.resolve().then(() => __importStar(require('../models/Report')))).default;
     const report = await Report.findById(id)
-        .populate('researcherId', 'name username email avatar reputationScore trustScore')
+        .populate('researcherId', 'name username email avatar reputationScore')
         .populate('triagerId', 'name username email avatar')
         .populate('comments.sender', 'name username role avatar')
         .populate('programId', 'title companyId');
@@ -798,6 +797,9 @@ exports.updateReportStatusByAdmin = (0, catchAsync_1.default)(async (req, res, n
     if (!report)
         return next(new AppError_1.default('Report not found', 404));
     const oldStatus = report.status;
+    if (status === 'Triaging' && oldStatus !== 'Triaging') {
+        (0, researcherReputationService_1.clearReputationMilestonesForReTriage)(report);
+    }
     report.status = status;
     report.comments.push({
         sender: req.user._id,
@@ -806,6 +808,7 @@ exports.updateReportStatusByAdmin = (0, catchAsync_1.default)(async (req, res, n
         metadata: { oldStatus, newStatus: status, reason: reason || undefined },
         createdAt: new Date()
     });
+    await (0, researcherReputationService_1.applyResearcherReputationOnStatusTransition)(report, oldStatus, status, 'admin');
     await report.save();
     await report.populate('comments.sender', 'name username role avatar');
     const newComment = report.comments[report.comments.length - 1];

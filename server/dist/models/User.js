@@ -45,7 +45,6 @@ const userSchema = new mongoose_1.default.Schema({
     },
     // Researcher Specific
     reputationScore: { type: Number, default: 0 },
-    trustScore: { type: Number, default: 0 },
     walletBalance: { type: Number, default: 0 },
     country: String,
     bio: {

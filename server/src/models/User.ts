@@ -11,7 +11,6 @@ export interface IUser extends Document {
   isEmailVerified: boolean;
   avatar: string;
   reputationScore: number;
-  trustScore: number;
   walletBalance: number;
   country?: string;
   bio?: string;
@@ -106,7 +105,6 @@ const userSchema = new mongoose.Schema<IUser>({
   },
   // Researcher Specific
   reputationScore: { type: Number, default: 0 },
-  trustScore: { type: Number, default: 0 },
   walletBalance: { type: Number, default: 0 },
   country: String,
   bio: { 

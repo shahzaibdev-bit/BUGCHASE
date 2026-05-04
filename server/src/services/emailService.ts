@@ -530,18 +530,41 @@ export interface ReportEmailOptions {
   vulnerabilityCategory?: string;
   cvssScore?: number;
   oldStatus?: string;
+  /** Shown in the details table when a report returns to triage (e.g. reopen). */
+  previousStatus?: string;
+  /** Canonical report ID when this submission is closed as duplicate. */
+  canonicalReportId?: string;
   newStatus?: string;
   reason?: string;
+  /** Heading above the reason block (default: Triage Note). */
+  reasonSectionLabel?: string;
   message?: string; // Comment content
+  /** Overrides the default "Message" heading above `message` (e.g. duplicate resolution). */
+  messageSectionLabel?: string;
+  /** When true, omit severity / CVSS / vulnerability type from the details table (e.g. reopen). */
+  suppressVulnerabilitySummary?: boolean;
   bounty?: number;
   link: string;
 }
+
+const isReopenToTriagingEmail = (o: ReportEmailOptions) =>
+  o.newStatus === 'Triaging' &&
+  !!o.oldStatus &&
+  String(o.oldStatus) !== 'Triaging' &&
+  ['Triaged', 'Closed', 'Duplicate', 'Resolved', 'Spam', 'NA', 'Paid', 'Out-of-Scope'].includes(String(o.oldStatus));
+
+const isDuplicateClosureEmail = (o: ReportEmailOptions) =>
+  o.newStatus === 'Duplicate' && !!o.canonicalReportId;
 
 const ACTION_HEADLINES: Record<EmailActionType, (opts: ReportEmailOptions) => string> = {
   submitted: (o) => `New Report Submitted: ${o.reportTitle}`,
   claimed:   (o) => `${o.actorName} has started reviewing your report`,
   comment:   (o) => `New comment on: ${o.reportTitle}`,
-  status_change: (o) => `Report status changed to ${o.newStatus}`,
+  status_change: (o) => {
+    if (isReopenToTriagingEmail(o)) return `Report reopened for triage`;
+    if (isDuplicateClosureEmail(o)) return `Duplicate resolution`;
+    return `Report status changed to ${o.newStatus}`;
+  },
   promoted:  (o) => o.recipientRole === 'researcher'
     ? `Your Report Has Been Accepted: ${o.reportTitle}`
     : `New Security Report Assigned to Your Program: ${o.reportTitle}`,
@@ -569,7 +592,7 @@ const getStatusColor = (status?: string) => {
 };
 
 const getRoleIntro = (opts: ReportEmailOptions): string => {
-  const { recipientRole, actorRole, actionType, actorName, newStatus, bounty } = opts;
+  const { recipientRole, actorRole, actionType, actorName, newStatus, bounty, oldStatus } = opts;
 
   if (actionType === 'submitted') {
     return `Thank you for your submission. We have received your report and it is now in our review queue. Our security team will assess it and get back to you with an update.`;
@@ -612,8 +635,14 @@ const getRoleIntro = (opts: ReportEmailOptions): string => {
   }
   if (actionType === 'status_change') {
     if (recipientRole === 'researcher') {
+      if (newStatus === 'Duplicate') {
+        return `${actorName} has completed a duplicate review and updated your submission to <strong>Duplicate</strong>. The summary below references the canonical report identifier and filing time only — please read it carefully and use this thread if you need to contest the determination.`;
+      }
       if (newStatus === 'Resolved') {
         return `Great news! ${actorName} has reviewed and resolved your report. Thank you for your valuable contribution to improving security.`;
+      }
+      if (isReopenToTriagingEmail(opts)) {
+        return `${actorName} has returned your report to <strong>Triaging</strong> so it can be reviewed again. It was previously marked as <strong>${oldStatus}</strong>. The summary below lists what changed and what to expect next.`;
       }
       return `${actorName} has reviewed your report and updated its status. Please review the decision below.`;
     }
@@ -661,11 +690,24 @@ export const reportEmailTemplate = (opts: ReportEmailOptions): string => {
   const statusColor = getStatusColor(opts.newStatus);
   const year = new Date().getFullYear();
 
+  const hideFinding = !!opts.suppressVulnerabilitySummary;
   const detailRows = [
     opts.reportId ? `<tr><td class="detail-label">Report ID</td><td class="detail-value" style="font-family: monospace; font-size: 12px;">${opts.reportId}</td></tr>` : '',
-    opts.vulnerabilityCategory ? `<tr><td class="detail-label">Vulnerability Type</td><td class="detail-value">${opts.vulnerabilityCategory}</td></tr>` : '',
-    opts.severity ? `<tr><td class="detail-label">Severity</td><td class="detail-value"><span style="background:${severityColor}22; color:${severityColor}; padding: 2px 8px; border-radius: 4px; font-size: 12px; font-weight: bold; text-transform: uppercase;">${opts.severity}</span></td></tr>` : '',
-    opts.cvssScore !== undefined ? `<tr><td class="detail-label">CVSS Score</td><td class="detail-value" style="font-weight: bold;">${opts.cvssScore.toFixed(1)}</td></tr>` : '',
+    opts.previousStatus
+      ? `<tr><td class="detail-label">Previous status</td><td class="detail-value" style="font-weight: 600;">${opts.previousStatus}</td></tr>`
+      : '',
+    opts.canonicalReportId
+      ? `<tr><td class="detail-label">Canonical report ID</td><td class="detail-value" style="font-family: monospace; font-size: 12px;">${opts.canonicalReportId}</td></tr>`
+      : '',
+    !hideFinding && opts.vulnerabilityCategory
+      ? `<tr><td class="detail-label">Vulnerability Type</td><td class="detail-value">${opts.vulnerabilityCategory}</td></tr>`
+      : '',
+    !hideFinding && opts.severity
+      ? `<tr><td class="detail-label">Severity</td><td class="detail-value"><span style="background:${severityColor}22; color:${severityColor}; padding: 2px 8px; border-radius: 4px; font-size: 12px; font-weight: bold; text-transform: uppercase;">${opts.severity}</span></td></tr>`
+      : '',
+    !hideFinding && opts.cvssScore !== undefined
+      ? `<tr><td class="detail-label">CVSS Score</td><td class="detail-value" style="font-weight: bold;">${opts.cvssScore.toFixed(1)}</td></tr>`
+      : '',
     opts.newStatus ? `<tr><td class="detail-label">Status</td><td class="detail-value"><span style="background:${statusColor}22; color:${statusColor}; padding: 2px 8px; border-radius: 4px; font-size: 12px; font-weight: bold; text-transform: uppercase;">${opts.newStatus}</span></td></tr>` : '',
     opts.bounty ? `<tr><td class="detail-label">Bounty Awarded</td><td class="detail-value" style="color: #22c55e; font-weight: bold; font-size: 18px;">PKR ${opts.bounty.toLocaleString()}</td></tr>` : '',
   ].filter(Boolean).join('\n');
@@ -676,13 +718,13 @@ export const reportEmailTemplate = (opts: ReportEmailOptions): string => {
 
   const reasonBlock = opts.reason ? `
     <div class="reason-box">
-      <div class="section-label">Triage Note</div>
+      <div class="section-label">${opts.reasonSectionLabel || 'Triage Note'}</div>
       <div class="reason-text"><p style="margin:8px 0;">${reasonHtml}</p></div>
     </div>` : '';
 
   const commentBlock = opts.message ? `
     <div class="comment-box">
-      <div class="section-label">Message</div>
+      <div class="section-label">${opts.messageSectionLabel || 'Message'}</div>
       <div class="comment-text"><p style="margin:8px 0;">${messageHtml}</p></div>
     </div>` : '';
 

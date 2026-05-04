@@ -11,7 +11,15 @@ import Notification from '../models/Notification';
 import { sendEmail, reportEmailTemplate } from '../services/emailService';
 import { generateReportSummary } from '../services/geminiService';
 import { getIO } from '../services/socketService';
-import { runInitialDuplicateScanForNewReport } from '../services/duplicateDetectionService';
+import {
+  runInitialDuplicateScanForNewReport,
+  pruneDuplicateCandidatesNotOlderThanSelf,
+} from '../services/duplicateDetectionService';
+import { isReopenToTriaging, formatReopenForTriageMarkdown } from '../utils/reopenTriageNotice';
+import {
+  applyResearcherReputationOnStatusTransition,
+  clearReputationMilestonesForReTriage,
+} from '../services/researcherReputationService';
 
 const duplicateReviewBlocksPromoteOrResolve = (report: any, nextStatus: string) => {
   if (
@@ -350,6 +358,14 @@ export const getReportDetails = catchAsync(async (req: Request, res: Response, n
         return next(new AppError('Report not found', 404));
     }
 
+    if (['triager', 'admin'].includes(req.user!.role) && pruneDuplicateCandidatesNotOlderThanSelf(report)) {
+        await report.save();
+        report = await loadPopulated();
+        if (!report) {
+            return next(new AppError('Report not found', 404));
+        }
+    }
+
     const role = req.user!.role;
     const dupStatus = String(report.duplicateReviewStatus || 'not_applicable');
     const hasCandidates = Array.isArray(report.duplicateCandidates) && report.duplicateCandidates.length > 0;
@@ -479,6 +495,111 @@ export const postComment = catchAsync(async (req: Request, res: Response, next: 
     })();
 });
 
+/** While the report is in these states, triagers use normal status changes — triager-only notice is for other states. */
+const ACTIVE_TRIAGE_STATUSES_FOR_NOTICE = new Set(['Submitted', 'Triaging', 'Under Review', 'Needs Info']);
+
+/**
+ * When the report is not in active triage (anything other than Submitted / Triaging / Under Review / Needs Info):
+ * post a triager notice on the thread and email the researcher (same pattern as chat comments).
+ */
+export const postTriagerIssueReportToResearcher = catchAsync(async (req: Request, res: Response, next: NextFunction) => {
+    const { id } = req.params;
+    const details = String((req.body as { details?: string })?.details ?? '').trim();
+    if (!details) {
+        return next(new AppError('Please enter a message to send to the researcher.', 400));
+    }
+
+    const report = await Report.findById(id);
+    if (!report) return next(new AppError('Report not found', 404));
+
+    if (ACTIVE_TRIAGE_STATUSES_FOR_NOTICE.has(String(report.status))) {
+        return next(
+            new AppError(
+                'Triager notices are only available once the report has left active triage (not Submitted, Triaging, Under Review, or Needs Info).',
+                403
+            )
+        );
+    }
+
+    const senderName = req.user!.name || req.user!.username || 'Triager';
+    const reportLabel = report.reportId || String(report._id);
+    const threadContent = [
+        '**Triager notice**',
+        '',
+        `Regarding report **${reportLabel}** (status: **${report.status}**):`,
+        '',
+        details,
+    ].join('\n');
+
+    report.comments.push({
+        sender: req.user!.id as any,
+        content: threadContent,
+        type: 'comment',
+        createdAt: new Date(),
+    } as any);
+
+    await report.save();
+    await report.populate('comments.sender', 'name username role avatar');
+    const newComment = report.comments[report.comments.length - 1];
+
+    try {
+        const io = getIO();
+        io.to(id).emit('new_activity', {
+            id: newComment._id,
+            type: 'comment',
+            author:
+                req.user!.role !== 'company'
+                    ? (req.user!.username || req.user!.name || 'Unknown User')
+                    : (req.user!.name || 'Unknown Company'),
+            authorName: req.user!.name,
+            authorUsername: req.user!.username,
+            role: 'Triager',
+            content: newComment.content,
+            attachments: newComment.attachments || [],
+            timestamp: newComment.createdAt,
+            authorAvatar: req.user!.avatar,
+            metadata: {},
+        });
+    } catch (socketError) {
+        console.error('Socket emit failed (triager notice):', socketError);
+    }
+
+    res.status(200).json({
+        status: 'success',
+        data: {
+            report,
+        },
+    });
+
+    (async () => {
+        try {
+            await report.populate('researcherId', 'name email avatar');
+            const researcher = report.researcherId as any;
+            if (researcher?.email) {
+                await sendEmail(
+                    researcher.email,
+                    `Message from triage: ${report.title}`,
+                    reportEmailTemplate({
+                        recipientName: researcher.name || 'Researcher',
+                        recipientRole: 'researcher',
+                        actorName: senderName,
+                        actorRole: 'triager',
+                        actionType: 'comment',
+                        reportTitle: report.title,
+                        reportId: report.reportId || String(report._id),
+                        severity: report.severity,
+                        message: threadContent,
+                        messageSectionLabel: 'Triager notice',
+                        link: `${process.env.CLIENT_URL}/researcher/reports/${report._id}`,
+                    })
+                );
+            }
+        } catch (e) {
+            console.error('Failed to send triager notice email:', e);
+        }
+    })();
+});
+
 // Update Report Details (Severity, Vectors) - "Calculator"
 export const updateReportSeverity = catchAsync(async (req: Request, res: Response, next: NextFunction) => {
     const { id } = req.params;
@@ -600,6 +721,9 @@ export const submitDecision = catchAsync(async (req: Request, res: Response, nex
         },
         createdAt: new Date()
     });
+
+    const repActor = req.user.role === 'admin' ? 'admin' : 'triager';
+    await applyResearcherReputationOnStatusTransition(report, oldStatus, status, repActor);
 
     await report.save();
 
@@ -729,20 +853,42 @@ export const updateReportStatus = catchAsync(async (req: Request, res: Response,
 
     const oldStatus = report.status; // capture BEFORE overwriting
 
+    const actorDisplay = req.user.name || req.user.username || 'BugChase Triage';
+    const reportPublicId = report.reportId || String(report._id);
+
+    const reopening = isReopenToTriaging(String(oldStatus), String(status));
+    const reopenBody = reopening
+        ? formatReopenForTriageMarkdown({
+              reportPublicId,
+              previousStatus: String(oldStatus),
+              actorDisplayName: actorDisplay,
+              optionalTriagerNote: typeof note === 'string' ? note : '',
+          })
+        : '';
+
+    if (reopening) {
+        clearReputationMilestonesForReTriage(report);
+    }
+
     // Persist changes
     report.status = status;
 
     report.comments.push({
         sender: req.user.id,
-        content: `Changed status to ${status}`,
+        content: reopening
+            ? `Report reopened for triage (previously **${oldStatus}**).`
+            : `Changed status to ${status}`,
         type: 'status_change',
-        metadata: { 
+        metadata: {
             oldStatus,
             newStatus: status,
-            reason: note 
+            reason: reopening ? reopenBody : note || '',
         },
-        createdAt: new Date()
+        createdAt: new Date(),
     });
+
+    const repActor = req.user.role === 'admin' ? 'admin' : 'triager';
+    await applyResearcherReputationOnStatusTransition(report, oldStatus, status, repActor);
 
     await report.save();
 
@@ -779,9 +925,18 @@ export const updateReportStatus = catchAsync(async (req: Request, res: Response,
             const researcher = report.researcherId as any;
             if (researcher?.email) {
                 const senderName = req.user.name || req.user.username || 'Triager';
+                const emailReopen = isReopenToTriaging(String(oldStatus), String(status));
+                const reopenMarkdown = emailReopen
+                    ? formatReopenForTriageMarkdown({
+                          reportPublicId,
+                          previousStatus: String(oldStatus),
+                          actorDisplayName: senderName,
+                          optionalTriagerNote: typeof note === 'string' ? note : '',
+                      })
+                    : '';
                 await sendEmail(
                     researcher.email,
-                    `Status Updated: ${report.title}`,
+                    emailReopen ? `Report reopened for triage` : `Status Updated: ${report.title}`,
                     reportEmailTemplate({
                         recipientName: researcher.name || 'Researcher',
                         recipientRole: 'researcher',
@@ -792,9 +947,12 @@ export const updateReportStatus = catchAsync(async (req: Request, res: Response,
                         reportId: report.reportId || String(report._id),
                         severity: report.severity,
                         oldStatus,
+                        previousStatus: emailReopen ? String(oldStatus) : undefined,
                         newStatus: status,
-                        reason: note || undefined,
-                        link: `${process.env.CLIENT_URL}/researcher/reports/${report._id}`
+                        reason: emailReopen ? reopenMarkdown : note || undefined,
+                        reasonSectionLabel: emailReopen ? 'Reopen summary' : undefined,
+                        suppressVulnerabilitySummary: emailReopen,
+                        link: `${process.env.CLIENT_URL}/researcher/reports/${report._id}`,
                     })
                 );
             }
@@ -833,25 +991,96 @@ export const updateReportStatus = catchAsync(async (req: Request, res: Response,
 export const reopenReport = catchAsync(async (req: Request, res: Response, next: NextFunction) => {
     const { id } = req.params;
 
-    const report = await Report.findById(id);
+    const report = await Report.findById(id).populate('researcherId', 'name email username');
     if (!report) return next(new AppError('Report not found', 404));
 
-    // Logic: Set status to Triaging, add comment
-    report.status = 'Triaging';
-    
-    report.comments.push({
-        sender: req.user.id,
-        content: `Report has been reopened.`,
-        createdAt: new Date()
+    const oldStatus = report.status;
+    const actorDisplay = req.user.name || req.user.username || 'BugChase Triage';
+    const reportPublicId = report.reportId || String(report._id);
+
+    const reopenBody = formatReopenForTriageMarkdown({
+        reportPublicId,
+        previousStatus: String(oldStatus),
+        actorDisplayName: actorDisplay,
+        optionalTriagerNote: '',
     });
 
+    clearReputationMilestonesForReTriage(report);
+    report.status = 'Triaging';
+
+    report.comments.push({
+        sender: req.user.id,
+        content: `Report reopened for triage (previously **${oldStatus}**).`,
+        type: 'status_change',
+        metadata: {
+            oldStatus,
+            newStatus: 'Triaging',
+            reason: reopenBody,
+        },
+        createdAt: new Date(),
+    } as any);
+
+    const repActor = req.user.role === 'admin' ? 'admin' : 'triager';
+    await applyResearcherReputationOnStatusTransition(report, oldStatus, 'Triaging', repActor);
+
     await report.save();
+    await report.populate('comments.sender', 'name username role avatar');
+
+    try {
+        const io = getIO();
+        const newComment = report.comments[report.comments.length - 1];
+        io.to(id).emit('new_activity', {
+            id: newComment._id,
+            type: 'status_change',
+            author: req.user.username || req.user.name || 'Unknown Triager',
+            authorAvatar: req.user.avatar,
+            role: 'Triager',
+            content: newComment.content,
+            timestamp: newComment.createdAt,
+            metadata: newComment.metadata,
+        });
+        io.to(id).emit('status_updated', { status: 'Triaging' });
+    } catch (socketError) {
+        console.error('Socket emit failed on reopen:', socketError);
+    }
 
     res.status(200).json({
         status: 'success',
         message: 'Report reopened successfully',
-        data: { report }
+        data: { report },
     });
+
+    (async () => {
+        try {
+            const researcher = report.researcherId as any;
+            if (researcher?.email) {
+                const senderName = req.user.name || req.user.username || 'Triager';
+                await sendEmail(
+                    researcher.email,
+                    `Report reopened for triage`,
+                    reportEmailTemplate({
+                        recipientName: researcher.name || 'Researcher',
+                        recipientRole: 'researcher',
+                        actorName: senderName,
+                        actorRole: 'triager',
+                        actionType: 'status_change',
+                        reportTitle: report.title,
+                        reportId: report.reportId || String(report._id),
+                        severity: report.severity,
+                        oldStatus,
+                        previousStatus: String(oldStatus),
+                        newStatus: 'Triaging',
+                        reason: reopenBody,
+                        reasonSectionLabel: 'Reopen summary',
+                        suppressVulnerabilitySummary: true,
+                        link: `${process.env.CLIENT_URL}/researcher/reports/${report._id}`,
+                    })
+                );
+            }
+        } catch (e) {
+            console.error('Failed to send reopen email:', e);
+        }
+    })();
 });
 
 // Update Validation Flags

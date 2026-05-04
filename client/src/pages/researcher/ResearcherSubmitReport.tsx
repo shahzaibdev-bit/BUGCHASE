@@ -9,10 +9,12 @@ import { Lock, CheckCircle2, XCircle, ArrowRight } from 'lucide-react';
 export default function ResearcherSubmitReport() {
   const { user } = useAuth();
   const navigate = useNavigate();
-  const reputation = (user as any)?.reputationScore || 0;
+  const storedReputation = (user as any)?.reputationScore || 0;
+  const profileCompletion = (user as any)?.profileCompletionScore ?? 0;
+  const effectiveForSubmit = Math.max(storedReputation, profileCompletion);
   const REQUIRED_SCORE = 150;
 
-  if (reputation < REQUIRED_SCORE) {
+  if (effectiveForSubmit < REQUIRED_SCORE) {
       // Calculate what's missing
       const items = [
           { label: 'Account Created', points: 10, done: true }, // Always true if logged in
@@ -31,9 +33,17 @@ export default function ResearcherSubmitReport() {
                   </div>
                   <h1 className="text-3xl font-bold text-zinc-900 dark:text-white mb-3 tracking-tight">Submission Locked</h1>
                   <p className="text-zinc-500 max-w-md mx-auto text-lg leading-relaxed">
-                      You need a reputation score of <span className="font-bold text-black dark:text-white">{REQUIRED_SCORE}</span> to report vulnerabilities.
-                      <br/>
-                      Your current score is <span className="font-bold text-red-500">{reputation}</span>.
+                      You need either <span className="font-bold text-black dark:text-white">{REQUIRED_SCORE}</span> stored reputation from the platform
+                      <span className="text-zinc-600 dark:text-zinc-400"> or </span>
+                      a completed profile + KYC (worth up to {REQUIRED_SCORE} checklist points).
+                      <br />
+                      <span className="text-sm mt-2 block">
+                        Stored reputation:{' '}
+                        <span className="font-bold text-zinc-900 dark:text-white">{storedReputation}</span>
+                        {' · '}
+                        Profile checklist:{' '}
+                        <span className="font-bold text-zinc-900 dark:text-white">{profileCompletion}</span> / {REQUIRED_SCORE}
+                      </span>
                   </p>
               </div>
 

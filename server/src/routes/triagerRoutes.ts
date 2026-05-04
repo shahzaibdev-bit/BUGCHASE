@@ -12,6 +12,7 @@ import {
     submitDecision,
     getReportDetails,
     postComment,
+    postTriagerIssueReportToResearcher,
     updateReportStatus,
     updateReportValidation,
     reopenReport,
@@ -34,6 +35,7 @@ router.get('/assigned', getAssignedReports);
 router.get('/pool', getGlobalPool);
 router.get('/reports/:id', getReportDetails); // Details
 router.post('/reports/:id/chat', upload.array('files', 5), postComment); // Chat
+router.post('/reports/:id/triager-notice', postTriagerIssueReportToResearcher);
 router.post('/claim/:id', claimReport);
 router.patch('/reports/:id/severity', updateReportSeverity);
 router.patch('/reports/:id/status', updateReportStatus);

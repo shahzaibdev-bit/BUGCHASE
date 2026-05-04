@@ -11,36 +11,7 @@ const redis_1 = __importDefault(require("../config/redis"));
 const emailService_1 = require("../services/emailService");
 const tokenService_1 = require("../services/tokenService");
 const rateLimit_1 = require("../middlewares/rateLimit");
-// Helper to calculate reputation based on profile completeness
-const calculateDynamicReputation = (user) => {
-    let score = 0;
-    // 1. Signup Bonus (Base) - 10 points
-    score += 10;
-    // 2. Username Set - 10 points
-    if (user.username)
-        score += 10;
-    // 3. Bio Added (Must be updated from default) - 20 points
-    if (user.bioUpdated && user.bio && user.bio.length > 0)
-        score += 20;
-    // 4. Country Set - 10 points
-    if (user.country)
-        score += 10;
-    // 5. Social Links (20 points for at least one)
-    let socialCount = 0;
-    if (user.linkedAccounts?.github)
-        socialCount++;
-    if (user.linkedAccounts?.linkedin)
-        socialCount++;
-    if (user.linkedAccounts?.twitter)
-        socialCount++;
-    // score += Math.min(socialCount * 10, 20); // Old logic
-    if (socialCount >= 1)
-        score += 20; // New logic: All 20 points for just one link
-    // 6. KYC Verified - 80 points
-    if (user.isVerified)
-        score += 80;
-    return score;
-};
+const profileCompletionReputation_1 = require("../utils/profileCompletionReputation");
 exports.signup = (0, catchAsync_1.default)(async (req, res, next) => {
     const { name, email, password, role } = req.body;
     const existingUser = await User_1.default.findOne({ email });
@@ -106,8 +77,7 @@ exports.verifyEmail = (0, catchAsync_1.default)(async (req, res, next) => {
     // Remove password from output
     const userObj = user.toObject();
     delete userObj.password;
-    // Inject Reputation
-    userObj.reputationScore = (userObj.reputationScore || 0) + calculateDynamicReputation(userObj);
+    userObj.profileCompletionScore = (0, profileCompletionReputation_1.getProfileCompletionReputationScore)(userObj);
     // Reset Rate Limit on Success
     await (0, rateLimit_1.resetRateLimit)(req, 'auth');
     res.status(200).json({
@@ -145,8 +115,7 @@ exports.login = (0, catchAsync_1.default)(async (req, res, next) => {
     });
     const userObj = user.toObject();
     delete userObj.password;
-    // Inject Reputation
-    userObj.reputationScore = (userObj.reputationScore || 0) + calculateDynamicReputation(userObj);
+    userObj.profileCompletionScore = (0, profileCompletionReputation_1.getProfileCompletionReputationScore)(userObj);
     // Reset Rate Limit on Success
     await (0, rateLimit_1.resetRateLimit)(req, 'auth');
     res.status(200).json({
@@ -169,10 +138,9 @@ const Report_1 = __importDefault(require("../models/Report"));
 exports.getMe = (0, catchAsync_1.default)(async (req, res, next) => {
     // User is already attached to req by protect middleware
     const userObj = req.user.toObject ? req.user.toObject() : req.user;
-    // Inject Reputation
-    userObj.reputationScore = (userObj.reputationScore || 0) + calculateDynamicReputation(userObj);
+    userObj.profileCompletionScore = (0, profileCompletionReputation_1.getProfileCompletionReputationScore)(userObj);
     // Inject Reports Count
-    const reportsCount = await Report_1.default.countDocuments({ researcher: req.user._id });
+    const reportsCount = await Report_1.default.countDocuments({ researcherId: req.user._id });
     userObj.reportsCount = reportsCount;
     res.status(200).json({
         status: 'success',
@@ -214,7 +182,7 @@ const updateMe = async (req, res, next) => {
         runValidators: true,
     });
     const userObj = updatedUser.toObject();
-    userObj.reputationScore = (userObj.reputationScore || 0) + calculateDynamicReputation(userObj);
+    userObj.profileCompletionScore = (0, profileCompletionReputation_1.getProfileCompletionReputationScore)(userObj);
     res.status(200).json({
         status: 'success',
         user: userObj,

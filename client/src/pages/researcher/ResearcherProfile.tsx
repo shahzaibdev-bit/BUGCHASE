@@ -616,7 +616,7 @@ export default function ResearcherProfile() {
                                     <div className="bg-zinc-50 dark:bg-zinc-950 rounded-xl p-4 border border-zinc-200 dark:border-zinc-800 flex items-center justify-between mt-4">
                                         <div>
                                             <p className="text-sm font-medium text-zinc-900 dark:text-white mb-1">Identity Verification</p>
-                                            <p className="text-xs text-zinc-500">Badge verification increases trust.</p>
+                                            <p className="text-xs text-zinc-500">Identity verification adds reputation points.</p>
                                         </div>
                                         
                                         {kycStatus === 'pending' ? (
@@ -777,25 +777,6 @@ export default function ResearcherProfile() {
                                     </div>
                                 </>
                             )}
-                        </div>
-                    </section>
-
-                    {/* My Wallets */}
-                    <section className="bg-white dark:bg-zinc-900/50 border border-zinc-200 dark:border-zinc-800 rounded-2xl p-6 backdrop-blur-sm">
-                        <h2 className="text-xl font-bold text-zinc-900 dark:text-white mb-6">My Wallets</h2>
-                        <div className="grid gap-4">
-                            <div className="relative">
-                                <div className="absolute left-3 top-2.5 flex items-center gap-2 text-zinc-400 border-r border-zinc-200 dark:border-zinc-800 pr-3">
-                                    <span className="font-bold text-xs">USDC</span>
-                                </div>
-                                <Input className="bg-zinc-50 dark:bg-zinc-950 border-zinc-200 dark:border-zinc-800 focus:border-black dark:focus:border-white focus:ring-0 pl-20" placeholder="0x..." />
-                            </div>
-                            <div className="relative">
-                                <div className="absolute left-3 top-2.5 flex items-center gap-2 text-zinc-400 border-r border-zinc-200 dark:border-zinc-800 pr-3">
-                                    <span className="font-bold text-xs">BTC</span>
-                                </div>
-                                <Input className="bg-zinc-50 dark:bg-zinc-950 border-zinc-200 dark:border-zinc-800 focus:border-black dark:focus:border-white focus:ring-0 pl-20" placeholder="bc1..." />
-                            </div>
                         </div>
                     </section>
                 </div>

@@ -20,6 +20,7 @@ router.get('/assigned', triagerController_1.getAssignedReports);
 router.get('/pool', triagerController_1.getGlobalPool);
 router.get('/reports/:id', triagerController_1.getReportDetails); // Details
 router.post('/reports/:id/chat', upload.array('files', 5), triagerController_1.postComment); // Chat
+router.post('/reports/:id/triager-notice', triagerController_1.postTriagerIssueReportToResearcher);
 router.post('/claim/:id', triagerController_1.claimReport);
 router.patch('/reports/:id/severity', triagerController_1.updateReportSeverity);
 router.patch('/reports/:id/status', triagerController_1.updateReportStatus);

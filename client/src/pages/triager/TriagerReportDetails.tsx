@@ -37,6 +37,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Switch } from '@/components/ui/switch';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Separator } from '@/components/ui/separator';
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import CyberpunkEditor from '@/components/ui/CyberpunkEditor';
 import {
   Dialog,
@@ -72,6 +73,9 @@ import { cn } from '@/lib/utils';
 // --- Types ---
 import { useAuth } from '@/contexts/AuthContext';
 type ReportStatus = 'Submitted' | 'Triaging' | 'Under Review' | 'Needs Info' | 'Triaged' | 'Spam' | 'Duplicate' | 'Out-of-Scope' | 'Resolved' | 'Closed' | 'Paid' | 'NA';
+
+/** Triagers may change status from the Activity dropdown only in these states (excludes e.g. Triaged, Spam, Resolved). */
+const STATUSES_ALLOW_STATUS_CHANGE: ReportStatus[] = ['Submitted', 'Triaging', 'Under Review', 'Needs Info'];
 
 interface ReportState {
   status: ReportStatus;
@@ -293,6 +297,9 @@ export default function TriagerReportDetails() {
         metadata?: Record<string, any>;
     } | null>(null);
     const [duplicateModalOpen, setDuplicateModalOpen] = useState(false);
+    const [issueReportModalOpen, setIssueReportModalOpen] = useState(false);
+    const [issueReportDetails, setIssueReportDetails] = useState('');
+    const [issueReportSending, setIssueReportSending] = useState(false);
     const [summaryForm, setSummaryForm] = useState({ title: '', technical: '', remediation: '' });
 
     const getActorThreadKey = (event: ReportTimelineEvent) => {
@@ -513,6 +520,7 @@ export default function TriagerReportDetails() {
             setStatusReason('');
             setReasonModalOpen(false); // Close if open
             toast({ title: "Status Updated", description: `Updated to ${status}` });
+            await fetchReport();
 
         } catch (error: any) {
              console.error("Status update error:", error);
@@ -537,7 +545,6 @@ export default function TriagerReportDetails() {
                 },
                 body: JSON.stringify({
                     duplicateOf: selectedDuplicate.reportMongoId,
-                    reason: `Marked duplicate after triager review (similarity ${selectedDuplicate.similarityPercent}%).`
                 })
             });
             const data = await res.json();
@@ -697,6 +704,40 @@ export default function TriagerReportDetails() {
     const duplicateBlocking =
         report.duplicateReviewStatus === 'pending' && (report.duplicateCandidates?.length ?? 0) > 0;
 
+    const canChangeReportStatus = STATUSES_ALLOW_STATUS_CHANGE.includes(state.status);
+    /** CVSS, validation toggles, duplicate resolution actions — locked whenever status cannot be changed from the dropdown. */
+    const triageFieldsLocked = !canChangeReportStatus;
+
+    const submitTriagerNoticeToResearcher = async () => {
+        const text = issueReportDetails.trim();
+        if (!text) {
+            toast({ title: 'Message required', description: 'Enter the notice you want to send.', variant: 'destructive' });
+            return;
+        }
+        setIssueReportSending(true);
+        try {
+            const token = localStorage.getItem('token');
+            const res = await fetch(`${API_URL}/triager/reports/${id}/triager-notice`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    Authorization: `Bearer ${token}`,
+                },
+                body: JSON.stringify({ details: text }),
+            });
+            const data = await res.json().catch(() => ({}));
+            if (!res.ok) throw new Error((data as any)?.message || 'Failed to send notice');
+            toast({ title: 'Notice sent', description: 'Posted to the thread and emailed to the researcher.' });
+            setIssueReportModalOpen(false);
+            setIssueReportDetails('');
+            await fetchReport();
+        } catch (e: any) {
+            toast({ title: 'Error', description: e?.message || 'Request failed', variant: 'destructive' });
+        } finally {
+            setIssueReportSending(false);
+        }
+    };
+
     const openPeekTab = (reportMongoId: string) => {
         window.open(`/triager/peek/${reportMongoId}`, '_blank', 'noopener,noreferrer');
     };
@@ -846,7 +887,7 @@ export default function TriagerReportDetails() {
                                      })}
                                  </div>
 
-                                 {/* Sleek Compact Editor */}
+                                 {/* Reply + Change Status (disabled with tooltip when report is outside active triage) */}
                                  <div className="mt-8 flex gap-4 pl-2" ref={editorRef} id="reply-editor">
                                      <div className="h-8 w-8 rounded-full bg-black dark:bg-white text-white dark:text-black flex items-center justify-center font-bold text-xs shrink-0 mt-2">ME</div>
                                      <div className="flex-1 space-y-3">
@@ -861,6 +902,26 @@ export default function TriagerReportDetails() {
                                                      {/* Future extensions */}
                                                  </div>
                                                  <div className="flex gap-2">
+                                                     {triageFieldsLocked ? (
+                                                     <Tooltip>
+                                                        <TooltipTrigger asChild>
+                                                            <span className="inline-flex rounded-md cursor-default outline-none focus-visible:ring-2 focus-visible:ring-zinc-400">
+                                                                <Button
+                                                                    type="button"
+                                                                    variant="outline"
+                                                                    className="h-7 text-xs w-[130px] justify-between font-normal bg-white dark:bg-black border-zinc-300 dark:border-zinc-700 shadow-sm px-3 text-zinc-500 opacity-60"
+                                                                    disabled
+                                                                    aria-disabled
+                                                                >
+                                                                    Change Status <ChevronRight className="h-3 w-3 rotate-90 opacity-50" />
+                                                                </Button>
+                                                            </span>
+                                                        </TooltipTrigger>
+                                                        <TooltipContent side="top" className="max-w-[260px] text-center">
+                                                            This report has been closed. Reopen the report first to change status.
+                                                        </TooltipContent>
+                                                     </Tooltip>
+                                                     ) : (
                                                      <DropdownMenu>
                                                         <DropdownMenuTrigger asChild>
                                                             <Button variant="outline" className="h-7 text-xs w-[130px] justify-between font-normal bg-white dark:bg-black border-zinc-300 dark:border-zinc-700 shadow-sm px-3 text-zinc-500">
@@ -913,6 +974,7 @@ export default function TriagerReportDetails() {
                                                             </DropdownMenuItem>
                                                         </DropdownMenuContent>
                                                      </DropdownMenu>
+                                                     )}
                                                      <Button size="sm" className="h-7 bg-black hover:bg-zinc-800 dark:bg-white dark:hover:bg-zinc-200 text-white dark:text-black font-bold text-xs px-4" onClick={handleSendMessage}>
                                                          Comment
                                                      </Button>
@@ -947,6 +1009,23 @@ export default function TriagerReportDetails() {
                                 {state.isLocked ? "LOCKED BY YOU" : "UNLOCKED"}
                             </div>
 
+                            {triageFieldsLocked && (
+                                <>
+                                    <Separator className="bg-zinc-200 dark:border-zinc-800 my-2" />
+                                    <Button
+                                        type="button"
+                                        variant="outline"
+                                        className="w-full h-10 gap-2 font-mono text-xs border-amber-200 dark:border-amber-900/50 text-amber-900 dark:text-amber-100 hover:bg-amber-50 dark:hover:bg-amber-950/40"
+                                        onClick={() => setIssueReportModalOpen(true)}
+                                    >
+                                        <ShieldAlert className="h-4 w-4 shrink-0" />
+                                        REPORT TO RESEARCHER
+                                    </Button>
+                                    <p className="text-[10px] text-zinc-500 leading-relaxed">
+                                        Adds a triager notice on the thread and emails the researcher. Available when the report is outside active triage (not Submitted, Triaging, Under Review, or Needs Info).
+                                    </p>
+                                </>
+                            )}
 
                         </div>
 
@@ -1090,15 +1169,28 @@ export default function TriagerReportDetails() {
                         <Separator className="bg-zinc-200 dark:border-zinc-800" />
 
                         {/* Severity / CVSS */}
-                        <div className="space-y-3">
+                        <div className={cn('space-y-3', triageFieldsLocked && 'opacity-60')}>
                             <div className="flex items-center justify-between">
                                 <h4 className="text-xs font-bold text-zinc-900 dark:text-white uppercase">Severity</h4>
-                                <Button variant="link" size="sm" className="h-auto p-0 text-xs text-indigo-600" onClick={() => setCvssModalOpen(true)}>
+                                <Button
+                                    variant="link"
+                                    size="sm"
+                                    className="h-auto p-0 text-xs text-indigo-600"
+                                    onClick={() => !triageFieldsLocked && setCvssModalOpen(true)}
+                                    disabled={triageFieldsLocked}
+                                >
                                     <Calculator className="h-3 w-3 mr-1" /> Calculator
                                 </Button>
                             </div>
                             
-                            <div className="p-4 bg-white dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-800 rounded-lg group hover:border-zinc-400 transition-colors cursor-pointer" onClick={() => setCvssModalOpen(true)}>
+                            <div
+                                className={cn(
+                                    'p-4 bg-white dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-800 rounded-lg group transition-colors',
+                                    triageFieldsLocked ? 'cursor-not-allowed' : 'hover:border-zinc-400 cursor-pointer'
+                                )}
+                                onClick={() => !triageFieldsLocked && setCvssModalOpen(true)}
+                                role={triageFieldsLocked ? undefined : 'button'}
+                            >
                                 <div className="flex justify-between items-end mb-2">
                                     <span className="text-3xl font-bold text-black dark:text-white">{state.severity.final.toFixed(1)}</span>
                                     <span className="text-sm font-bold text-orange-500">HIGH</span>
@@ -1117,8 +1209,13 @@ export default function TriagerReportDetails() {
                              {/* Valid/Reproduced Toggles */}
                              <div className="space-y-2">
                                 <div 
-                                    className={`flex items-center justify-between p-2 rounded cursor-pointer border ${state.validation.reproduced ? 'bg-zinc-100 border-zinc-300' : 'bg-transparent border-transparent hover:bg-zinc-50'}`}
+                                    className={cn(
+                                        'flex items-center justify-between p-2 rounded border',
+                                        state.validation.reproduced ? 'bg-zinc-100 border-zinc-300' : 'bg-transparent border-transparent',
+                                        triageFieldsLocked ? 'cursor-not-allowed opacity-60' : 'cursor-pointer hover:bg-zinc-50'
+                                    )}
                                     onClick={async () => {
+                                        if (triageFieldsLocked) return;
                                         const newVal = !state.validation.reproduced;
                                         try {
                                             await fetch(`${API_URL}/triager/reports/${id}/validation`, {
@@ -1157,19 +1254,36 @@ export default function TriagerReportDetails() {
                                      </div>
                                  </div>
                              )}
+
+                             {duplicateMatches.length > 0 && triageFieldsLocked && (
+                                 <Button
+                                     type="button"
+                                     variant="outline"
+                                     className="w-full h-9 mt-2 text-xs font-bold border-black dark:border-white text-black dark:text-white hover:bg-zinc-100 dark:hover:bg-zinc-900"
+                                     onClick={() => performStatusUpdate('Triaging', 'Reopening report for further review.')}
+                                 >
+                                     <RefreshCw className="h-4 w-4 mr-2" />
+                                     REOPEN FOR TRIAGE
+                                 </Button>
+                             )}
+
+                             {triageFieldsLocked && duplicateMatches.length === 0 && (
+                                 <Button
+                                     type="button"
+                                     variant="outline"
+                                     className="w-full h-9 text-xs font-bold border-black dark:border-white text-black dark:text-white hover:bg-zinc-100 dark:hover:bg-zinc-900"
+                                     onClick={() => performStatusUpdate('Triaging', 'Reopening report for further review.')}
+                                 >
+                                     <RefreshCw className="h-4 w-4 mr-2" />
+                                     REOPEN FOR TRIAGE
+                                 </Button>
+                             )}
                         </div>
                         
-                        {/* Main Call to Action */}
+                        {/* Promote to company — only during active triage */}
                          <div className="pt-8 space-y-3">
-                             {['Resolved', 'Spam', 'Duplicate', 'NA', 'Closed'].includes(state.status) ? (
-                                 <Button 
-                                    variant="outline"
-                                    className="w-full h-12 border-black dark:border-white text-black dark:text-white font-bold tracking-wide hover:bg-zinc-100 dark:hover:bg-zinc-900"
-                                    onClick={() => performStatusUpdate('Triaging', 'Reopening report for further review.')}
-                                 >
-                                     <RefreshCw className="h-4 w-4 mr-2" /> REOPEN REPORT
-                                 </Button>
-                             ) : (
+                             {canChangeReportStatus &&
+                             !['Resolved', 'Spam', 'Duplicate', 'NA', 'Closed', 'Paid', 'Out-of-Scope'].includes(state.status) ? (
                                 <Button 
                                     className="w-full bg-black hover:bg-zinc-800 dark:bg-white dark:hover:bg-zinc-200 text-white dark:text-black font-bold h-12 text-sm tracking-wide shadow-xl shadow-zinc-200 dark:shadow-none"
                                     onClick={() => setSummaryModalOpen(true)}
@@ -1178,7 +1292,7 @@ export default function TriagerReportDetails() {
                                 >
                                     SUBMIT DECISION
                                 </Button>
-                             )}
+                             ) : null}
                          </div>
 
                     </div>
@@ -1261,7 +1375,10 @@ export default function TriagerReportDetails() {
                     <DialogHeader>
                         <DialogTitle>Duplicate comparison</DialogTitle>
                         <DialogDescription>
-                            Open any candidate in a new tab (read-only). Submission times help determine which report was filed first. Select the canonical report this submission duplicates, or confirm it is not a duplicate.
+                            Open any candidate in a new tab (read-only). Submission times help determine which report was filed first.
+                            {triageFieldsLocked
+                                ? ' Status cannot be changed from this screen; you can review candidates for context only — marking duplicate or not a duplicate is disabled.'
+                                : ' Select the canonical report this submission duplicates, or confirm it is not a duplicate.'}
                         </DialogDescription>
                     </DialogHeader>
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4 py-2">
@@ -1349,15 +1466,51 @@ export default function TriagerReportDetails() {
 
                     <DialogFooter className="flex-col sm:flex-row gap-2">
                         <Button variant="ghost" onClick={() => setDuplicateModalOpen(false)}>Close</Button>
-                        <Button variant="outline" onClick={handleClearDuplicateReview}>
+                        <Button
+                            variant="outline"
+                            onClick={handleClearDuplicateReview}
+                            disabled={triageFieldsLocked}
+                            title={triageFieldsLocked ? 'Not available while status cannot be changed from this page' : undefined}
+                        >
                             Not a duplicate — continue triage
                         </Button>
                         <Button
                             className="bg-orange-500 hover:bg-orange-600 text-white"
                             onClick={confirmMarkDuplicate}
-                            disabled={!selectedDuplicate}
+                            disabled={!selectedDuplicate || triageFieldsLocked}
+                            title={triageFieldsLocked ? 'Not available while status cannot be changed from this page' : undefined}
                         >
                             Mark as duplicate of selected
+                        </Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
+
+            <Dialog open={issueReportModalOpen} onOpenChange={(open) => { setIssueReportModalOpen(open); if (!open) setIssueReportDetails(''); }}>
+                <DialogContent className="max-w-lg bg-white dark:bg-zinc-950 border-zinc-200 dark:border-zinc-800">
+                    <DialogHeader>
+                        <DialogTitle>Report to researcher</DialogTitle>
+                        <DialogDescription>
+                            This message is added to the report thread and emailed to the researcher. Use when the report is outside active triage (anything other than Submitted, Triaging, Under Review, or Needs Info).
+                        </DialogDescription>
+                    </DialogHeader>
+                    <Textarea
+                        value={issueReportDetails}
+                        onChange={(e) => setIssueReportDetails(e.target.value)}
+                        className="min-h-[140px] font-mono text-sm"
+                        placeholder="Write your notice to the researcher…"
+                    />
+                    <DialogFooter className="gap-2 sm:gap-0">
+                        <Button type="button" variant="ghost" onClick={() => setIssueReportModalOpen(false)}>
+                            Cancel
+                        </Button>
+                        <Button
+                            type="button"
+                            className="bg-black hover:bg-zinc-800 dark:bg-white dark:hover:bg-zinc-200 text-white dark:text-black font-bold"
+                            onClick={submitTriagerNoticeToResearcher}
+                            disabled={issueReportSending}
+                        >
+                            {issueReportSending ? 'Sending…' : 'Send to thread & email'}
                         </Button>
                     </DialogFooter>
                 </DialogContent>

@@ -36,7 +36,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.reindexAllReports = exports.markReportAsDuplicate = exports.checkReportDuplicates = exports.getReportsByProgram = exports.addComment = exports.getReport = exports.getMyReports = exports.createReport = void 0;
+exports.reindexAllReports = exports.clearDuplicateReview = exports.markReportAsDuplicate = exports.checkReportDuplicates = exports.getReportsByProgram = exports.addComment = exports.getReport = exports.getMyReports = exports.createReport = void 0;
 const Report_1 = __importDefault(require("../models/Report"));
 const User_1 = __importDefault(require("../models/User"));
 const Program_1 = __importDefault(require("../models/Program"));
@@ -46,6 +46,8 @@ const emailService_1 = require("../services/emailService");
 const socketService_1 = require("../services/socketService");
 const cloudinary_1 = require("../utils/cloudinary");
 const duplicateDetectionService_1 = require("../services/duplicateDetectionService");
+const duplicateClosureNotice_1 = require("../utils/duplicateClosureNotice");
+const researcherReputationService_1 = require("../services/researcherReputationService");
 const randomAlphaNum = (length) => {
     const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
     let out = '';
@@ -137,9 +139,24 @@ exports.createReport = (0, catchAsync_1.default)(async (req, res, next) => {
         }
         return next(new AppError_1.default('Unable to submit report because indexing failed. Please retry.', 500));
     }
+    // Automatic similarity scan against prior reports (same program). Does not block submission if scan fails.
+    try {
+        const { candidates, reviewStatus } = await (0, duplicateDetectionService_1.runInitialDuplicateScanForNewReport)(newReport);
+        if (candidates.length > 0) {
+            newReport.duplicateCandidates = candidates;
+            newReport.duplicateReviewStatus = reviewStatus;
+            await newReport.save();
+        }
+    }
+    catch (scanErr) {
+        console.error('Post-submit duplicate scan error:', scanErr);
+    }
+    const createdPayload = newReport.toJSON ? newReport.toJSON() : newReport;
+    delete createdPayload.duplicateCandidates;
+    delete createdPayload.duplicateReviewStatus;
     res.status(201).json({
         status: 'success',
-        data: newReport
+        data: createdPayload
     });
     // Send submission confirmation to researcher in background
     (async () => {
@@ -209,9 +226,14 @@ exports.getReport = (0, catchAsync_1.default)(async (req, res, next) => {
         req.user.role !== 'triager') {
         return next(new AppError_1.default('You do not have permission to view this report', 403));
     }
+    const payload = report.toJSON ? report.toJSON() : report;
+    if (req.user.role === 'researcher') {
+        delete payload.duplicateCandidates;
+        delete payload.duplicateReviewStatus;
+    }
     res.status(200).json({
         status: 'success',
-        data: report
+        data: payload
     });
 });
 // Add a comment
@@ -419,7 +441,7 @@ exports.checkReportDuplicates = (0, catchAsync_1.default)(async (req, res, next)
 });
 exports.markReportAsDuplicate = (0, catchAsync_1.default)(async (req, res, next) => {
     const { id } = req.params;
-    const { duplicateOf, reason } = req.body || {};
+    const { duplicateOf } = req.body || {};
     if (!['triager', 'admin'].includes(req.user.role)) {
         return next(new AppError_1.default('Only triagers/admin can mark duplicates', 403));
     }
@@ -429,7 +451,7 @@ exports.markReportAsDuplicate = (0, catchAsync_1.default)(async (req, res, next)
         return next(new AppError_1.default('A report cannot be duplicate of itself', 400));
     const [report, duplicateParent] = await Promise.all([
         Report_1.default.findById(id),
-        Report_1.default.findById(duplicateOf).select('_id reportId title'),
+        Report_1.default.findById(duplicateOf).select('_id reportId title createdAt'),
     ]);
     if (!report)
         return next(new AppError_1.default('Report not found', 404));
@@ -438,19 +460,30 @@ exports.markReportAsDuplicate = (0, catchAsync_1.default)(async (req, res, next)
     const oldStatus = report.status;
     report.status = 'Duplicate';
     report.duplicateOf = duplicateParent._id;
+    report.duplicateReviewStatus = 'confirmed_duplicate';
+    const parentRid = duplicateParent.reportId || String(duplicateParent._id);
+    const thisRid = report.reportId || String(report._id);
+    const actorDisplay = req.user.name || req.user.username || 'BugChase Triage';
+    const closureNotice = (0, duplicateClosureNotice_1.formatDuplicateClosureMarkdown)({
+        thisReportPublicId: thisRid,
+        canonicalReportPublicId: parentRid,
+        canonicalSubmittedAt: duplicateParent.createdAt,
+        actorDisplayName: actorDisplay,
+    });
     report.comments.push({
         sender: req.user.id,
-        content: reason || `Marked as duplicate of ${duplicateParent.reportId || duplicateParent._id}`,
+        content: (0, duplicateClosureNotice_1.duplicateClosureTimelineSummary)(),
         type: 'status_change',
         metadata: {
             oldStatus,
             newStatus: 'Duplicate',
             duplicateOf: String(duplicateParent._id),
-            duplicateOfReportId: duplicateParent.reportId || String(duplicateParent._id),
-            reason: reason || '',
+            duplicateOfReportId: parentRid,
+            reason: closureNotice,
         },
         createdAt: new Date(),
     });
+    await (0, researcherReputationService_1.applyResearcherReputationOnStatusTransition)(report, oldStatus, 'Duplicate', 'mark_duplicate');
     await report.save();
     res.status(200).json({
         status: 'success',
@@ -458,17 +491,70 @@ exports.markReportAsDuplicate = (0, catchAsync_1.default)(async (req, res, next)
             report,
             duplicateOf: {
                 _id: duplicateParent._id,
-                reportId: duplicateParent.reportId || String(duplicateParent._id),
+                reportId: parentRid,
                 title: duplicateParent.title,
             },
         },
+    });
+    (async () => {
+        try {
+            await report.populate('researcherId', 'name email');
+            const researcher = report.researcherId;
+            if (researcher?.email) {
+                await (0, emailService_1.sendEmail)(researcher.email, `Duplicate resolution`, (0, emailService_1.reportEmailTemplate)({
+                    recipientName: researcher.name || 'Researcher',
+                    recipientRole: 'researcher',
+                    actorName: req.user.name || req.user.username || 'Triager',
+                    actorRole: 'triager',
+                    actionType: 'status_change',
+                    reportTitle: report.title,
+                    reportId: thisRid,
+                    severity: report.severity,
+                    oldStatus,
+                    previousStatus: oldStatus,
+                    canonicalReportId: parentRid,
+                    newStatus: 'Duplicate',
+                    message: closureNotice,
+                    messageSectionLabel: 'Duplicate resolution',
+                    suppressVulnerabilitySummary: true,
+                    link: `${process.env.CLIENT_URL}/researcher/reports/${report._id}`,
+                }));
+            }
+        }
+        catch (e) {
+            console.error('Failed to send duplicate notification email:', e);
+        }
+    })();
+});
+exports.clearDuplicateReview = (0, catchAsync_1.default)(async (req, res, next) => {
+    if (!['triager', 'admin'].includes(req.user.role)) {
+        return next(new AppError_1.default('Only triagers/admin can clear duplicate review', 403));
+    }
+    const { id } = req.params;
+    const report = await Report_1.default.findById(id);
+    if (!report)
+        return next(new AppError_1.default('Report not found', 404));
+    if (report.duplicateReviewStatus !== 'pending') {
+        return next(new AppError_1.default('This report does not have a pending duplicate review.', 400));
+    }
+    report.duplicateReviewStatus = 'cleared';
+    report.comments.push({
+        sender: req.user.id,
+        content: 'Triager reviewed AI-suggested duplicate candidates and confirmed this report is **not** a duplicate. Promote / resolve actions are now allowed.',
+        type: 'comment',
+        createdAt: new Date(),
+    });
+    await report.save();
+    res.status(200).json({
+        status: 'success',
+        data: { report },
     });
 });
 exports.reindexAllReports = (0, catchAsync_1.default)(async (req, res, next) => {
     if (!['triager', 'admin'].includes(req.user.role)) {
         return next(new AppError_1.default('Only triagers/admin can trigger re-indexing', 403));
     }
-    const reports = await Report_1.default.find({}).select('title vulnerabilityCategory vulnerableEndpoint description pocSteps impact severity reportId status').lean();
+    const reports = await Report_1.default.find({}).select('title vulnerabilityCategory vulnerableEndpoint description pocSteps impact severity reportId status programId createdAt').lean();
     if (!reports.length) {
         return res.status(200).json({ status: 'success', message: 'No reports found to index.', indexed: 0 });
     }
@@ -481,6 +567,8 @@ exports.reindexAllReports = (0, catchAsync_1.default)(async (req, res, next) => 
             status: r.status,
             severity: r.severity,
             vulnerabilityCategory: r.vulnerabilityCategory,
+            submittedAt: r.createdAt ? new Date(r.createdAt).toISOString() : undefined,
+            programId: String(r.programId ?? ''),
         },
     })).filter((item) => item.text.trim().length > 0);
     try {
