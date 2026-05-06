@@ -1,9 +1,44 @@
 import { Request, Response, NextFunction } from 'express';
 import mongoose from 'mongoose';
 import User from '../models/User';
+import Notification from '../models/Notification';
 import AppError from '../utils/AppError';
 import catchAsync from '../utils/catchAsync';
 import { getProfileCompletionReputationScore } from '../utils/profileCompletionReputation';
+
+/** Percentile rank (0–100) of `value` within `population` (inclusive). */
+function percentileRank(value: number, population: number[]): number | null {
+  if (!population.length) return null;
+  const sorted = [...population].sort((a, b) => a - b);
+  const below = sorted.filter((x) => x < value).length;
+  const equal = sorted.filter((x) => x === value).length;
+  return Math.round(((below + 0.5 * equal) / sorted.length) * 100);
+}
+
+const SEVERITY_BANDS: { band: string; severity: string }[] = [
+  { band: 'Critical', severity: 'Critical' },
+  { band: 'High', severity: 'High' },
+  { band: 'Medium', severity: 'Medium' },
+  { band: 'Low', severity: 'Low' },
+];
+
+/** Public profile: reports past initial triage (valid / in-scope pipeline). */
+const PUBLIC_ACCEPTED_REPORT_STATUSES = [
+  'Triaged',
+  'Pending_Fix',
+  'Under Review',
+  'Resolved',
+  'Paid',
+  'Closed',
+] as const;
+
+/** Strip leading "Title:" prefix sometimes stored in report titles (public display only). */
+function displayPublicReportTitle(raw: string): string {
+  const t = String(raw || '').trim();
+  if (!t) return 'Untitled';
+  const stripped = t.replace(/^\s*title\s*:\s*/i, '').trim();
+  return stripped || 'Untitled';
+}
 
 export const getPublicProfile = catchAsync(async (req: Request, res: Response, next: NextFunction) => {
   const raw = (req.params.username as string | undefined)?.trim();
@@ -11,13 +46,30 @@ export const getPublicProfile = catchAsync(async (req: Request, res: Response, n
     return next(new AppError('Profile not found', 404));
   }
   const safeUsername = raw.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const normalizeHandle = (value: string) => String(value || '').toLowerCase().replace(/[^a-z0-9]/g, '');
 
-  const user = await User.findOne({
+  let user = await User.findOne({
     username: { $regex: new RegExp(`^${safeUsername}$`, 'i') },
-    isPrivate: false,
   }).select(
-    'username name bio bioUpdated avatar country city socialLinks reputationScore linkedAccounts createdAt skills achievements isPrivate isVerified status'
+    'username name bio bioUpdated avatar coverPhoto hireable showPayouts country city socialLinks reputationScore linkedAccounts createdAt skills achievements isPrivate isVerified status'
   );
+
+  // Fallback: tolerate dash/underscore/space variations in public URLs (e.g. ch-shahzaib vs ch_shahzaib).
+  if (!user) {
+    const normalizedRaw = normalizeHandle(raw);
+    if (normalizedRaw) {
+      const candidates = await User.find({
+        username: { $exists: true, $ne: null },
+      }).select(
+        'username name bio bioUpdated avatar coverPhoto hireable showPayouts country city socialLinks reputationScore linkedAccounts createdAt skills achievements isPrivate isVerified status'
+      );
+      user =
+        candidates.find(
+          (u: any) =>
+            normalizeHandle(u.username) === normalizedRaw || normalizeHandle(u.name) === normalizedRaw,
+        ) || null;
+    }
+  }
 
   if (!user) {
     return next(new AppError('Profile not found', 404));
@@ -35,6 +87,16 @@ export const getPublicProfile = catchAsync(async (req: Request, res: Response, n
             $group: {
               _id: null,
               submitted: { $sum: 1 },
+              bountyEarned: {
+                $sum: {
+                  $cond: [{ $in: ['$status', ['Resolved', 'Paid']] }, { $ifNull: ['$bounty', 0] }, 0],
+                },
+              },
+              totalPayouts: {
+                $sum: {
+                  $cond: [{ $eq: ['$status', 'Paid'] }, { $ifNull: ['$bounty', 0] }, 0],
+                },
+              },
               resolvedOrPaid: {
                 $sum: {
                   $cond: [{ $in: ['$status', ['Resolved', 'Paid']] }, 1, 0],
@@ -76,6 +138,8 @@ export const getPublicProfile = catchAsync(async (req: Request, res: Response, n
   const summary = agg?.summary?.[0] as
     | {
         submitted?: number;
+        bountyEarned?: number;
+        totalPayouts?: number;
         resolvedOrPaid?: number;
         paidOnly?: number;
         duplicate?: number;
@@ -98,6 +162,297 @@ export const getPublicProfile = catchAsync(async (req: Request, res: Response, n
       (a: { severity: string; count: number }, b: { severity: string; count: number }) =>
         severityOrder.indexOf(a.severity) - severityOrder.indexOf(b.severity),
     );
+
+  const researcherObjectIds = await ReportModel.distinct('researcherId', {
+    researcherId: { $ne: null },
+  });
+  const ridStr = String(rid);
+
+  const severityPercentiles = await Promise.all(
+    SEVERITY_BANDS.map(async ({ band, severity }) => {
+      const perResearcher = await ReportModel.aggregate<{ _id: mongoose.Types.ObjectId; c: number }>([
+        { $match: { severity, researcherId: { $ne: null } } },
+        { $group: { _id: '$researcherId', c: { $sum: 1 } } },
+      ]);
+      const countMap = new Map(perResearcher.map((row) => [String(row._id), row.c]));
+      const population = researcherObjectIds.map((oid) => countMap.get(String(oid)) ?? 0);
+      const userCount = countMap.get(ridStr) ?? 0;
+      const p = percentileRank(userCount, population);
+      return { band, severity, count: userCount, percentile: p };
+    }),
+  );
+
+  const byTargetTypeRaw = await ReportModel.aggregate<{ _id: string; count: number }>([
+    { $match: { researcherId: rid } },
+    {
+      $addFields: {
+        targetBucket: {
+          $let: {
+            vars: {
+              at: { $toLower: { $ifNull: ['$assetType', ''] } },
+              hay: {
+                $toLower: {
+                  $concat: [
+                    { $ifNull: ['$vulnerableEndpoint', ''] },
+                    ' ',
+                    { $ifNull: [{ $arrayElemAt: ['$assets', 0] }, ''] },
+                  ],
+                },
+              },
+            },
+            in: {
+              $switch: {
+                branches: [
+                  {
+                    case: { $in: ['$$at', ['api']] },
+                    then: 'API / services',
+                  },
+                  {
+                    case: { $eq: ['$$at', 'contract'] },
+                    then: 'Smart contract',
+                  },
+                  {
+                    case: { $eq: ['$$at', 'web'] },
+                    then: 'Web application',
+                  },
+                  {
+                    case: {
+                      $regexMatch: {
+                        input: '$$hay',
+                        regex: 'graphql|/api/|/v1/|/v2/|swagger|rpc|openapi|rest\\\\.json',
+                        options: 'i',
+                      },
+                    },
+                    then: 'API / services',
+                  },
+                  {
+                    case: {
+                      $regexMatch: {
+                        input: '$$hay',
+                        regex: '\\.apk|\\.ipa|\\bandroid\\b|\\bios\\b|\\bmobile\\b',
+                        options: 'i',
+                      },
+                    },
+                    then: 'Mobile',
+                  },
+                ],
+                default: 'Web application',
+              },
+            },
+          },
+        },
+      },
+    },
+    { $group: { _id: '$targetBucket', count: { $sum: 1 } } },
+    { $sort: { count: -1 } },
+  ]);
+
+  const byTargetType = byTargetTypeRaw.map((row) => ({
+    name: row._id || 'Unknown',
+    count: row.count,
+  }));
+
+  const hallRows = await ReportModel.aggregate<{
+    _id: unknown;
+    reportCount: number;
+    companyName?: string;
+    companyAvatar?: string;
+    triageLikeCount: number;
+    duplicateCount: number;
+    naCount: number;
+    spamCount: number;
+    resolvedCritical: number;
+    resolvedHigh: number;
+    resolvedMedium: number;
+    resolvedLow: number;
+  }>([
+    {
+      $match: {
+        researcherId: rid,
+      },
+    },
+    {
+      $addFields: {
+        progOid: {
+          $convert: {
+            input: '$programId',
+            to: 'objectId',
+            onError: null,
+            onNull: null,
+          },
+        },
+      },
+    },
+    { $match: { progOid: { $ne: null } } },
+    {
+      $lookup: {
+        from: 'programs',
+        localField: 'progOid',
+        foreignField: '_id',
+        as: 'p',
+      },
+    },
+    {
+      $addFields: {
+        companyOid: { $arrayElemAt: ['$p.companyId', 0] },
+      },
+    },
+    {
+      $lookup: {
+        from: 'users',
+        localField: 'companyOid',
+        foreignField: '_id',
+        as: 'c',
+      },
+    },
+    {
+      $group: {
+        _id: '$companyOid',
+        reportCount: { $sum: 1 },
+        companyName: {
+          $first: {
+            $ifNull: [
+              { $arrayElemAt: ['$c.companyName', 0] },
+              {
+                $ifNull: [
+                  { $arrayElemAt: ['$p.companyName', 0] },
+                  { $arrayElemAt: ['$c.name', 0] },
+                ],
+              },
+            ],
+          },
+        },
+        companyAvatar: { $first: { $arrayElemAt: ['$c.avatar', 0] } },
+        triageLikeCount: {
+          $sum: {
+            $cond: [{ $in: ['$status', ['Triaged', 'Pending_Fix', 'Resolved', 'Paid', 'Under Review']] }, 1, 0],
+          },
+        },
+        duplicateCount: { $sum: { $cond: [{ $eq: ['$status', 'Duplicate'] }, 1, 0] } },
+        naCount: { $sum: { $cond: [{ $eq: ['$status', 'NA'] }, 1, 0] } },
+        spamCount: { $sum: { $cond: [{ $eq: ['$status', 'Spam'] }, 1, 0] } },
+        resolvedCritical: {
+          $sum: {
+            $cond: [{ $and: [{ $eq: ['$status', 'Resolved'] }, { $eq: ['$severity', 'Critical'] }] }, 1, 0],
+          },
+        },
+        resolvedHigh: {
+          $sum: {
+            $cond: [{ $and: [{ $eq: ['$status', 'Resolved'] }, { $eq: ['$severity', 'High'] }] }, 1, 0],
+          },
+        },
+        resolvedMedium: {
+          $sum: {
+            $cond: [{ $and: [{ $eq: ['$status', 'Resolved'] }, { $eq: ['$severity', 'Medium'] }] }, 1, 0],
+          },
+        },
+        resolvedLow: {
+          $sum: {
+            $cond: [{ $and: [{ $eq: ['$status', 'Resolved'] }, { $eq: ['$severity', 'Low'] }] }, 1, 0],
+          },
+        },
+      },
+    },
+    { $sort: { reportCount: -1 } },
+    { $limit: 48 },
+  ]);
+
+  const hallOfFamePrograms = hallRows.map((row) => {
+    const label =
+      (row.companyName && String(row.companyName).trim()) ||
+      'Company';
+    const reputationPoints =
+      row.triageLikeCount * 2 +
+      row.duplicateCount * 2 +
+      row.naCount * -5 +
+      row.spamCount * -10 +
+      row.resolvedCritical * 50 +
+      row.resolvedHigh * 30 +
+      row.resolvedMedium * 20 +
+      row.resolvedLow * 5;
+    return {
+      label,
+      reportCount: row.reportCount,
+      reputationPoints,
+      companyAvatar: row.companyAvatar || '',
+    };
+  });
+
+  const acceptedReportsAgg = await ReportModel.aggregate<{
+    title?: string;
+    severity?: string;
+    createdAt?: Date;
+    programCompanyFromProg?: string | null;
+    companyUserCompanyName?: string | null;
+    companyUserName?: string | null;
+  }>([
+    {
+      $match: {
+        researcherId: rid,
+        status: { $in: [...PUBLIC_ACCEPTED_REPORT_STATUSES] },
+      },
+    },
+    { $sort: { createdAt: -1 } },
+    { $limit: 150 },
+    {
+      $addFields: {
+        progOid: {
+          $convert: { input: '$programId', to: 'objectId', onError: null, onNull: null },
+        },
+      },
+    },
+    {
+      $lookup: {
+        from: 'programs',
+        localField: 'progOid',
+        foreignField: '_id',
+        as: 'p',
+      },
+    },
+    {
+      $addFields: {
+        prog0: { $arrayElemAt: ['$p', 0] },
+      },
+    },
+    {
+      $addFields: {
+        companyOid: '$prog0.companyId',
+        programCompanyFromProg: '$prog0.companyName',
+      },
+    },
+    {
+      $lookup: {
+        from: 'users',
+        localField: 'companyOid',
+        foreignField: '_id',
+        as: 'compUser',
+      },
+    },
+    {
+      $project: {
+        title: { $ifNull: ['$title', ''] },
+        severity: { $ifNull: ['$severity', 'None'] },
+        createdAt: 1,
+        programCompanyFromProg: 1,
+        companyUserCompanyName: { $arrayElemAt: ['$compUser.companyName', 0] },
+        companyUserName: { $arrayElemAt: ['$compUser.name', 0] },
+      },
+    },
+  ]);
+
+  const acceptedReports = acceptedReportsAgg.map((r) => {
+    const submittedTo =
+      (r.programCompanyFromProg && String(r.programCompanyFromProg).trim()) ||
+      (r.companyUserCompanyName && String(r.companyUserCompanyName).trim()) ||
+      (r.companyUserName && String(r.companyUserName).trim()) ||
+      'Company';
+    return {
+      title: displayPublicReportTitle(String(r.title || '')).slice(0, 300),
+      severity: String(r.severity || 'None'),
+      submittedTo,
+      submittedAt: r.createdAt ? new Date(r.createdAt).toISOString() : undefined,
+    };
+  });
 
   const plain = user.toObject() as any;
   delete plain.email;
@@ -122,6 +477,12 @@ export const getPublicProfile = catchAsync(async (req: Request, res: Response, n
         active: summary?.activeReports ?? 0,
         resolutionRatePercent,
         bySeverity,
+        bountyEarned: Number(summary?.bountyEarned ?? 0),
+        totalPayouts: Number(summary?.totalPayouts ?? 0),
+        severityPercentiles,
+        byTargetType,
+        hallOfFamePrograms,
+        acceptedReports,
       },
     },
   });
@@ -261,6 +622,102 @@ export const getWalletData = catchAsync(async (req: Request, res: Response, next
           reputationScore: user.reputationScore,
           transactions
       }
+  });
+});
+
+/** In-app notifications for the logged-in user (newest first). */
+export const getMyNotifications = catchAsync(async (req: Request, res: Response, _next: NextFunction) => {
+  const docs = await Notification.find({ recipient: req.user!._id })
+    .sort({ createdAt: -1 })
+    .limit(300)
+    .lean();
+
+  const normalizeNotificationTitle = (title: string) =>
+    String(title || '')
+      .toLowerCase()
+      .replace(/\s*-\s*bugchase\b/g, '')
+      .replace(/\s+/g, ' ')
+      .trim();
+
+  // Prefer rich email-backed notifications over legacy/plain duplicates.
+  // Duplicate heuristic: normalized title and close timestamps.
+  const richByTitle = new Map<string, number[]>();
+  for (const d of docs) {
+    if (d?.html && String(d.html).trim()) {
+      const key = normalizeNotificationTitle(String(d.title || ''));
+      const t = d.createdAt ? new Date(d.createdAt).getTime() : 0;
+      if (!richByTitle.has(key)) richByTitle.set(key, []);
+      richByTitle.get(key)!.push(t);
+    }
+  }
+
+  const filtered = docs.filter((d: any) => {
+    const hasHtml = !!String(d?.html || '').trim();
+    if (hasHtml) return true;
+    const key = normalizeNotificationTitle(String(d.title || ''));
+    const richTimes = richByTitle.get(key);
+    if (!richTimes || richTimes.length === 0) return true;
+    const t = d.createdAt ? new Date(d.createdAt).getTime() : 0;
+    // If a rich copy exists within +/- 5 minutes, hide this plain duplicate.
+    return !richTimes.some((rt) => Math.abs(rt - t) <= 5 * 60 * 1000);
+  });
+
+  const items = filtered.slice(0, 100).map((d: any) => ({
+    id: String(d._id),
+    title: d.title,
+    message: d.message,
+    html: d.html || '',
+    channel: d.channel || 'in_app',
+    type: d.type,
+    read: Boolean(d.read),
+    createdAt: d.createdAt,
+    link: d.link || null,
+  }));
+
+  res.status(200).json({
+    status: 'success',
+    data: { items },
+  });
+});
+
+export const markNotificationRead = catchAsync(async (req: Request, res: Response, next: NextFunction) => {
+  const rawId = req.params.id;
+  const id = Array.isArray(rawId) ? rawId[0] : rawId;
+  if (!id || !mongoose.Types.ObjectId.isValid(id)) {
+    return next(new AppError('Invalid notification id', 400));
+  }
+
+  const notif = await Notification.findOneAndUpdate(
+    { _id: id, recipient: req.user!._id },
+    { read: true },
+    { new: true },
+  ).lean();
+
+  if (!notif) {
+    return next(new AppError('Notification not found', 404));
+  }
+
+  res.status(200).json({
+    status: 'success',
+    data: { id: String(notif._id), read: true },
+  });
+});
+
+/** Remove old/plain notifications so feed only keeps rich email-backed records. */
+export const clearLegacyNotifications = catchAsync(async (req: Request, res: Response, _next: NextFunction) => {
+  const result = await Notification.deleteMany({
+    recipient: req.user!._id,
+    $or: [
+      { channel: { $ne: 'email' } },
+      { html: { $exists: false } },
+      { html: '' },
+      { html: null as any },
+    ],
+  });
+
+  res.status(200).json({
+    status: 'success',
+    data: { deletedCount: result.deletedCount || 0 },
   });
 });
 
@@ -570,6 +1027,25 @@ export const uploadAvatar = catchAsync(async (req: Request, res: Response, next:
     const updatedUser = await User.findByIdAndUpdate(req.user!.id, { avatar: result.url }, {
         new: true,
         runValidators: false // Skip validation for simple avatar update
+    });
+
+    res.status(200).json({
+        status: 'success',
+        data: {
+            user: updatedUser,
+            url: result.url
+        }
+    });
+});
+
+export const uploadCoverPhoto = catchAsync(async (req: Request, res: Response, next: NextFunction) => {
+    if (!req.file) return next(new AppError('Please upload an image', 400));
+
+    const result = await uploadToCloudinary(req.file);
+
+    const updatedUser = await User.findByIdAndUpdate(req.user!.id, { coverPhoto: result.url }, {
+        new: true,
+        runValidators: false
     });
 
     res.status(200).json({

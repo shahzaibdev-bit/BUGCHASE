@@ -14,11 +14,24 @@ const notificationSchema = new mongoose.Schema({
     type: String,
     required: true,
   },
+  /** Optional rich HTML body (used for saved email notifications). */
+  html: {
+    type: String,
+    default: '',
+  },
+  /** Source channel that produced this notification. */
+  channel: {
+    type: String,
+    enum: ['in_app', 'email'],
+    default: 'in_app',
+  },
   type: {
     type: String,
     enum: ['announcement', 'bounty', 'system', 'payment'],
     default: 'system',
   },
+  /** In-app deep link (e.g. /researcher/reports/:id) */
+  link: String,
   read: {
     type: Boolean,
     default: false,

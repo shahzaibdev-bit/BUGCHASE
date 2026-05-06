@@ -10,13 +10,28 @@ interface ImageCropperProps {
   open: boolean
   onClose: () => void
   onCropComplete: (croppedBlob: Blob) => void
+  aspect?: number
+  title?: string
 }
 
-export default function ImageCropper({ imageSrc, open, onClose, onCropComplete }: ImageCropperProps) {
+export default function ImageCropper({
+  imageSrc,
+  open,
+  onClose,
+  onCropComplete,
+  aspect: aspectProp = 1,
+  title = 'Edit Image',
+}: ImageCropperProps) {
   const [crop, setCrop] = useState({ x: 0, y: 0 })
   const [zoom, setZoom] = useState(1)
-  const [aspect, setAspect] = useState(1) // Default square aspect ratio for avatars
+  const [aspect, setAspect] = useState(aspectProp) // Default square aspect ratio for avatars
   const [croppedAreaPixels, setCroppedAreaPixels] = useState<any>(null)
+
+  React.useEffect(() => {
+    setAspect(aspectProp)
+    setZoom(1)
+    setCrop({ x: 0, y: 0 })
+  }, [aspectProp, imageSrc, open])
 
   const onCropChange = (crop: { x: number; y: number }) => {
     setCrop(crop)
@@ -48,7 +63,7 @@ export default function ImageCropper({ imageSrc, open, onClose, onCropComplete }
     <Dialog open={open} onOpenChange={onClose}>
       <DialogContent className="sm:max-w-[600px] h-[600px] flex flex-col bg-white dark:bg-zinc-950 border-zinc-200 dark:border-zinc-800 text-zinc-950 dark:text-white">
         <DialogHeader>
-          <DialogTitle>Edit Image</DialogTitle>
+          <DialogTitle>{title}</DialogTitle>
         </DialogHeader>
         
         <div className="relative flex-1 bg-zinc-100 dark:bg-black rounded-md overflow-hidden min-h-[300px]">

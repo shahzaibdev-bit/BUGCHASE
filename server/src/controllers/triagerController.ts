@@ -757,20 +757,6 @@ export const submitDecision = catchAsync(async (req: Request, res: Response, nex
         const researcher = report.researcherId as any;
         console.log('[EMAIL DEBUG] researcher email:', researcher?.email, '| status:', status);
 
-        // In-App Notification — separate try-catch so it doesn't block email
-        try {
-            const recipientId = researcher?._id || researcher;
-            await Notification.create({
-                recipient: recipientId,
-                title: `Report Status Updated: ${report.title}`,
-                message: `Your report has been marked as ${status}.`,
-                type: 'report_status',
-                link: `/researcher/reports/${report._id}`
-            });
-        } catch (notifErr) {
-            console.error('[EMAIL DEBUG] Notification.create failed:', notifErr);
-        }
-
         // Email Researcher — own try-catch
         try {
             if (researcher?.email) {

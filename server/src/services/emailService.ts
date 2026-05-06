@@ -1,5 +1,7 @@
 import nodemailer from 'nodemailer';
 import juice from 'juice';
+import User from '../models/User';
+import Notification from '../models/Notification';
 
 const transporter = nodemailer.createTransport({
   service: 'gmail',
@@ -18,7 +20,63 @@ export const sendEmail = async (to: string, subject: string, html: string) => {
   };
 
   await transporter.sendMail(mailOptions);
+
+  // Persist every outgoing email as in-app notifications for matching users.
+  // This keeps the in-app feed in sync with what was sent over email.
+  try {
+    const recipients = String(to || '')
+      .split(',')
+      .map((v) => v.trim().toLowerCase())
+      .filter(Boolean);
+
+    if (recipients.length > 0) {
+      const users = await User.find({
+        email: { $in: recipients },
+      })
+        .select('_id')
+        .lean();
+
+      if (users.length > 0) {
+        const plainMessage = htmlToPlainText(html);
+        await Notification.insertMany(
+          users.map((u: any) => ({
+            recipient: u._id,
+            title: subject,
+            message: plainMessage,
+            html,
+            channel: 'email',
+            type: 'system',
+          })),
+        );
+      }
+    }
+  } catch (persistErr) {
+    // Never fail a successfully-sent email due to notification persistence issues.
+    console.error('Failed to persist email notification:', persistErr);
+  }
 };
+
+const htmlToPlainText = (value: string): string =>
+  String(value || '')
+    .replace(/<style[\s\S]*?<\/style>/gi, ' ')
+    .replace(/<script[\s\S]*?<\/script>/gi, ' ')
+    .replace(/<br\s*\/?>/gi, '\n')
+    .replace(/<\/p>/gi, '\n')
+    .replace(/<li>/gi, '• ')
+    .replace(/<\/li>/gi, '\n')
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/&nbsp;/gi, ' ')
+    .replace(/&amp;/gi, '&')
+    .replace(/&lt;/gi, '<')
+    .replace(/&gt;/gi, '>')
+    .replace(/&quot;/gi, '"')
+    .replace(/&#39;/gi, "'")
+    .replace(/\r/g, '')
+    .split('\n')
+    .map((line) => line.replace(/\s+/g, ' ').trim())
+    .filter(Boolean)
+    .join('\n')
+    .trim();
 
 export const otpTemplate = (otp: string) => {
   const html = `
@@ -1041,5 +1099,46 @@ body { margin: 0; padding: 0; background-color: #000000; font-family: 'Courier N
 </body>
 </html>`;
 
+  return juice(html);
+};
+
+export const newLoginAlertTemplate = (opts: {
+  name: string;
+  ip: string;
+  browserSummary: string;
+  newIp: boolean;
+  newBrowser: boolean;
+  whenIso: string;
+}) => {
+  const reasons: string[] = [];
+  if (opts.newIp) reasons.push('a new IP address');
+  if (opts.newBrowser) reasons.push('a new browser or device fingerprint');
+  const reasonText =
+    reasons.length === 0 ? 'Your account was accessed.' : `We noticed a sign-in from ${reasons.join(' and ')}.`;
+
+  const html = `
+<!DOCTYPE html>
+<html lang="en">
+<head><meta charset="UTF-8" /><title>New sign-in</title></head>
+<body style="margin:0;background:#000;font-family:'Courier New',monospace;">
+<div style="padding:32px 16px;background:#000;">
+  <div style="max-width:640px;margin:0 auto;border:1px solid #27272a;border-radius:10px;background:#09090b;overflow:hidden;">
+    <div style="padding:18px;border-bottom:1px solid #27272a;background:#18181b;text-align:center;color:#fff;font-weight:bold;">BugChase Security</div>
+    <div style="padding:24px;color:#d4d4d8;">
+      <h1 style="color:#fff;font-size:20px;margin:0 0 12px;">New sign-in to your account</h1>
+      <p style="color:#a1a1aa;font-size:14px;line-height:1.6;margin:0 0 16px;">Hi ${opts.name},</p>
+      <p style="color:#a1a1aa;font-size:14px;line-height:1.6;margin:0 0 16px;">${reasonText}</p>
+      <table style="width:100%;border-collapse:collapse;background:#18181b;border:1px solid #27272a;border-radius:8px;">
+        <tr><td style="padding:10px 12px;font-size:11px;color:#a1a1aa;text-transform:uppercase;">Time</td><td style="padding:10px 12px;font-size:13px;color:#fff;">${opts.whenIso}</td></tr>
+        <tr><td style="padding:10px 12px;font-size:11px;color:#a1a1aa;text-transform:uppercase;border-top:1px solid #27272a;">IP</td><td style="padding:10px 12px;font-size:13px;color:#fff;border-top:1px solid #27272a;">${opts.ip}</td></tr>
+        <tr><td style="padding:10px 12px;font-size:11px;color:#a1a1aa;text-transform:uppercase;border-top:1px solid #27272a;">Device</td><td style="padding:10px 12px;font-size:13px;color:#fff;border-top:1px solid #27272a;">${opts.browserSummary}</td></tr>
+      </table>
+      <p style="color:#71717a;font-size:12px;margin:16px 0 0;">If this was you, you can ignore this message. If not, change your password and enable two-factor authentication.</p>
+    </div>
+    <div style="padding:16px;text-align:center;color:#52525b;font-size:11px;border-top:1px solid #27272a;">&copy; ${new Date().getFullYear()} BugChase</div>
+  </div>
+</div>
+</body>
+</html>`;
   return juice(html);
 };

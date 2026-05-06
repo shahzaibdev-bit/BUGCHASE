@@ -10,6 +10,9 @@ export interface IUser extends Document {
   isVerified: boolean;
   isEmailVerified: boolean;
   avatar: string;
+  coverPhoto?: string;
+  hireable?: boolean;
+  showPayouts?: boolean;
   reputationScore: number;
   walletBalance: number;
   country?: string;
@@ -58,6 +61,8 @@ export interface IUser extends Document {
         icon: string;
     }[];
 
+  twoFactorEnabled?: boolean;
+  twoFactorSecret?: string;
   status: 'Active' | 'Suspended' | 'Banned';
   statusReason?: string;
   stripeCustomerId?: string;
@@ -102,6 +107,18 @@ const userSchema = new mongoose.Schema<IUser>({
   avatar: {
     type: String,
     default: 'default.jpg',
+  },
+  coverPhoto: {
+    type: String,
+    default: '',
+  },
+  hireable: {
+    type: Boolean,
+    default: true,
+  },
+  showPayouts: {
+    type: Boolean,
+    default: false,
   },
   // Researcher Specific
   reputationScore: { type: Number, default: 0 },
@@ -171,6 +188,14 @@ const userSchema = new mongoose.Schema<IUser>({
       desc: String,
       icon: String // store icon name e.g. 'Clock'
   }],
+  twoFactorEnabled: {
+    type: Boolean,
+    default: false,
+  },
+  twoFactorSecret: {
+    type: String,
+    select: false,
+  },
   status: {
     type: String,
     enum: ['Active', 'Suspended', 'Banned'],
