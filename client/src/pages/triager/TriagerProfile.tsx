@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect, useMemo } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { 
   Shield, 
   Linkedin, 
@@ -26,6 +27,14 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Switch } from '@/components/ui/switch';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/contexts/AuthContext';
 import { toast } from '@/hooks/use-toast';
@@ -80,6 +89,7 @@ const countries = [
 
   export default function TriagerProfile() {
     const { user, refreshUser } = useAuth();
+    const navigate = useNavigate();
     const fileInputRef = useRef<HTMLInputElement>(null);
     const [isUploading, setIsUploading] = useState(false);
   
@@ -111,6 +121,31 @@ const countries = [
     const [showCurrentPassword, setShowCurrentPassword] = useState(false);
     const [showNewPassword, setShowNewPassword] = useState(false);
     const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+    type InAppNotificationRow = {
+      id: string;
+      title: string;
+      message: string;
+      html?: string;
+      channel?: 'in_app' | 'email';
+      type: string;
+      read: boolean;
+      createdAt: string;
+      link: string | null;
+    };
+    const [inAppNotifications, setInAppNotifications] = useState<InAppNotificationRow[]>([]);
+    const [inAppNotificationsLoading, setInAppNotificationsLoading] = useState(false);
+    const [selectedNotification, setSelectedNotification] = useState<InAppNotificationRow | null>(null);
+    const [loginHistory, setLoginHistory] = useState<Array<{ id: string; ip: string; browserSummary: string; createdAt: string; isCurrent?: boolean }>>([]);
+    const [loginHistoryLoading, setLoginHistoryLoading] = useState(false);
+    const [twoFaSetupOpen, setTwoFaSetupOpen] = useState(false);
+    const [twoFaSetupBusy, setTwoFaSetupBusy] = useState(false);
+    const [twoFaQr, setTwoFaQr] = useState<string | null>(null);
+    const [twoFaSecret, setTwoFaSecret] = useState('');
+    const [twoFaEnableCode, setTwoFaEnableCode] = useState('');
+    const [twoFaDisableOpen, setTwoFaDisableOpen] = useState(false);
+    const [disable2faPassword, setDisable2faPassword] = useState('');
+    const [disable2faTotp, setDisable2faTotp] = useState('');
+    const [twoFaBusy, setTwoFaBusy] = useState(false);
   
     const [profile, setProfile] = useState<ProfileState>({
       name: '',
@@ -166,6 +201,174 @@ const countries = [
             .catch(err => console.error("Failed to fetch triager stats", err));
       }
     }, [user]);
+
+  useEffect(() => {
+    if (activeTab !== 'security' || !user) return;
+    let cancelled = false;
+    (async () => {
+      setLoginHistoryLoading(true);
+      try {
+        const token = localStorage.getItem('token');
+        const res = await fetch(`${API_URL}/auth/login-history`, {
+          headers: token ? { Authorization: `Bearer ${token}` } : {},
+          credentials: 'include',
+        });
+        const data = await res.json();
+        if (cancelled) return;
+        if (res.ok && data.data?.items) setLoginHistory(data.data.items);
+        else setLoginHistory([]);
+      } catch {
+        if (!cancelled) setLoginHistory([]);
+      } finally {
+        if (!cancelled) setLoginHistoryLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [activeTab, user]);
+
+  useEffect(() => {
+    if (activeTab !== 'notifications' || !user) return;
+    let cancelled = false;
+    (async () => {
+      setInAppNotificationsLoading(true);
+      try {
+        const token = localStorage.getItem('token');
+        const res = await fetch(`${API_URL}/users/notifications`, {
+          headers: token ? { Authorization: `Bearer ${token}` } : {},
+          credentials: 'include',
+        });
+        const data = await res.json();
+        if (cancelled) return;
+        if (res.ok && data.data?.items) setInAppNotifications(data.data.items);
+        else setInAppNotifications([]);
+      } catch {
+        if (!cancelled) setInAppNotifications([]);
+      } finally {
+        if (!cancelled) setInAppNotificationsLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [activeTab, user]);
+
+  const stripHtmlTags = (input: string) =>
+    String(input || '')
+      .replace(/<[^>]+>/g, ' ')
+      .replace(/&nbsp;/gi, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+
+  const notificationPreview = (row: InAppNotificationRow) => {
+    const clean = stripHtmlTags(row.message || '');
+    return clean || 'Open notification to view details.';
+  };
+
+  const notificationTypeLabel = (t: string) => {
+    switch (t) {
+      case 'announcement':
+        return 'Platform';
+      case 'bounty':
+        return 'Bounty';
+      case 'payment':
+        return 'Payment';
+      case 'system':
+      default:
+        return 'System';
+    }
+  };
+
+  const handleNotificationActivate = async (row: InAppNotificationRow) => {
+    if (!row.read) {
+      try {
+        const token = localStorage.getItem('token');
+        const res = await fetch(`${API_URL}/users/notifications/${row.id}/read`, {
+          method: 'PATCH',
+          headers: token ? { Authorization: `Bearer ${token}` } : {},
+          credentials: 'include',
+        });
+        if (res.ok) {
+          setInAppNotifications((prev) => prev.map((n) => (n.id === row.id ? { ...n, read: true } : n)));
+        }
+      } catch {
+        /* non-fatal */
+      }
+    }
+    setSelectedNotification(row);
+  };
+
+  const startTwoFaSetup = async () => {
+    setTwoFaSetupBusy(true);
+    try {
+      const token = localStorage.getItem('token');
+      const res = await fetch(`${API_URL}/auth/2fa/setup`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+        credentials: 'include',
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.message || 'Could not start 2FA setup');
+      setTwoFaQr(data.data.qrDataUrl);
+      setTwoFaSecret(data.data.secret);
+      setTwoFaEnableCode('');
+      setTwoFaSetupOpen(true);
+    } catch (e: any) {
+      toast({ title: 'Error', description: e.message || '2FA setup failed', variant: 'destructive' });
+    } finally {
+      setTwoFaSetupBusy(false);
+    }
+  };
+
+  const confirmTwoFaEnable = async () => {
+    setTwoFaBusy(true);
+    try {
+      const token = localStorage.getItem('token');
+      const res = await fetch(`${API_URL}/auth/2fa/enable`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ totp: twoFaEnableCode }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.message || 'Invalid code');
+      toast({ title: '2FA enabled', description: 'Your account is protected with an authenticator app.' });
+      setTwoFaSetupOpen(false);
+      setTwoFaQr(null);
+      setTwoFaSecret('');
+      setTwoFaEnableCode('');
+      await refreshUser();
+    } catch (e: any) {
+      toast({ title: 'Error', description: e.message || 'Enable failed', variant: 'destructive' });
+    } finally {
+      setTwoFaBusy(false);
+    }
+  };
+
+  const confirmTwoFaDisable = async () => {
+    setTwoFaBusy(true);
+    try {
+      const token = localStorage.getItem('token');
+      const res = await fetch(`${API_URL}/auth/2fa/disable`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ password: disable2faPassword, totp: disable2faTotp }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.message || 'Could not disable 2FA');
+      toast({ title: '2FA disabled', description: 'Two-factor authentication is off for this account.' });
+      setTwoFaDisableOpen(false);
+      setDisable2faPassword('');
+      setDisable2faTotp('');
+      await refreshUser();
+    } catch (e: any) {
+      toast({ title: 'Error', description: e.message || 'Disable failed', variant: 'destructive' });
+    } finally {
+      setTwoFaBusy(false);
+    }
+  };
 
   // Profile Completion Calculation
   const completionPercentage = useMemo(() => {
@@ -321,6 +524,7 @@ const countries = [
   const navTabs: { id: TabType; label: string }[] = [
       { id: 'account', label: 'Account' },
       { id: 'security', label: 'Security' },
+      { id: 'notifications', label: 'Notifications' },
       { id: 'stats', label: 'Stats' },
   ];
 
@@ -637,11 +841,15 @@ const countries = [
                             <div className="flex items-center justify-between p-4 border border-zinc-200 dark:border-zinc-800 rounded-xl bg-zinc-50 dark:bg-zinc-950/50">
                                 <div className="space-y-0.5">
                                     <h3 className="text-sm font-medium text-zinc-900 dark:text-white">Two-Factor Authentication (2FA)</h3>
-                                    <p className="text-xs text-zinc-500">Secure your account with an authentication app</p>
+                                    <p className="text-xs text-zinc-500">Use Google Authenticator/Authy for stronger account protection</p>
                                 </div>
                                 <Switch 
-                                    checked={profile.twoFactor}
-                                    onCheckedChange={(c) => setProfile({...profile, twoFactor: c})}
+                                    checked={!!user?.twoFactorEnabled}
+                                    disabled={twoFaSetupBusy || twoFaBusy}
+                                    onCheckedChange={(on) => {
+                                      if (on) void startTwoFaSetup();
+                                      else setTwoFaDisableOpen(true);
+                                    }}
                                     className="data-[state=checked]:bg-black dark:data-[state=checked]:bg-white"
                                 />
                             </div>
@@ -741,6 +949,106 @@ const countries = [
                                 </div>
                             )}
                         </div>
+                    </section>
+
+                    <section className="bg-white dark:bg-zinc-900/50 border border-zinc-200 dark:border-zinc-800 rounded-2xl p-6 backdrop-blur-sm">
+                        <h2 className="text-xl font-bold text-zinc-900 dark:text-white mb-1 flex items-center gap-2">
+                            <History className="w-5 h-5" /> Login History
+                        </h2>
+                        <p className="text-xs text-zinc-500 mb-4">
+                          Successful sign-ins on this account. You get an email when we detect a new IP or browser.
+                        </p>
+                        {loginHistoryLoading ? (
+                          <p className="text-sm text-zinc-500 py-6 text-center">Loading…</p>
+                        ) : loginHistory.length === 0 ? (
+                          <p className="text-sm text-zinc-500 py-6 text-center">No sign-ins recorded yet.</p>
+                        ) : (
+                          <div className="space-y-2">
+                            {loginHistory.map((row) => (
+                              <div
+                                key={row.id}
+                                className="flex items-center justify-between p-3 border-b border-zinc-200 dark:border-zinc-800/50 last:border-0 hover:bg-zinc-50 dark:hover:bg-zinc-800/30 transition-colors rounded-lg"
+                              >
+                                <div className="min-w-0">
+                                  <p className="text-sm text-zinc-700 dark:text-zinc-300 truncate">{row.browserSummary}</p>
+                                  <p className="text-xs text-zinc-500 truncate">
+                                    {row.ip} ·{' '}
+                                    {new Date(row.createdAt).toLocaleString(undefined, {
+                                      dateStyle: 'medium',
+                                      timeStyle: 'short',
+                                    })}
+                                  </p>
+                                </div>
+                                {row.isCurrent ? (
+                                  <span className="text-xs text-zinc-900 dark:text-white bg-zinc-100 dark:bg-white/10 px-2 py-0.5 rounded-full shrink-0">
+                                    Latest
+                                  </span>
+                                ) : null}
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                    </section>
+                </div>
+            )}
+
+            {activeTab === 'notifications' && (
+                <div className="space-y-8 animate-in fade-in slide-in-from-left-4 duration-300">
+                    <section className="bg-white dark:bg-zinc-900/50 border border-zinc-200 dark:border-zinc-800 rounded-2xl p-6 backdrop-blur-sm">
+                        <h2 className="text-xl font-bold text-zinc-900 dark:text-white mb-1 flex items-center gap-2">
+                            <Bell className="w-5 h-5" /> Your notifications
+                        </h2>
+                        <p className="text-xs text-zinc-500 mb-6">
+                          Messages you receive in BugChase (report updates, admin messages, announcements, and more).
+                        </p>
+                        {inAppNotificationsLoading ? (
+                          <p className="text-sm text-zinc-500 py-8 text-center">Loading…</p>
+                        ) : inAppNotifications.length === 0 ? (
+                          <p className="text-sm text-zinc-500 py-8 text-center">No notifications yet.</p>
+                        ) : (
+                          <ul className="divide-y divide-zinc-200 dark:divide-zinc-800 border border-zinc-200 dark:border-zinc-800 rounded-xl overflow-hidden">
+                            {inAppNotifications.map((row) => (
+                              <li key={row.id}>
+                                <button
+                                  type="button"
+                                  onClick={() => void handleNotificationActivate(row)}
+                                  className={cn(
+                                    'w-full text-left px-4 py-3 flex gap-3 transition-colors hover:bg-zinc-50 dark:hover:bg-zinc-800/40',
+                                    !row.read && 'bg-zinc-50/80 dark:bg-zinc-900/80 border-l-2 border-l-black dark:border-l-white',
+                                  )}
+                                >
+                                  <div className="mt-0.5 shrink-0">
+                                    <span
+                                      className={cn(
+                                        'inline-flex h-2 w-2 rounded-full',
+                                        row.read ? 'bg-zinc-300 dark:bg-zinc-600' : 'bg-black dark:bg-white',
+                                      )}
+                                      aria-hidden
+                                    />
+                                  </div>
+                                  <div className="min-w-0 flex-1 space-y-1">
+                                    <div className="flex flex-wrap items-center gap-2">
+                                      <span className="text-xs font-semibold uppercase tracking-wide text-zinc-500">
+                                        {notificationTypeLabel(row.type)}
+                                      </span>
+                                      <span className="text-[11px] text-zinc-400">
+                                        {new Date(row.createdAt).toLocaleString()}
+                                      </span>
+                                    </div>
+                                    <p className="text-sm font-medium text-zinc-900 dark:text-white">{row.title}</p>
+                                    <p className="text-xs text-zinc-600 dark:text-zinc-400 line-clamp-3">{notificationPreview(row)}</p>
+                                    {row.link ? (
+                                      <p className="text-[11px] text-zinc-500 flex items-center gap-1 pt-0.5">
+                                        <ExternalLink className="w-3 h-3 shrink-0" />
+                                        Open related page
+                                      </p>
+                                    ) : null}
+                                  </div>
+                                </button>
+                              </li>
+                            ))}
+                          </ul>
+                        )}
                     </section>
                 </div>
             )}
@@ -874,6 +1182,146 @@ const countries = [
               onCropComplete={handleCropComplete}
           />
       )}
+
+      <Dialog
+        open={twoFaSetupOpen}
+        onOpenChange={(open) => {
+          setTwoFaSetupOpen(open);
+          if (!open) {
+            setTwoFaQr(null);
+            setTwoFaSecret('');
+            setTwoFaEnableCode('');
+          }
+        }}
+      >
+        <DialogContent className="sm:max-w-md border-zinc-200 dark:border-zinc-800">
+          <DialogHeader>
+            <DialogTitle>Set up two-factor authentication</DialogTitle>
+            <DialogDescription>
+              Scan the QR code with your authenticator app, then enter the 6-digit code to confirm.
+            </DialogDescription>
+          </DialogHeader>
+          {twoFaQr ? (
+            <div className="space-y-4 py-2">
+              <div className="flex justify-center rounded-lg border border-zinc-200 dark:border-zinc-800 bg-white p-3">
+                <img src={twoFaQr} alt="Authenticator QR" className="h-44 w-44 object-contain" />
+              </div>
+              <p className="text-xs text-zinc-500 break-all font-mono">Secret: {twoFaSecret}</p>
+              <div className="space-y-2">
+                <label className="text-sm text-zinc-600 dark:text-zinc-400">6-digit code</label>
+                <Input
+                  inputMode="numeric"
+                  autoComplete="one-time-code"
+                  placeholder="000000"
+                  value={twoFaEnableCode}
+                  onChange={(e) => setTwoFaEnableCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                  className="bg-zinc-50 dark:bg-zinc-950 border-zinc-200 dark:border-zinc-800 font-mono tracking-widest"
+                />
+              </div>
+            </div>
+          ) : (
+            <p className="text-sm text-zinc-500 py-4">Preparing setup…</p>
+          )}
+          <DialogFooter className="gap-2 sm:gap-0">
+            <Button variant="outline" onClick={() => setTwoFaSetupOpen(false)} disabled={twoFaBusy}>
+              Cancel
+            </Button>
+            <Button
+              className="bg-black text-white dark:bg-white dark:text-black"
+              onClick={() => void confirmTwoFaEnable()}
+              disabled={twoFaBusy || twoFaEnableCode.length !== 6}
+            >
+              {twoFaBusy ? 'Saving…' : 'Enable 2FA'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={twoFaDisableOpen} onOpenChange={setTwoFaDisableOpen}>
+        <DialogContent className="sm:max-w-md border-zinc-200 dark:border-zinc-800">
+          <DialogHeader>
+            <DialogTitle>Disable two-factor authentication</DialogTitle>
+            <DialogDescription>Enter your account password and a current code from your authenticator app.</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3 py-2">
+            <div className="space-y-1.5">
+              <label className="text-sm text-zinc-600 dark:text-zinc-400">Password</label>
+              <Input
+                type="password"
+                value={disable2faPassword}
+                onChange={(e) => setDisable2faPassword(e.target.value)}
+                className="bg-zinc-50 dark:bg-zinc-950 border-zinc-200 dark:border-zinc-800"
+              />
+            </div>
+            <div className="space-y-1.5">
+              <label className="text-sm text-zinc-600 dark:text-zinc-400">Authenticator code</label>
+              <Input
+                inputMode="numeric"
+                value={disable2faTotp}
+                onChange={(e) => setDisable2faTotp(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                className="bg-zinc-50 dark:bg-zinc-950 border-zinc-200 dark:border-zinc-800 font-mono"
+              />
+            </div>
+          </div>
+          <DialogFooter className="gap-2 sm:gap-0">
+            <Button variant="outline" onClick={() => setTwoFaDisableOpen(false)} disabled={twoFaBusy}>
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={() => void confirmTwoFaDisable()}
+              disabled={twoFaBusy || !disable2faPassword || disable2faTotp.length !== 6}
+            >
+              {twoFaBusy ? 'Working…' : 'Disable 2FA'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={!!selectedNotification} onOpenChange={(open) => !open && setSelectedNotification(null)}>
+        <DialogContent className="w-[95vw] max-w-6xl border-zinc-200 dark:border-zinc-800">
+          {selectedNotification ? (
+            <div className="space-y-3">
+              <DialogHeader>
+                <DialogTitle>{selectedNotification.title}</DialogTitle>
+                <DialogDescription>
+                  {new Date(selectedNotification.createdAt).toLocaleString()}
+                </DialogDescription>
+              </DialogHeader>
+
+              {selectedNotification.html ? (
+                <div className="rounded-lg border border-zinc-200 dark:border-zinc-800 overflow-hidden bg-black">
+                  <iframe
+                    title="Notification Email Preview"
+                    srcDoc={selectedNotification.html}
+                    className="w-full h-[72vh] bg-black"
+                  />
+                </div>
+              ) : (
+                <div className="rounded-lg border border-zinc-200 dark:border-zinc-800 p-4 bg-zinc-50 dark:bg-zinc-950">
+                  <p className="text-sm text-zinc-700 dark:text-zinc-300 whitespace-pre-wrap">
+                    {notificationPreview(selectedNotification)}
+                  </p>
+                </div>
+              )}
+
+              {selectedNotification.link ? (
+                <div className="flex justify-end">
+                  <Button
+                    onClick={() => {
+                      navigate(selectedNotification.link as string);
+                      setSelectedNotification(null);
+                    }}
+                    className="bg-black hover:bg-zinc-800 dark:bg-white dark:hover:bg-zinc-200 text-white dark:text-black"
+                  >
+                    Open related page
+                  </Button>
+                </div>
+              ) : null}
+            </div>
+          ) : null}
+        </DialogContent>
+      </Dialog>
 
     </div>
   );

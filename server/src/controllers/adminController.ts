@@ -21,13 +21,6 @@ const toDisplay = (v: any) => {
 };
 
 const notifyAdminChange = async (user: any, section: string, details: string, changes: Array<{ field: string; before: string; after: string }> = []) => {
-    await Notification.create({
-        recipient: user._id,
-        title: 'Admin Updated Your Profile',
-        message: `${section}: ${details}`,
-        type: 'system',
-    });
-
     if (user.email) {
         try {
             await sendEmail(
@@ -137,21 +130,11 @@ export const broadcastAnnouncement = catchAsync(async (req: Request, res: Respon
         return next(new AppError('No users found for selected audience', 404));
     }
 
-    // 2. Prepare notifications and send emails
-    const notifications = [];
+    // 2. Send rich email notifications; only fallback to plain in-app when email is missing.
+    const fallbackNotifications = [];
     const emailPromises = [];
 
     for (const user of users) {
-        // Notification
-        notifications.push({
-            recipient: user._id,
-            title: 'Platform Announcement',
-            message: message,
-            type: 'announcement',
-            read: false
-        });
-
-        // Email
         if (user.email) {
             // Note: In production, use a queue like BullMQ or batching. 
             // For now, simple parallel promises.
@@ -160,11 +143,21 @@ export const broadcastAnnouncement = catchAsync(async (req: Request, res: Respon
                 .then(() => console.log(`Email sent to ${user.email}`))
                 .catch(err => console.error(`Failed to email ${user.email}:`, err.message))
             );
+        } else {
+            fallbackNotifications.push({
+                recipient: user._id,
+                title: 'Platform Announcement',
+                message: message,
+                type: 'announcement',
+                read: false
+            });
         }
     }
 
-    // 3. Bulk insert notifications
-    await Notification.insertMany(notifications);
+    // 3. Bulk insert fallback notifications only for users without email.
+    if (fallbackNotifications.length > 0) {
+        await Notification.insertMany(fallbackNotifications);
+    }
 
     // 4. Wait for emails (fail-safe: don't block response too long, or do? 
     // Usually, we respond first or process async. 
@@ -418,12 +411,6 @@ export const sendUserEmailByAdmin = catchAsync(async (req: Request, res: Respons
     const html = adminDirectMessageTemplate(user.name || 'there', subject, message);
 
     await sendEmail(user.email, subject, html);
-    await Notification.create({
-        recipient: user._id,
-        title: 'Message from Admin',
-        message: subject,
-        type: 'system',
-    });
 
     res.status(200).json({
         status: 'success',
@@ -531,13 +518,6 @@ export const updateUserStatus = catchAsync(async (req: Request, res: Response, n
             console.error(`Failed to send ${status} email to user`, error);
         }
     }
-
-    await Notification.create({
-        recipient: user._id,
-        title: notifTitle,
-        message: notifMsg,
-        type: 'system',
-    });
 
     await notifyAdminChange(user, 'Account Status', `Status changed to ${status}${reason ? ` (${reason})` : ''}`);
 
@@ -1196,12 +1176,14 @@ export const updateProgramStatus = catchAsync(async (req: Request, res: Response
             }
         }
 
-        await Notification.create({
-            recipient: company._id,
-            title: notifTitle,
-            message: notifMsg,
-            type: 'system',
-        });
+        if (!company.email) {
+            await Notification.create({
+                recipient: company._id,
+                title: notifTitle,
+                message: notifMsg,
+                type: 'system',
+            });
+        }
     }
 
     res.status(200).json({

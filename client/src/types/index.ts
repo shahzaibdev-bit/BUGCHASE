@@ -7,6 +7,7 @@ export interface User {
   name: string;
   role: UserRole;
   avatar?: string;
+  coverPhoto?: string;
   isVerified?: boolean;
   createdAt: string;
   companyName?: string;
@@ -23,6 +24,8 @@ export interface User {
   reputationScore?: number;
   /** Profile + KYC checklist points (0–150), not stored in DB; see server `getProfileCompletionReputationScore`. */
   profileCompletionScore?: number;
+  /** TOTP 2FA enabled (secret never sent to client). */
+  twoFactorEnabled?: boolean;
 }
 
 export interface TeamMember extends User {

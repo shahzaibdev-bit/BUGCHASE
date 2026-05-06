@@ -8,12 +8,14 @@ import { toast } from '@/hooks/use-toast';
 
 export default function LoginPage() {
   const navigate = useNavigate();
-  const { login, isAuthenticated, user, isLoading: authLoading } = useAuth(); // Keeping hook for future use if needed, but bypassing for now
-  
-  // State kept for visual purpose but not required for instant login
+  const { login, completeTwoFactorLogin, isAuthenticated, user, isLoading: authLoading } = useAuth();
+
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const [needs2fa, setNeeds2fa] = useState(false);
+  const [twoFactorToken, setTwoFactorToken] = useState('');
+  const [totp, setTotp] = useState('');
 
   // Role Routing Map
   const roleRoutes = {
@@ -31,6 +33,36 @@ export default function LoginPage() {
     }
   }, [authLoading, isAuthenticated, user, navigate]);
 
+  const handleTwoFactorSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!twoFactorToken || totp.replace(/\D/g, '').length !== 6) {
+      toast({ title: 'Error', description: 'Enter the 6-digit code from your authenticator app.', variant: 'destructive' });
+      return;
+    }
+    setIsLoading(true);
+    try {
+      const result = await completeTwoFactorLogin(twoFactorToken, totp.replace(/\D/g, ''));
+      if (result.success) {
+        toast({ title: 'ACCESS GRANTED', description: 'Welcome back!' });
+        const actualRole = result.user?.role;
+        if (actualRole && roleRoutes[actualRole as keyof typeof roleRoutes]) {
+          navigate(roleRoutes[actualRole as keyof typeof roleRoutes]);
+        } else {
+          navigate('/researcher');
+        }
+        setNeeds2fa(false);
+        setTwoFactorToken('');
+        setTotp('');
+      } else {
+        toast({ title: 'Login Failed', description: result.error || 'Invalid code', variant: 'destructive' });
+      }
+    } catch {
+      toast({ title: 'Login Failed', description: 'System error', variant: 'destructive' });
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsLoading(true);
@@ -46,15 +78,17 @@ export default function LoginPage() {
 
         if (result.success) {
             toast({ title: 'ACCESS GRANTED', description: `Welcome back!` });
-            
-            // Redirect based on actual user role from server response
             const actualRole = result.user?.role;
             if (actualRole && roleRoutes[actualRole as keyof typeof roleRoutes]) {
                 navigate(roleRoutes[actualRole as keyof typeof roleRoutes]);
             } else {
-                 navigate('/researcher'); // Fallback or maybe show error
+                navigate('/researcher');
             }
-
+        } else if ('requiresTwoFactor' in result && result.requiresTwoFactor && result.twoFactorToken) {
+            setNeeds2fa(true);
+            setTwoFactorToken(result.twoFactorToken);
+            setTotp('');
+            toast({ title: 'Two-factor required', description: 'Enter the 6-digit code from your authenticator app.' });
         } else {
             toast({ title: 'Login Failed', description: result.error || 'Invalid credentials', variant: 'destructive' });
         }
@@ -78,6 +112,7 @@ export default function LoginPage() {
         </div>
 
         {/* Login Form */}
+        {!needs2fa ? (
         <form onSubmit={handleSubmit} className="space-y-4">
             <div className="space-y-1.5">
                 <label className="text-sm font-bold font-mono text-zinc-900 dark:text-white ml-0.5 tracking-wide">EMAIL ADDRESS</label>
@@ -101,7 +136,6 @@ export default function LoginPage() {
                 />
             </div>
 
-            {/* LOGIN BUTTON: Full Width */}
             <Button 
                 type="submit" 
                 className="w-full flex justify-center items-center bg-zinc-900 text-white font-bold tracking-widest uppercase text-sm py-4 rounded-lg mt-6 hover:bg-zinc-800 dark:bg-white dark:text-black dark:hover:bg-gray-200 transition-all duration-200 h-auto"
@@ -110,6 +144,43 @@ export default function LoginPage() {
                 {isLoading ? 'ACCESSING...' : 'LOGIN'}
             </Button>
         </form>
+        ) : (
+        <form onSubmit={handleTwoFactorSubmit} className="space-y-4">
+            <p className="text-sm text-zinc-600 dark:text-zinc-400 font-mono">
+              Enter the 6-digit code from your authenticator app for <span className="text-zinc-900 dark:text-white">{email}</span>.
+            </p>
+            <div className="space-y-1.5">
+                <label className="text-sm font-bold font-mono text-zinc-900 dark:text-white ml-0.5 tracking-wide">AUTHENTICATOR CODE</label>
+                <Input
+                    inputMode="numeric"
+                    autoComplete="one-time-code"
+                    value={totp}
+                    onChange={(e) => setTotp(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                    className="bg-gray-50 dark:bg-transparent border border-gray-300 dark:border-white/20 rounded px-3 py-2 text-zinc-900 dark:text-white text-base font-mono font-medium h-10 tracking-widest"
+                    placeholder="000000"
+                />
+            </div>
+            <Button
+              type="submit"
+              className="w-full flex justify-center items-center bg-zinc-900 text-white font-bold tracking-widest uppercase text-sm py-4 rounded-lg mt-6 hover:bg-zinc-800 dark:bg-white dark:text-black dark:hover:bg-gray-200 transition-all duration-200 h-auto"
+              disabled={isLoading || totp.replace(/\D/g, '').length !== 6}
+            >
+              {isLoading ? 'VERIFYING...' : 'VERIFY & CONTINUE'}
+            </Button>
+            <Button
+              type="button"
+              variant="ghost"
+              className="w-full text-sm text-zinc-500"
+              onClick={() => {
+                setNeeds2fa(false);
+                setTwoFactorToken('');
+                setTotp('');
+              }}
+            >
+              Back to password
+            </Button>
+        </form>
+        )}
 
         {/* Footer */}
         <div className="mt-5 text-center border-t border-gray-200 dark:border-white/10 pt-4">

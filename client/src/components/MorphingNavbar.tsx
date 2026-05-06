@@ -1,12 +1,13 @@
 import React, { useRef, useState, useEffect } from 'react';
 import { motion, useScroll, useTransform, useSpring, useMotionValue, useMotionTemplate, AnimatePresence } from 'motion/react';
-import { Link } from 'react-router-dom';
+import { Link, useLocation } from 'react-router-dom';
 import { CyberLogo } from '@/components/CyberLogo';
 import { Button } from '@/components/ui/button';
 import { Sun, Moon, Menu as MenuIcon, X } from 'lucide-react';
 import { useTheme } from 'next-themes';
 import { MagneticButton } from '@/components/MagneticButton';
 import { useAuth } from '@/contexts/AuthContext';
+import { cn } from '@/lib/utils';
 
 // @ts-ignore
 import CardNav from '@/components/CardNav';
@@ -46,9 +47,11 @@ const navItems = [
 
 export const MorphingNavbar = ({ simple = false }: { simple?: boolean }) => {
   const { theme, setTheme, resolvedTheme } = useTheme();
+  const location = useLocation();
   const { scrollY } = useScroll();
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const { user, logout } = useAuth();
+  const isPublicProfilePage = location.pathname.startsWith('/h/');
   
   // Use resolvedTheme for display logic to handle 'system' preference correctly
   const currentTheme = resolvedTheme || theme;
@@ -78,7 +81,12 @@ export const MorphingNavbar = ({ simple = false }: { simple?: boolean }) => {
         style={{
           width,
         }}
-        className="pointer-events-auto relative px-6 py-4 rounded-xl bg-white/70 dark:bg-black/70 backdrop-blur-md border border-black/15 dark:border-white/10 shadow-2xl shadow-black/20 group transition-[height] duration-300 ease-out"
+        className={cn(
+          "pointer-events-auto relative px-6 py-4 rounded-xl backdrop-blur-md group transition-[height,background-color,border-color] duration-300 ease-out",
+          isPublicProfilePage
+            ? "bg-white/22 dark:bg-black/18 border border-white/25 dark:border-white/15 shadow-lg shadow-black/5"
+            : "bg-white/70 dark:bg-black/70 border border-black/15 dark:border-white/10 shadow-2xl shadow-black/20",
+        )}
       >
         {/* Flashlight/Torch Effect */}
         <div className="absolute inset-0 bg-gradient-to-r from-transparent via-black/5 dark:via-white/5 to-transparent -translate-x-full group-hover:animate-shimmer rounded-xl overflow-hidden" />

@@ -7,8 +7,12 @@ import {
     updateKYCStatus, 
     updateMe, 
     uploadAvatar, 
+    uploadCoverPhoto,
     getMe, 
     getWalletData,
+    getMyNotifications,
+    markNotificationRead,
+    clearLegacyNotifications,
     setupPayoutMethod,
     getPayoutMethods,
     requestPayout,
@@ -32,6 +36,19 @@ const upload = multer({
         }
     }
 });
+const coverUpload = multer({
+    storage: multer.memoryStorage(),
+    limits: {
+        fileSize: 5 * 1024 * 1024, // 5MB limit for cover photos
+    },
+    fileFilter: (req, file, cb) => {
+        if (file.mimetype === 'image/jpeg' || file.mimetype === 'image/png' || file.mimetype === 'image/jpg' || file.mimetype === 'image/webp') {
+            cb(null, true);
+        } else {
+            cb(new Error('Not an image! Please upload only images.'));
+        }
+    }
+});
 
 // Allow public access mostly, but rate limit it to prevent scraping abuse
 // 20 requests per minute per IP
@@ -45,8 +62,12 @@ router.get('/leaderboard', protect, getResearcherLeaderboard);
 router.patch('/verify-kyc-status', protect, updateKYCStatus);
 router.patch('/updateMe', protect, updateMe);
 router.post('/upload-avatar', protect, uploadLimiter, upload.single('avatar'), uploadAvatar);
+router.post('/upload-cover', protect, uploadLimiter, coverUpload.single('coverPhoto'), uploadCoverPhoto);
 router.get('/me', protect, getMe);
 router.get('/wallet', protect, getWalletData);
+router.get('/notifications', protect, getMyNotifications);
+router.delete('/notifications/legacy', protect, clearLegacyNotifications);
+router.patch('/notifications/:id/read', protect, markNotificationRead);
 
 // Payout Routes
 router.post('/payout-setup', protect, setupPayoutMethod);

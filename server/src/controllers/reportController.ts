@@ -106,6 +106,7 @@ export const createReport = catchAsync(async (req: Request, res: Response, next:
     reportId: generatedReportId,
     title,
     vulnerableEndpoint,
+    assetType: assetType ? String(assetType).trim() : undefined,
     vulnerabilityCategory,
     severity,
     cvssVector,
