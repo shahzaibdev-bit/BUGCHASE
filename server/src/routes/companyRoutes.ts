@@ -1,6 +1,6 @@
 import express from 'express';
 import { protect, restrictTo } from '../middlewares/auth';
-import { inviteMember, getTeamMembers, generateVerificationToken, verifyDomain, getVerifiedAssets, updateAssetStatus, deleteVerifiedAsset, updateAssetScope, createProgram, getCompanyPrograms, getProgramById, deleteProgram, getReportDetails, getCompanyReports, updateReportSeverity, addCompanyComment, suggestBounty, updateReportStatus, awardBounty, generateReportMessage, createTopUpIntent, confirmTopUp, getWalletTransactions, createSetupIntent, getPaymentMethods, detachPaymentMethod, getCompanyAnalytics, requestPaymentMethodOtp, verifyPaymentMethodOtp } from '../controllers/companyController';
+import { inviteMember, getTeamMembers, generateVerificationToken, verifyDomain, getVerifiedAssets, updateAssetStatus, deleteVerifiedAsset, deleteAssetHost, updateAssetScope, postAssetDiscoveryScan, createProgram, getCompanyPrograms, getProgramById, deleteProgram, getReportDetails, getCompanyReports, updateReportSeverity, addCompanyComment, suggestBounty, updateReportStatus, awardBounty, generateReportMessage, createTopUpIntent, confirmTopUp, getWalletTransactions, createSetupIntent, getPaymentMethods, detachPaymentMethod, getCompanyAnalytics, requestPaymentMethodOtp, verifyPaymentMethodOtp } from '../controllers/companyController';
 import multer from 'multer';
 
 const upload = multer({ storage: multer.memoryStorage() });
@@ -19,9 +19,11 @@ router.get('/team', getTeamMembers);
 router.post('/generate-token', generateVerificationToken);
 router.post('/verify-domain', verifyDomain);
 router.get('/assets', getVerifiedAssets);
+router.post('/assets/discovery-scan', postAssetDiscoveryScan);
 router.patch('/assets/:id/status', updateAssetStatus);
 router.delete('/assets/:id', deleteVerifiedAsset);
 router.patch('/assets/:id/scope', updateAssetScope);
+router.delete('/assets/:id/host', deleteAssetHost);
 
 router.post('/programs', createProgram);
 router.get('/programs', getCompanyPrograms);

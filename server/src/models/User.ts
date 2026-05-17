@@ -52,6 +52,10 @@ export interface IUser extends Document {
         status: 'verified' | 'disabled';
         inScope?: string[];
         outScope?: string[];
+        /** Hostnames found by discovery but not yet scoped */
+        discovered?: string[];
+        /** Latest port scan results keyed by hostname */
+        portScanData?: Record<string, { ports: number[]; protocol?: string }>;
     }[];
     achievements?: {
         title: string;
@@ -179,7 +183,12 @@ const userSchema = new mongoose.Schema<IUser>({
             default: 'verified'
         },
         inScope: [String],
-        outScope: [String]
+        outScope: [String],
+        discovered: [String],
+        portScanData: {
+            type: mongoose.Schema.Types.Mixed,
+            default: undefined,
+        },
   }],
   achievements: [{
       title: String,

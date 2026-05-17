@@ -1,7 +1,7 @@
 import { Request, Response, NextFunction } from 'express';
 import bcrypt from 'bcrypt';
 import crypto from 'crypto';
-import User from '../models/User';
+import User, { IUser } from '../models/User';
 import Program from '../models/Program';
 import Report from '../models/Report';
 import AppError from '../utils/AppError';
@@ -17,6 +17,7 @@ import {
   applyResearcherReputationOnStatusTransition,
   clearReputationMilestonesForReTriage,
 } from '../services/researcherReputationService';
+import { resolveCompanyAccount } from '../utils/companyAccount';
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY as string, {
     apiVersion: '2026-04-22.dahlia',
@@ -118,10 +119,7 @@ export const generateVerificationToken = catchAsync(async (req: Request, res: Re
     // Generate Unique Token - longer for uniqueness
     const uniqueToken = `bc-verification=${crypto.randomBytes(16).toString('hex')}`;
 
-    // Store in User Document
-    const user = await User.findById(req.user!.id);
-    if (!user) return next(new AppError('User not found', 404));
-
+    const user = await resolveCompanyAccount(req);
     user.verificationToken = uniqueToken;
     await user.save({ validateBeforeSave: false });
 
@@ -139,9 +137,7 @@ export const verifyDomain = catchAsync(async (req: Request, res: Response, next:
         return next(new AppError('Invalid domain format.', 400));
     }
 
-    const user = await User.findById(req.user!.id);
-    if (!user) return next(new AppError('User not found', 404));
-
+    const user = await resolveCompanyAccount(req);
     const verificationToken = user.verificationToken;
     if (!verificationToken) {
         return next(new AppError('No verification token found. Please generate one first.', 400));
@@ -216,11 +212,11 @@ export const verifyDomain = catchAsync(async (req: Request, res: Response, next:
 });
 
 export const getVerifiedAssets = catchAsync(async (req: Request, res: Response, next: NextFunction) => {
-    const user = await User.findById(req.user!.id);
-    
+    const company = await resolveCompanyAccount(req);
+
     res.status(200).json({
         status: 'success',
-        data: user?.verifiedAssets || []
+        data: company.verifiedAssets || [],
     });
 });
 
@@ -232,9 +228,7 @@ export const updateAssetStatus = catchAsync(async (req: Request, res: Response, 
         return next(new AppError('Invalid status', 400));
     }
 
-    const user = await User.findById(req.user!.id);
-    if (!user) return next(new AppError('User not found', 404));
-
+    const user = await resolveCompanyAccount(req);
     if (!user.verifiedAssets) return next(new AppError('Asset not found', 404));
 
     const asset = user.verifiedAssets.find(a => a.id === id);
@@ -256,8 +250,8 @@ export const updateAssetScope = catchAsync(async (req: Request, res: Response, n
     const { id } = req.params;
     const { inScope, outScope } = req.body;
 
-    const user = await User.findById(req.user!.id);
-    if (!user || !user.verifiedAssets) {
+    const user = await resolveCompanyAccount(req);
+    if (!user.verifiedAssets) {
         return next(new AppError('User or assets not found', 404));
     }
 
@@ -273,6 +267,11 @@ export const updateAssetScope = catchAsync(async (req: Request, res: Response, n
         asset.outScope = outScope;
     }
 
+    const scoped = new Set([...(asset.inScope || []), ...(asset.outScope || [])]);
+    if (asset.discovered?.length) {
+        asset.discovered = asset.discovered.filter((h) => !scoped.has(h));
+    }
+
     await user.save({ validateBeforeSave: false });
 
     res.status(200).json({
@@ -281,12 +280,52 @@ export const updateAssetScope = catchAsync(async (req: Request, res: Response, n
     });
 });
 
+/** Remove a single discovered/scoped hostname from a verified root asset. */
+export const deleteAssetHost = catchAsync(async (req: Request, res: Response, next: NextFunction) => {
+    const { id } = req.params;
+    const { host } = req.body as { host?: string };
+
+    const hostname = typeof host === 'string' ? host.trim() : '';
+    if (!hostname) {
+        return next(new AppError('host is required', 400));
+    }
+
+    const user = await resolveCompanyAccount(req);
+    if (!user.verifiedAssets?.length) {
+        return next(new AppError('Asset not found', 404));
+    }
+
+    const asset = user.verifiedAssets.find((a) => a.id === id);
+    if (!asset) {
+        return next(new AppError('Asset not found', 404));
+    }
+
+    const filterHost = (list?: string[]) => (list || []).filter((h) => h !== hostname);
+
+    asset.inScope = filterHost(asset.inScope);
+    asset.outScope = filterHost(asset.outScope);
+    asset.discovered = filterHost(asset.discovered);
+
+    if (asset.portScanData && typeof asset.portScanData === 'object') {
+        const nextScan = { ...asset.portScanData };
+        delete nextScan[hostname];
+        asset.portScanData = Object.keys(nextScan).length ? nextScan : undefined;
+    }
+
+    user.markModified('verifiedAssets');
+    await user.save({ validateBeforeSave: false });
+
+    res.status(200).json({
+        status: 'success',
+        message: 'Host removed from asset inventory',
+        data: asset,
+    });
+});
+
 export const deleteVerifiedAsset = catchAsync(async (req: Request, res: Response, next: NextFunction) => {
     const { id } = req.params;
 
-    const user = await User.findById(req.user!.id);
-    if (!user) return next(new AppError('User not found', 404));
-
+    const user = await resolveCompanyAccount(req);
     if (!user.verifiedAssets) return next(new AppError('Asset not found', 404));
 
     const initialLength = user.verifiedAssets.length;
@@ -302,6 +341,191 @@ export const deleteVerifiedAsset = catchAsync(async (req: Request, res: Response
         status: 'success',
         message: 'Asset deleted successfully'
     });
+});
+
+type DiscoveryEngineResults = {
+    domain?: string;
+    live_subdomains?: string[];
+    scan_data?: Record<string, { ports: number[]; protocol?: string }>;
+    shodan_intel?: string;
+    error?: string;
+};
+
+function persistDiscoveryOnAsset(
+    asset: NonNullable<IUser['verifiedAssets']>[number],
+    results: DiscoveryEngineResults,
+) {
+    const inScope = new Set(asset.inScope || []);
+    const outScope = new Set(asset.outScope || []);
+
+    if (results.live_subdomains?.length) {
+        const discovered = new Set(asset.discovered || []);
+        for (const host of results.live_subdomains) {
+            const h = host.trim();
+            if (!h || inScope.has(h) || outScope.has(h)) continue;
+            discovered.add(h);
+        }
+        asset.discovered = Array.from(discovered);
+    }
+
+    if (results.scan_data && Object.keys(results.scan_data).length) {
+        asset.portScanData = { ...(asset.portScanData || {}), ...results.scan_data };
+    }
+}
+
+/**
+ * Proxy to Asset-Discovery FastAPI (default http://127.0.0.1:9000).
+ * Keeps the discovery engine off the public browser origin; configure ASSET_DISCOVERY_URL on the server.
+ */
+export const postAssetDiscoveryScan = catchAsync(async (req: Request, res: Response, next: NextFunction) => {
+    const {
+        verifiedAssetId,
+        scanType,
+        focusHost,
+        scanSubdomains,
+        scanNmap,
+        scanShodan,
+    } = req.body as {
+        verifiedAssetId?: string;
+        /** @deprecated Use scanSubdomains / scanNmap / scanShodan */
+        scanType?: 'SUBDOMAIN' | 'PORT_SCAN';
+        focusHost?: string;
+        scanSubdomains?: boolean;
+        scanNmap?: boolean;
+        scanShodan?: boolean;
+    };
+
+    if (!verifiedAssetId) {
+        return next(new AppError('verifiedAssetId is required', 400));
+    }
+
+    const user = await resolveCompanyAccount(req);
+    if (!user.verifiedAssets?.length) {
+        return next(new AppError('No verified assets', 404));
+    }
+
+    const asset = user.verifiedAssets.find((a) => a.id === verifiedAssetId);
+    if (!asset) {
+        return next(new AppError('Asset not found', 404));
+    }
+    if (asset.status !== 'verified') {
+        return next(new AppError('Domain must be verified before running discovery', 403));
+    }
+
+    const trimmedFocus =
+        typeof focusHost === 'string' && focusHost.trim() ? focusHost.trim() : undefined;
+
+    let doSubdomains: boolean;
+    let doNmap: boolean;
+    let doShodan: boolean;
+
+    const hasExplicitFlags =
+        typeof scanSubdomains === 'boolean' ||
+        typeof scanNmap === 'boolean' ||
+        typeof scanShodan === 'boolean';
+
+    if (hasExplicitFlags) {
+        doSubdomains = Boolean(scanSubdomains);
+        doNmap = Boolean(scanNmap);
+        doShodan = Boolean(scanShodan);
+    } else if (scanType === 'PORT_SCAN') {
+        doSubdomains = false;
+        doNmap = true;
+        doShodan = false;
+    } else {
+        doSubdomains = true;
+        doNmap = true;
+        doShodan = true;
+    }
+
+    if (!doSubdomains && !doNmap && !doShodan) {
+        return next(new AppError('Select at least one scan type', 400));
+    }
+
+    const base = (process.env.ASSET_DISCOVERY_URL || 'http://127.0.0.1:9000').replace(/\/$/, '');
+
+    // When Nmap runs without subdomain discovery, seed targets from inventory + root domain.
+    let nmapTargets: string[] | undefined;
+    if (doNmap && !doSubdomains) {
+        const hosts = new Set<string>([asset.domain]);
+        (asset.discovered || []).forEach((h) => hosts.add(h));
+        (asset.inScope || []).forEach((h) => hosts.add(h));
+        nmapTargets = [...hosts].slice(0, 20);
+    }
+
+    const payload: Record<string, unknown> = {
+        companyId: String(user._id),
+        name: user.companyName || user.name || 'Company',
+        domain: asset.domain,
+        isDomainVerified: true,
+        scanSubdomains: doSubdomains,
+        scanShodan: doShodan,
+        scanNmap: doNmap,
+        focusHost: trimmedFocus || null,
+    };
+    if (nmapTargets?.length) {
+        payload.nmapTargets = nmapTargets;
+    }
+
+    const scanUrl = `${base}/initiate-scan`;
+    const timeoutMs = 11 * 60 * 1000;
+    const controller = new AbortController();
+    const tid = setTimeout(() => controller.abort(), timeoutMs);
+
+    let upstream: globalThis.Response;
+    try {
+        upstream = await fetch(scanUrl, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload),
+            signal: controller.signal,
+        });
+    } catch (e: any) {
+        clearTimeout(tid);
+        const aborted = e?.name === 'AbortError';
+        console.error('[asset-discovery] fetch failed', e);
+        return next(
+            new AppError(
+                aborted
+                    ? 'Discovery scan timed out waiting for the engine'
+                    : 'Discovery engine unreachable. Ensure Asset-Discovery is running and ASSET_DISCOVERY_URL is correct.',
+                503,
+            ),
+        );
+    } finally {
+        clearTimeout(tid);
+    }
+
+    const text = await upstream.text();
+    let data: { success?: boolean; results?: DiscoveryEngineResults; detail?: unknown; raw?: string };
+    try {
+        data = JSON.parse(text) as typeof data;
+    } catch {
+        data = { raw: text };
+    }
+
+    if (!upstream.ok) {
+        const detail = data?.detail;
+        let message = 'Discovery service error';
+        if (typeof detail === 'string') {
+            message = detail;
+        } else if (Array.isArray(detail)) {
+            message = detail
+                .map((d: { msg?: string }) => (typeof d === 'object' && d && 'msg' in d ? String((d as { msg?: string }).msg) : String(d)))
+                .join('; ');
+        } else if (detail && typeof detail === 'object' && 'msg' in (detail as object)) {
+            message = String((detail as { msg: string }).msg);
+        }
+        return res.status(upstream.status).json({ status: 'error', message, data });
+    }
+
+    const results = data?.results;
+    if (results && !results.error) {
+        persistDiscoveryOnAsset(asset, results);
+        await user.save({ validateBeforeSave: false });
+    }
+
+    res.status(200).json({ status: 'success', data });
 });
 
 export const createProgram = catchAsync(async (req: Request, res: Response, next: NextFunction) => {

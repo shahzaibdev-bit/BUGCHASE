@@ -1,15 +1,13 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
+import { Link } from 'react-router-dom';
 import { 
   Radar, 
   Play, 
   Terminal, 
   Plus, 
-  Trash2, 
   Search, 
   ShieldCheck, 
-  AlertTriangle, 
   Ban, 
-  X,
   RefreshCw,
   Server,
   Globe,
@@ -17,11 +15,15 @@ import {
   CheckCircle2,
   AlertCircle,
   History,
-  Activity
+  Activity,
+  ExternalLink,
+  Crosshair,
+  Trash2,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { GlassCard } from '@/components/ui/glass-card';
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { toast } from '@/hooks/use-toast';
 import {
   Select,
@@ -30,6 +32,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { Checkbox } from '@/components/ui/checkbox';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { cn } from '@/lib/utils';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -38,12 +41,63 @@ import { API_URL } from '@/config';
 // Types
 type ScanStatus = 'QUEUED' | 'PROCESSING' | 'COMPLETED' | 'FAILED';
 type AssetStatus = 'POTENTIAL' | 'IN_SCOPE' | 'OUT_OF_SCOPE';
+type ScanModuleId = 'subdomain' | 'nmap' | 'shodan';
+
+type ScanModules = Record<ScanModuleId, boolean>;
+
+const SCAN_MODULE_OPTIONS: {
+  id: ScanModuleId;
+  label: string;
+  shortLabel: string;
+  description: string;
+  icon: React.ComponentType<{ className?: string }>;
+}[] = [
+  { id: 'subdomain', label: 'Subdomain discovery', shortLabel: 'Subdomain', description: 'Find live hosts via subfinder + httpx', icon: Globe },
+  { id: 'nmap', label: 'Port scanning', shortLabel: 'Port scan', description: 'Nmap on root domain and known assets (no subdomain scan required)', icon: Server },
+  { id: 'shodan', label: 'Shodan intelligence', shortLabel: 'Shodan', description: 'Public exposure and service metadata', icon: Crosshair },
+];
+
+const DEFAULT_SCAN_MODULES: ScanModules = {
+  subdomain: true,
+  nmap: true,
+  shodan: false,
+};
+
+type DiscoveryResults = {
+  domain?: string;
+  live_subdomains?: string[];
+  scan_data?: Record<string, { ports: number[]; protocol?: string }>;
+  shodan_intel?: string;
+  error?: string;
+};
+
+function formatScanModules(modules: ScanModules): string {
+  const labels = SCAN_MODULE_OPTIONS.filter((o) => modules[o.id]).map((o) => o.shortLabel);
+  if (labels.length === 0) return 'No scans selected';
+  if (labels.length === SCAN_MODULE_OPTIONS.length) return 'All scans';
+  return labels.join(', ');
+}
+
+function buildScanSummary(modules: ScanModules, results: DiscoveryResults): string {
+  const parts: string[] = [];
+  if (modules.subdomain) {
+    parts.push(`Live hosts: ${results.live_subdomains?.length ?? 0}`);
+  }
+  if (modules.nmap) {
+    parts.push(`Nmap: ${results.scan_data ? Object.keys(results.scan_data).length : 0} host(s)`);
+  }
+  if (modules.shodan) {
+    const intel = results.shodan_intel?.trim();
+    parts.push(intel && intel !== 'Skipped' && intel !== 'No data' ? 'Shodan: data received' : 'Shodan: no data');
+  }
+  return parts.join(' · ') || 'Scan finished';
+}
 
 interface ScanJob {
   id: string;
   target: string;
   status: ScanStatus;
-  type: 'SUBDOMAIN' | 'PORT_SCAN';
+  modulesLabel: string;
   timestamp: Date;
   details?: string;
 }
@@ -62,67 +116,100 @@ export default function CompanyAssets() {
   // State
   const [verifiedDomains, setVerifiedDomains] = useState<any[]>([]);
   const [selectedDomain, setSelectedDomain] = useState<string>('');
-  const [scanType, setScanType] = useState<'SUBDOMAIN' | 'PORT_SCAN'>('SUBDOMAIN');
+  const [scanModules, setScanModules] = useState<ScanModules>(DEFAULT_SCAN_MODULES);
   const [scanQueue, setScanQueue] = useState<ScanJob[]>([]);
   const [assets, setAssets] = useState<Asset[]>([]);
   const [activeAssetTab, setActiveAssetTab] = useState<string>('all');
   const [activeMainTab, setActiveMainTab] = useState<string>('assets');
+  const [isScanning, setIsScanning] = useState(false);
+  const [isLoadingAssets, setIsLoadingAssets] = useState(true);
+
+  const hydrateAssetsFromVerifiedDomains = useCallback((domains: any[]): Asset[] => {
+    const hydratedAssets: Asset[] = [];
+    const portDataFor = (vd: any, host: string) => {
+      const scan = vd.portScanData?.[host];
+      return scan?.ports?.length ? scan.ports : [];
+    };
+    const serviceFor = (vd: any, host: string) => {
+      const scan = vd.portScanData?.[host];
+      return scan?.ports?.length ? 'Nmap' : 'Unknown';
+    };
+
+    domains.forEach((vd: any) => {
+      const lastScanned = vd.dateVerified || new Date().toISOString();
+      if (vd.inScope && Array.isArray(vd.inScope)) {
+        vd.inScope.forEach((sub: string) => {
+          const ports = portDataFor(vd, sub);
+          hydratedAssets.push({
+            id: `db-in-${vd.id}-${sub}`,
+            domain: sub,
+            type: 'Subdomain',
+            ports: ports.length ? ports : [443, 80],
+            service: serviceFor(vd, sub),
+            status: 'IN_SCOPE',
+            lastScanned,
+          });
+        });
+      }
+      if (vd.outScope && Array.isArray(vd.outScope)) {
+        vd.outScope.forEach((sub: string) => {
+          hydratedAssets.push({
+            id: `db-out-${vd.id}-${sub}`,
+            domain: sub,
+            type: 'Subdomain',
+            ports: portDataFor(vd, sub),
+            service: serviceFor(vd, sub),
+            status: 'OUT_OF_SCOPE',
+            lastScanned,
+          });
+        });
+      }
+      if (vd.discovered && Array.isArray(vd.discovered)) {
+        vd.discovered.forEach((sub: string) => {
+          hydratedAssets.push({
+            id: `db-pot-${vd.id}-${sub}`,
+            domain: sub,
+            type: 'Subdomain',
+            ports: portDataFor(vd, sub),
+            service: serviceFor(vd, sub),
+            status: 'POTENTIAL',
+            lastScanned,
+          });
+        });
+      }
+    });
+    return hydratedAssets;
+  }, []);
+
+  const fetchAssets = useCallback(async () => {
+    setIsLoadingAssets(true);
+    try {
+      const token = localStorage.getItem('token');
+      const res = await fetch(`${API_URL}/company/assets`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const data = await res.json();
+      if (data.status === 'success') {
+        const verified = (data.data || []).filter((d: { status?: string }) => d.status === 'verified');
+        setVerifiedDomains(verified);
+        if (verified.length > 0) {
+          setSelectedDomain((prev) => (verified.some((d: { domain: string }) => d.domain === prev) ? prev : verified[0].domain));
+        } else {
+          setSelectedDomain('');
+        }
+        setAssets(hydrateAssetsFromVerifiedDomains(verified));
+      }
+    } catch (error) {
+      console.error('Failed to fetch assets', error);
+      toast({ title: 'Could not load assets', description: 'Check your connection and try again.', variant: 'destructive' });
+    } finally {
+      setIsLoadingAssets(false);
+    }
+  }, [hydrateAssetsFromVerifiedDomains]);
 
   useEffect(() => {
-    const fetchAssets = async () => {
-        try {
-            const token = localStorage.getItem('token');
-            const res = await fetch(`${API_URL}/company/assets`, {
-                headers: { 'Authorization': `Bearer ${token}` }
-            });
-            const data = await res.json();
-            if (data.status === 'success') {
-                setVerifiedDomains(data.data);
-                if (data.data.length > 0) {
-                    setSelectedDomain(data.data[0].domain);
-                }
-
-                // Hydrate assets from verifiedDomains
-                const hydratedAssets: Asset[] = [];
-                data.data.forEach((vd: any) => {
-                    if (vd.inScope && Array.isArray(vd.inScope)) {
-                        vd.inScope.forEach((sub: string) => {
-                            hydratedAssets.push({
-                                id: `db-in-${Math.random().toString(36).substr(2, 9)}`,
-                                domain: sub,
-                                type: 'Subdomain',
-                                ports: [443, 80],
-                                service: 'Unknown',
-                                status: 'IN_SCOPE',
-                                lastScanned: vd.dateVerified || new Date().toISOString()
-                            });
-                        });
-                    }
-                    if (vd.outScope && Array.isArray(vd.outScope)) {
-                        vd.outScope.forEach((sub: string) => {
-                            hydratedAssets.push({
-                                id: `db-out-${Math.random().toString(36).substr(2, 9)}`,
-                                domain: sub,
-                                type: 'Subdomain',
-                                ports: [],
-                                service: 'Unknown',
-                                status: 'OUT_OF_SCOPE',
-                                lastScanned: vd.dateVerified || new Date().toISOString()
-                            });
-                        });
-                    }
-                });
-                
-                if (hydratedAssets.length > 0) {
-                    setAssets(hydratedAssets);
-                }
-            }
-        } catch (error) {
-            console.error("Failed to fetch assets", error);
-        }
-    };
-    fetchAssets();
-  }, []);
+    void fetchAssets();
+  }, [fetchAssets]);
 
   // Derived State
   const filteredAssets = assets.filter(asset => {
@@ -133,56 +220,158 @@ export default function CompanyAssets() {
     return true;
   });
 
-  // Handlers
-  const queueJob = (target: string, type: 'SUBDOMAIN' | 'PORT_SCAN') => {
-      const newJob: ScanJob = {
-          id: `JOB-${Math.floor(Math.random() * 10000)}`,
-          target: target,
-          status: 'QUEUED',
-          type: type,
-          timestamp: new Date(),
-          details: 'Waiting for available node...'
-      };
-
-      setScanQueue(prev => [newJob, ...prev]);
-
-      toast({
-          title: "Scan Queued",
-          description: "Scan is queued and you will be notified accordingly.",
+  const mergeDiscoveryIntoAssets = (prev: Asset[], results: DiscoveryResults): Asset[] => {
+    const byDomain = new Map<string, Asset>(prev.map((a) => [a.domain, { ...a }]));
+    const live = results.live_subdomains || [];
+    for (const host of live) {
+      const h = host.trim();
+      if (!h || byDomain.has(h)) continue;
+      byDomain.set(h, {
+        id: `disc-${h}-${Date.now()}`,
+        domain: h,
+        type: 'Subdomain',
+        ports: [],
+        service: 'Unknown',
+        status: 'POTENTIAL',
+        lastScanned: new Date().toISOString(),
       });
-
-      // Simulate Processing Start
-      setTimeout(() => {
-          updateJobStatus(newJob.id, 'PROCESSING', 'Enumerating subdomains via passive sources...');
-      }, 2000);
-
-      // Simulate Completion & Discovery
-      setTimeout(() => {
-          updateJobStatus(newJob.id, 'COMPLETED', type === 'SUBDOMAIN' ? 'Found 3 new assets' : 'Open ports: 80, 443');
-          
-          if (type === 'SUBDOMAIN') {
-               const newAssets: Asset[] = [
-                   { id: Math.random().toString(), domain: `api.${target}`, type: 'Subdomain', ports: [443], service: 'Nginx', status: 'POTENTIAL', lastScanned: new Date().toISOString() },
-                   { id: Math.random().toString(), domain: `dev.${target}`, type: 'Subdomain', ports: [8080], service: 'Node.js', status: 'POTENTIAL', lastScanned: new Date().toISOString() },
-                   { id: Math.random().toString(), domain: `admin.${target}`, type: 'Subdomain', ports: [443], service: 'Apache', status: 'POTENTIAL', lastScanned: new Date().toISOString() },
-               ];
-               setAssets(prev => [...newAssets, ...prev]);
-               toast({ title: "Scan Completed", description: `Found 3 new assets for ${target}` });
-          }
-      }, 8000 + Math.random() * 5000);
+    }
+    const scanData = results.scan_data || {};
+    for (const [host, info] of Object.entries(scanData)) {
+      const h = host.trim();
+      if (!h) continue;
+      const ports = info?.ports || [];
+      const existing = byDomain.get(h);
+      if (existing) {
+        byDomain.set(h, {
+          ...existing,
+          ports: ports.length ? ports : existing.ports,
+          service: ports.length ? 'Nmap' : existing.service,
+          lastScanned: new Date().toISOString(),
+        });
+      } else {
+        byDomain.set(h, {
+          id: `nmap-${h}-${Date.now()}`,
+          domain: h,
+          type: 'Subdomain',
+          ports,
+          service: ports.length ? 'Nmap' : 'Unknown',
+          status: 'POTENTIAL',
+          lastScanned: new Date().toISOString(),
+        });
+      }
+    }
+    return Array.from(byDomain.values());
   };
 
   const updateJobStatus = (id: string, status: ScanStatus, details?: string) => {
-      setScanQueue(prev => prev.map(job => job.id === id ? { ...job, status, details } : job));
+    setScanQueue((prev) => prev.map((job) => (job.id === id ? { ...job, status, details } : job)));
+  };
+
+  const toggleScanModule = (id: ScanModuleId, checked: boolean) => {
+    setScanModules((prev) => {
+      const next = { ...prev, [id]: checked };
+      const anySelected = SCAN_MODULE_OPTIONS.some((o) => next[o.id]);
+      if (!anySelected) return prev;
+      return next;
+    });
+  };
+
+  const runDiscoveryScan = async (opts: {
+    targetLabel: string;
+    modules: ScanModules;
+    verifiedAssetId: string;
+    focusHost?: string;
+  }) => {
+    const jobId = `JOB-${Date.now()}`;
+    const modulesLabel = formatScanModules(opts.modules);
+    const newJob: ScanJob = {
+      id: jobId,
+      target: opts.targetLabel,
+      status: 'PROCESSING',
+      modulesLabel,
+      timestamp: new Date(),
+      details: `Running: ${modulesLabel}`,
+    };
+    setScanQueue((prev) => [newJob, ...prev]);
+    setActiveMainTab('scans');
+    setIsScanning(true);
+
+    try {
+      const token = localStorage.getItem('token');
+      const res = await fetch(`${API_URL}/company/assets/discovery-scan`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        credentials: 'include',
+        body: JSON.stringify({
+          verifiedAssetId: opts.verifiedAssetId,
+          scanSubdomains: opts.modules.subdomain,
+          scanNmap: opts.modules.nmap,
+          scanShodan: opts.modules.shodan,
+          ...(opts.focusHost ? { focusHost: opts.focusHost } : {}),
+        }),
+      });
+      const body = await res.json().catch(() => ({}));
+
+      if (!res.ok) {
+        const msg = body.message || body.error || `Discovery failed (${res.status})`;
+        updateJobStatus(jobId, 'FAILED', msg);
+        toast({ title: 'Discovery failed', description: String(msg), variant: 'destructive' });
+        return;
+      }
+
+      const payload = body.data as { success?: boolean; results?: DiscoveryResults };
+      const results = payload?.results;
+      if (!results) {
+        updateJobStatus(jobId, 'FAILED', 'Empty response from engine');
+        toast({ title: 'Discovery failed', description: 'Engine returned no results.', variant: 'destructive' });
+        return;
+      }
+      if (results.error) {
+        updateJobStatus(jobId, 'FAILED', results.error);
+        toast({ title: 'Scan error', description: results.error, variant: 'destructive' });
+        return;
+      }
+
+      setAssets((prev) => mergeDiscoveryIntoAssets(prev, results));
+      void fetchAssets();
+
+      const summary = buildScanSummary(opts.modules, results);
+
+      updateJobStatus(jobId, 'COMPLETED', summary);
+      toast({ title: 'Scan completed', description: summary });
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : 'Network error';
+      updateJobStatus(jobId, 'FAILED', msg);
+      toast({ title: 'Discovery failed', description: msg, variant: 'destructive' });
+    } finally {
+      setIsScanning(false);
+    }
   };
 
   const handleQueueScan = () => {
     if (!selectedDomain) {
-        toast({ title: "Error", description: "Please select a target domain", variant: "destructive" });
-        return;
+      toast({ title: 'Error', description: 'Please select a target domain', variant: 'destructive' });
+      return;
     }
-    queueJob(selectedDomain, scanType);
-    setActiveMainTab('scans'); // Switch to scans tab to show progress
+    const anyModule = SCAN_MODULE_OPTIONS.some((o) => scanModules[o.id]);
+    if (!anyModule) {
+      toast({ title: 'Error', description: 'Select at least one scan type', variant: 'destructive' });
+      return;
+    }
+    const vd = verifiedDomains.find((d) => d.domain === selectedDomain);
+    if (!vd?.id) {
+      toast({ title: 'Error', description: 'Could not resolve verified asset id', variant: 'destructive' });
+      return;
+    }
+    void runDiscoveryScan({
+      targetLabel: selectedDomain,
+      modules: scanModules,
+      verifiedAssetId: vd.id,
+    });
   };
 
   const handleUpdateScope = async (id: string, newStatus: AssetStatus) => {
@@ -236,11 +425,63 @@ export default function CompanyAssets() {
     }
   };
 
-  const handlePortScan = (id: string) => {
-    const asset = assets.find(a => a.id === id);
-    if (asset) {
-        queueJob(asset.domain, 'PORT_SCAN');
+  const findRootVerifiedForAsset = (asset: Asset) =>
+    verifiedDomains.find(
+      (vd) => asset.domain === vd.domain || asset.domain.endsWith('.' + vd.domain),
+    );
+
+  const handleDeleteAsset = async (asset: Asset) => {
+    if (!window.confirm(`Remove ${asset.domain} from your asset inventory?`)) return;
+
+    const rootVerifiedDomain = findRootVerifiedForAsset(asset);
+    if (!rootVerifiedDomain?.id) {
+      toast({ title: 'Error', description: 'Could not map asset to a verified root domain', variant: 'destructive' });
+      return;
     }
+
+    setAssets((prev) => prev.filter((a) => a.id !== asset.id));
+
+    try {
+      const token = localStorage.getItem('token');
+      const res = await fetch(`${API_URL}/company/assets/${rootVerifiedDomain.id}/host`, {
+        method: 'DELETE',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ host: asset.domain }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        void fetchAssets();
+        toast({
+          title: 'Delete failed',
+          description: data.message || 'Could not remove asset',
+          variant: 'destructive',
+        });
+        return;
+      }
+      toast({ title: 'Asset removed', description: `${asset.domain} was deleted from inventory.` });
+    } catch {
+      void fetchAssets();
+      toast({ title: 'Delete failed', description: 'Network error', variant: 'destructive' });
+    }
+  };
+
+  const handlePortScan = (id: string) => {
+    const asset = assets.find((a) => a.id === id);
+    if (!asset) return;
+    const rootVerifiedDomain = findRootVerifiedForAsset(asset);
+    if (!rootVerifiedDomain?.id) {
+      toast({ title: 'Error', description: 'Could not map asset to a verified root domain', variant: 'destructive' });
+      return;
+    }
+    void runDiscoveryScan({
+      targetLabel: asset.domain,
+      modules: { subdomain: false, nmap: true, shodan: false },
+      verifiedAssetId: rootVerifiedDomain.id,
+      focusHost: asset.domain,
+    });
   };
 
   return (
@@ -249,22 +490,37 @@ export default function CompanyAssets() {
       {/* SECTION A: Recon Command Center */}
       <div className="grid lg:grid-cols-3 gap-6">
           <div className="lg:col-span-2 space-y-6">
-              <div className="flex flex-col gap-2">
+              <motion.div className="flex flex-col gap-2">
                   <h1 className="text-3xl font-bold tracking-tight font-mono text-foreground">AUTOMATED ASSET DISCOVERY</h1>
-                  <p className="text-muted-foreground">Manage your attack surface with asynchronous Kali microservices.</p>
-              </div>
+                  <p className="text-muted-foreground">
+                    Queue subdomain and port scans against verified domains. Results sync to your asset inventory.
+                  </p>
+              </motion.div>
+
+              {!isLoadingAssets && verifiedDomains.filter((d) => d.status === 'verified').length === 0 && (
+                <Alert className="border-amber-500/30 bg-amber-500/5">
+                  <AlertCircle className="h-4 w-4 text-amber-600" />
+                  <AlertTitle className="font-mono text-sm">No verified domains</AlertTitle>
+                  <AlertDescription className="text-sm">
+                    Verify a root domain in Settings before running discovery scans.{' '}
+                    <Link to="/company/settings" className="inline-flex items-center gap-1 font-medium text-foreground underline-offset-4 hover:underline">
+                      Go to domain verification <ExternalLink className="w-3 h-3" />
+                    </Link>
+                  </AlertDescription>
+                </Alert>
+              )}
 
               <GlassCard className="p-6 relative overflow-hidden bg-background border-border shadow-sm">
                   <div className="absolute top-0 right-0 p-4 opacity-10 pointer-events-none">
                       <Radar className="w-32 h-32 text-foreground" />
                   </div>
                   
-                  <div className="grid md:grid-cols-2 gap-6 relative z-10">
-                      <div className="space-y-4">
-                          <label className="text-xs font-mono text-muted-foreground uppercase tracking-widest">Target Domain</label>
+                  <motion.div className="space-y-8 relative z-10">
+                      <div className="space-y-2">
+                          <label className="text-xs font-mono text-muted-foreground uppercase tracking-widest">Target domain</label>
                           <Select value={selectedDomain} onValueChange={setSelectedDomain}>
-                              <SelectTrigger className="bg-background border-border font-mono h-12 text-lg focus:ring-0 focus:ring-offset-0">
-                                  <SelectValue />
+                              <SelectTrigger className="bg-background border-border font-mono h-12 text-base focus:ring-0 focus:ring-offset-0 max-w-xl">
+                                  <SelectValue placeholder="Select verified domain" />
                               </SelectTrigger>
                               <SelectContent className="bg-background border-border">
                                   {verifiedDomains.map(d => (
@@ -274,31 +530,90 @@ export default function CompanyAssets() {
                           </Select>
                       </div>
 
-                      <div className="space-y-4">
-                          <label className="text-xs font-mono text-muted-foreground uppercase tracking-widest">Scan Type</label>
-                          <div className="flex gap-2">
-                              <Button 
-                                  variant="outline" 
-                                  onClick={() => setScanType('SUBDOMAIN')}
-                                  className={cn("flex-1 h-12 border-border hover:bg-muted text-muted-foreground hover:text-foreground", scanType === 'SUBDOMAIN' && "bg-foreground/5 text-foreground border-foreground")}
-                              >
-                                  <Globe className="w-4 h-4 mr-2" /> Subdomain
-                              </Button>
-                              <Button 
-                                  variant="outline" 
-                                  onClick={() => setScanType('PORT_SCAN')}
-                                  className={cn("flex-1 h-12 border-border hover:bg-muted text-muted-foreground hover:text-foreground", scanType === 'PORT_SCAN' && "bg-foreground/5 text-foreground border-foreground")}
-                              >
-                                  <Server className="w-4 h-4 mr-2" /> Port Scan
-                              </Button>
+                      <motion.div className="space-y-3">
+                          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+                              <label className="text-xs font-mono text-muted-foreground uppercase tracking-widest">Scan types</label>
+                              <div className="flex items-center gap-3">
+                                  <button
+                                      type="button"
+                                      onClick={() => setScanModules({ subdomain: true, nmap: true, shodan: true })}
+                                      className="text-xs font-mono text-muted-foreground hover:text-foreground underline-offset-4 hover:underline"
+                                  >
+                                      Select all
+                                  </button>
+                                  <span className="text-muted-foreground/40">|</span>
+                                  <button
+                                      type="button"
+                                      onClick={() => setScanModules(DEFAULT_SCAN_MODULES)}
+                                      className="text-xs font-mono text-muted-foreground hover:text-foreground underline-offset-4 hover:underline"
+                                  >
+                                      Reset default
+                                  </button>
+                              </div>
                           </div>
-                      </div>
-                  </div>
+
+                          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                              {SCAN_MODULE_OPTIONS.map((option) => {
+                                  const Icon = option.icon;
+                                  const checked = scanModules[option.id];
+                                  return (
+                                      <button
+                                          key={option.id}
+                                          type="button"
+                                          onClick={() => toggleScanModule(option.id, !checked)}
+                                          className={cn(
+                                              'relative flex flex-col items-start gap-3 rounded-lg border p-4 text-left transition-all',
+                                              'hover:border-foreground/30 hover:bg-muted/30',
+                                              checked
+                                                  ? 'border-foreground bg-foreground/[0.03] ring-1 ring-foreground/10'
+                                                  : 'border-border bg-background',
+                                          )}
+                                      >
+                                          <div className="flex w-full items-start justify-between gap-3">
+                                              <div className={cn(
+                                                  'flex h-10 w-10 shrink-0 items-center justify-center rounded-md border',
+                                                  checked ? 'border-foreground/20 bg-foreground/5' : 'border-border bg-muted/40',
+                                              )}>
+                                                  <Icon className={cn('h-5 w-5', checked ? 'text-foreground' : 'text-muted-foreground')} />
+                                              </div>
+                                              <Checkbox
+                                                  checked={checked}
+                                                  onCheckedChange={(v) => toggleScanModule(option.id, v === true)}
+                                                  onClick={(e) => e.stopPropagation()}
+                                                  className="mt-0.5"
+                                                  aria-label={option.label}
+                                              />
+                                          </div>
+                                          <div className="space-y-1 pr-1">
+                                              <p className="font-mono text-sm font-medium text-foreground leading-tight">
+                                                  {option.shortLabel}
+                                              </p>
+                                              <p className="text-xs text-muted-foreground leading-relaxed">
+                                                  {option.description}
+                                              </p>
+                                          </div>
+                                      </button>
+                                  );
+                              })}
+                          </div>
+
+                          <p className="text-xs font-mono text-muted-foreground">
+                              Selected: <span className="text-foreground">{formatScanModules(scanModules)}</span>
+                          </p>
+                      </motion.div>
+                  </motion.div>
+
 
                   <div className="mt-8">
                        <Button 
                           className="w-full h-14 font-mono text-lg tracking-wider bg-foreground text-background hover:bg-foreground/90"
                           onClick={handleQueueScan}
+                          disabled={
+                            isScanning ||
+                            isLoadingAssets ||
+                            verifiedDomains.filter((d) => d.status === 'verified').length === 0 ||
+                            !SCAN_MODULE_OPTIONS.some((o) => scanModules[o.id])
+                          }
                        >
                           <span className="flex items-center gap-2">
                               <Play className="w-5 h-5" /> QUEUE_RECON_SCAN
@@ -356,10 +671,13 @@ export default function CompanyAssets() {
                                                    )}>{job.status}</span>
                                                </div>
                                            </div>
-                                           <div className="flex items-center justify-between">
-                                                <Badge variant="outline" className="text-[9px] border-zinc-800 text-zinc-500 h-4 px-1">{job.type}</Badge>
+                                           <motion.div className="flex items-center justify-between">
+                                                <Badge variant="outline" className="text-[9px] border-zinc-800 text-zinc-500 h-4 px-1">{job.modulesLabel}</Badge>
                                                 <span className="text-[9px] text-zinc-600 font-mono">{job.timestamp.toLocaleTimeString()}</span>
-                                           </div>
+                                           </motion.div>
+                                           {job.details && (
+                                             <p className="text-[10px] text-zinc-500 font-mono mt-1 line-clamp-2">{job.details}</p>
+                                           )}
                                        </motion.div>
                                    ))}
                                </AnimatePresence>
@@ -434,7 +752,14 @@ export default function CompanyAssets() {
                                   </tr>
                               </thead>
                               <tbody>
-                                  {filteredAssets.length === 0 ? (
+                                  {isLoadingAssets ? (
+                                      <tr>
+                                          <td colSpan={6} className="py-12 text-center text-muted-foreground font-mono">
+                                              <RefreshCw className="w-5 h-5 animate-spin inline-block mr-2" />
+                                              Loading assets…
+                                          </td>
+                                      </tr>
+                                  ) : filteredAssets.length === 0 ? (
                                       <tr>
                                           <td colSpan={6} className="py-12 text-center text-muted-foreground font-mono">
                                               No assets found in this category.
@@ -497,6 +822,15 @@ export default function CompanyAssets() {
                                                               <RefreshCw className="w-3 h-3" />
                                                            </Button>
                                                       )}
+                                                      <Button
+                                                          size="icon"
+                                                          variant="ghost"
+                                                          className="h-7 w-7 text-muted-foreground hover:text-destructive hover:bg-destructive/10"
+                                                          onClick={() => void handleDeleteAsset(asset)}
+                                                          title="Delete asset"
+                                                      >
+                                                          <Trash2 className="w-3.5 h-3.5" />
+                                                      </Button>
                                                   </div>
                                               </td>
                                           </motion.tr>
@@ -545,7 +879,7 @@ export default function CompanyAssets() {
                                           <td className="py-4 px-6 font-mono text-xs text-muted-foreground">{job.id}</td>
                                           <td className="py-4 px-6 font-mono text-sm text-foreground">{job.target}</td>
                                           <td className="py-4 px-6">
-                                              <Badge variant="outline" className="border-border text-muted-foreground text-[10px]">{job.type}</Badge>
+                                              <Badge variant="outline" className="border-border text-muted-foreground text-[10px]">{job.modulesLabel}</Badge>
                                           </td>
                                           <td className="py-4 px-6">
                                                <div className="flex items-center gap-2">
