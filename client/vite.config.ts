@@ -14,11 +14,9 @@ export default defineConfig({
         changeOrigin: true,
         secure: false,
       },
-      '/kyc': {
-        target: 'http://localhost:8000',
-        changeOrigin: true,
-        rewrite: (path) => path.replace(/^\/kyc/, ''),
-      },
+      // Note: the browser no longer talks to the Python KYC engine directly.
+      // The CNIC + selfie are sent to /api/users/kyc-verify on Express, which
+      // uploads to Cloudinary and forwards URLs to the engine internally.
       '/socket.io': {
         target: 'http://localhost:5000',
         ws: true,

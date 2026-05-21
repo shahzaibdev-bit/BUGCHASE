@@ -1,9 +1,11 @@
 import { Request, Response, NextFunction } from 'express';
 import mongoose from 'mongoose';
+import axios from 'axios';
 import User from '../models/User';
 import Notification from '../models/Notification';
 import AppError from '../utils/AppError';
 import catchAsync from '../utils/catchAsync';
+import { uploadToCloudinary, deleteFromCloudinary } from '../utils/cloudinary';
 import { getProfileCompletionReputationScore } from '../utils/profileCompletionReputation';
 
 /** Percentile rank (0–100) of `value` within `population` (inclusive). */
@@ -966,6 +968,138 @@ export const updateKYCStatus = catchAsync(async (req: Request, res: Response, ne
     });
 });
 
+/**
+ * KYC submission pipeline.
+ *
+ *   client  ──files──▶  Express  ──upload──▶  Cloudinary (BugChase/kyc/<userId>)
+ *                          │
+ *                          └──URLs──▶ kyc_engine (Python OCR + DeepFace)
+ *                          │
+ *                          └──verdict──▶ User.isVerified / kycInfo
+ *
+ * Note: the Python KYC engine no longer touches local disk — it only ever
+ * receives Cloudinary URLs and processes them through tmp files.
+ */
+export const submitKyc = catchAsync(async (req: Request, res: Response, next: NextFunction) => {
+    const files = req.files as Record<string, Express.Multer.File[]> | undefined;
+    const idCard = files?.idCard?.[0];
+    const liveFace = files?.liveFace?.[0];
+
+    if (!idCard || !liveFace) {
+        return next(new AppError('Both CNIC image and live face capture are required.', 400));
+    }
+
+    const user = await User.findById(req.user!.id);
+    if (!user) return next(new AppError('User not found', 404));
+
+    const folder = `BugChase/kyc/${user._id}`;
+    const stamp = Date.now();
+
+    let idCardAsset: { url: string; public_id: string } | null = null;
+    let liveFaceAsset: { url: string; public_id: string } | null = null;
+
+    try {
+        [idCardAsset, liveFaceAsset] = await Promise.all([
+            uploadToCloudinary(idCard, {
+                folder,
+                publicId: `cnic_${stamp}`,
+                resourceType: 'image',
+                tags: ['kyc', 'cnic', `user:${user._id}`],
+                overwrite: true,
+            }),
+            uploadToCloudinary(liveFace, {
+                folder,
+                publicId: `live_${stamp}`,
+                resourceType: 'image',
+                tags: ['kyc', 'live-face', `user:${user._id}`],
+                overwrite: true,
+            }),
+        ]);
+    } catch (err) {
+        console.error('[kyc] Cloudinary upload failed:', err);
+        return next(new AppError('Could not upload KYC documents. Please try again.', 502));
+    }
+
+    const kycEngineUrl = (process.env.KYC_ENGINE_URL || 'http://127.0.0.1:8000').replace(/\/$/, '');
+
+    let pythonData: { success?: boolean; confidence?: number; verdict?: string; message?: string; error?: string } = {};
+    try {
+        const response = await axios.post(
+            `${kycEngineUrl}/verify-kyc-urls`,
+            {
+                id_card_url: idCardAsset.url,
+                live_face_url: liveFaceAsset.url,
+                researcher_id: user._id.toString(),
+            },
+            { timeout: 60_000 },
+        );
+        pythonData = response.data || {};
+    } catch (err: any) {
+        console.error('[kyc] engine call failed:', err?.response?.data || err?.message);
+        // Don't keep orphaned uploads if we couldn't even reach the engine.
+        await Promise.all([
+            deleteFromCloudinary(idCardAsset.public_id),
+            deleteFromCloudinary(liveFaceAsset.public_id),
+        ]);
+        return next(new AppError('Verification engine is unreachable. Try again shortly.', 503));
+    }
+
+    const success = Boolean(pythonData.success);
+    const confidence = typeof pythonData.confidence === 'number' ? pythonData.confidence : 0;
+    const verdict: 'VERIFIED' | 'MATCH FAILED' = success ? 'VERIFIED' : 'MATCH FAILED';
+
+    // Persist Cloudinary references either way so admins can audit failed attempts.
+    user.kycInfo = {
+        idCardUrl: idCardAsset.url,
+        idCardPublicId: idCardAsset.public_id,
+        liveFaceUrl: liveFaceAsset.url,
+        liveFacePublicId: liveFaceAsset.public_id,
+        verifiedAt: success ? new Date() : user.kycInfo?.verifiedAt,
+        confidence,
+        verdict,
+    };
+
+    if (success) {
+        const wasVerified = user.isVerified;
+        user.isVerified = true;
+        user.reputationScore = (user.reputationScore || 0) + (wasVerified ? 5 : 80);
+        if (!user.skills.includes('Identity Verified')) {
+            user.skills.push('Identity Verified');
+        }
+    }
+
+    await user.save({ validateBeforeSave: false });
+
+    if (!success) {
+        return res.status(200).json({
+            status: 'fail',
+            success: false,
+            message: pythonData.message || 'Face verification failed.',
+            verdict,
+            confidence,
+        });
+    }
+
+    res.status(200).json({
+        status: 'success',
+        success: true,
+        message: 'KYC verified successfully.',
+        verdict,
+        confidence,
+        data: {
+            isVerified: user.isVerified,
+            reputationScore: user.reputationScore,
+            kycInfo: {
+                idCardUrl: user.kycInfo?.idCardUrl,
+                liveFaceUrl: user.kycInfo?.liveFaceUrl,
+                verifiedAt: user.kycInfo?.verifiedAt,
+                confidence: user.kycInfo?.confidence,
+                verdict: user.kycInfo?.verdict,
+            },
+        },
+    });
+});
+
 const filterObj = (obj: any, ...allowedFields: string[]) => {
     const newObj: any = {};
     Object.keys(obj).forEach(el => {
@@ -973,8 +1107,6 @@ const filterObj = (obj: any, ...allowedFields: string[]) => {
     });
     return newObj;
 };
-
-import { uploadToCloudinary } from '../utils/cloudinary';
 
 // ... existing code ...
 

@@ -99,51 +99,43 @@ export default function ResearcherVerification() {
     if (!cnicFile || !capturedImage || !user) return;
 
     setIsProcessing(true);
-    setCurrentStep(2); // Move to processing UI
+    setCurrentStep(2);
 
+    // Both files go to the Express backend; the server uploads them to Cloudinary
+    // and forwards URLs to the Python KYC engine. The browser no longer touches
+    // the Python service directly.
     const formData = new FormData();
-    formData.append('id_card', cnicFile);
-    formData.append('live_face', capturedImage, 'live_face.jpg');
-    formData.append('researcher_id', user._id);
+    formData.append('idCard', cnicFile);
+    formData.append('liveFace', capturedImage, 'live_face.jpg');
 
     try {
-      // 1. Call Python Service
-      const kycUrl = import.meta.env.VITE_KYC_API_URL || '/kyc';
-      const response = await fetch(`${kycUrl}/verify-kyc`, {
+      const token = localStorage.getItem('token');
+      const response = await fetch(`${API_URL}/users/kyc-verify`, {
         method: 'POST',
+        headers: token ? { Authorization: `Bearer ${token}` } : undefined,
         body: formData,
+        credentials: 'include',
       });
 
-      const data = await response.json();
+      const data = await response.json().catch(() => ({} as { success?: boolean; message?: string }));
 
-      if (data.success) {
-        // 2. Call Node Backend to Update Status
-        const backendRes = await fetch(`${API_URL}/users/verify-kyc-status`, {
-            method: 'PATCH',
-            headers: {
-                'Content-Type': 'application/json',
-                // Add Authorization header if you are using Bearer tokens, or rely on cookies
-            },
-            body: JSON.stringify({ verified: true, confidence: data.confidence })
+      if (response.ok && data.success) {
+        toast.success('Identity Verified Successfully!', {
+          description: `Match confidence ${data.confidence ?? ''}%. Verified badge awarded.`,
         });
-        
-        if (backendRes.ok) {
-            toast.success("Identity Verified Successfully!", { description: "You have been awarded the Verified Badge." });
-            setTimeout(() => navigate('/researcher/profile'), 2000);
-        } else {
-            toast.error("Verification passed technically, but failed to update profile. Contact support.");
-             setIsProcessing(false);
-             setCurrentStep(1);
-        }
-
-      } else {
-        toast.error("Verification Failed", { description: data.message || "Face match failed." });
-        setIsProcessing(false);
-        setCurrentStep(1); // Go back to capture step
+        setTimeout(() => navigate('/researcher/profile'), 1500);
+        return;
       }
+
+      const fallback = response.status >= 500 ? 'Verification engine is unreachable. Try again shortly.' : 'Face match failed.';
+      toast.error('Verification Failed', { description: data?.message || fallback });
+      setIsProcessing(false);
+      setCurrentStep(1);
     } catch (error) {
-      console.error("Verification Error:", error);
-      toast.error("System Error", { description: "Could not connect to verification engine. Ensure it is running." });
+      console.error('Verification Error:', error);
+      toast.error('System Error', {
+        description: 'Could not reach the verification service. Please try again.',
+      });
       setIsProcessing(false);
       setCurrentStep(1);
     }

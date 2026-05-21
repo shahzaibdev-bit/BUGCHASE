@@ -1,13 +1,15 @@
-import axios from 'axios';
 import mongoose from 'mongoose';
 import Report from '../models/Report';
+import { getUpstashVectorIndex } from '../config/upstashVector';
 
-const AI_SERVICE_URL = process.env.AI_SERVICE_URL || 'http://localhost:8001';
-
-/** Cosine similarity threshold for auto-flagging duplicate review (0–1). Paraphrases often score 0.55–0.65. */
+/** Cosine similarity threshold for auto-flagging duplicate review (0–1). */
 export const DUPLICATE_MATCH_THRESHOLD = Number(
   process.env.DUPLICATE_SIMILARITY_THRESHOLD || 0.55
 );
+
+const VECTOR_SEARCH_TOP_K = Number(process.env.UPSTASH_VECTOR_SEARCH_TOP_K || 32);
+const VECTOR_MATCH_RETURN_LIMIT = Number(process.env.DUPLICATE_MATCH_RETURN_LIMIT || 15);
+const BULK_UPSERT_BATCH = Number(process.env.UPSTASH_VECTOR_BULK_BATCH || 100);
 
 /** Strip HTML so embeddings match on text, not tags (rich-text submissions). */
 export const stripHtmlForEmbedding = (raw: unknown): string => {
@@ -45,39 +47,44 @@ export const buildEmbeddingText = (report: any) => {
   return lines.join('\n').trim() || fallback;
 };
 
+const buildVectorMetadata = (report: any) => ({
+  report_id: String(report._id),
+  reportId: report.reportId ?? null,
+  title: report.title ?? '',
+  vulnerableEndpoint: report.vulnerableEndpoint ?? '',
+  description: report.description ?? '',
+  pocSteps: report.pocSteps ?? '',
+  status: report.status,
+  severity: report.severity,
+  vulnerabilityCategory: report.vulnerabilityCategory,
+  submittedAt: report.createdAt
+    ? new Date(report.createdAt).toISOString()
+    : new Date().toISOString(),
+  programId: String(report.programId ?? ''),
+});
+
+/** Upsert one report into Upstash Vector (Upstash embeds `data` server-side). */
 export const embedAndStoreReportVector = async (report: any) => {
   const text = buildEmbeddingText(report);
-  await axios.post(
-    `${AI_SERVICE_URL}/embed-and-store`,
-    {
-      report_id: String(report._id),
-      text,
-      metadata: {
-        reportId: report.reportId ?? null,
-        title: report.title ?? '',
-        vulnerableEndpoint: report.vulnerableEndpoint ?? '',
-        description: report.description ?? '',
-        pocSteps: report.pocSteps ?? '',
-        status: report.status,
-        severity: report.severity,
-        vulnerabilityCategory: report.vulnerabilityCategory,
-        submittedAt: report.createdAt
-          ? new Date(report.createdAt).toISOString()
-          : new Date().toISOString(),
-        programId: String(report.programId ?? ''),
-      },
-    },
-    { timeout: 8000 }
-  );
+  if (!text) {
+    throw new Error('Report has no indexable text for duplicate detection');
+  }
+
+  const vectorIndex = getUpstashVectorIndex();
+  await vectorIndex.upsert({
+    id: String(report._id),
+    data: text,
+    metadata: buildVectorMetadata(report),
+  });
 };
 
 export const embedAndStoreReportVectorWithRetry = async (report: any, retries = 2) => {
-  let lastError: any;
+  let lastError: unknown;
   for (let attempt = 0; attempt <= retries; attempt += 1) {
     try {
       await embedAndStoreReportVector(report);
       return;
-    } catch (error: any) {
+    } catch (error: unknown) {
       lastError = error;
       if (attempt < retries) {
         await sleep(500 * (attempt + 1));
@@ -87,27 +94,79 @@ export const embedAndStoreReportVectorWithRetry = async (report: any, retries = 
   throw lastError;
 };
 
+/** Query Upstash Vector for similar reports (cosine score 0–1). */
 export const searchDuplicateReportVectors = async (report: any) => {
   const text = buildEmbeddingText(report);
-  const response = await axios.post(
-    `${AI_SERVICE_URL}/search-duplicates`,
-    {
-      report_id: String(report._id),
-      text,
-    },
-    { timeout: 10000 }
-  );
+  if (!text) return [] as DuplicateMatch[];
 
-  return (response.data?.matches || []) as DuplicateMatch[];
+  const vectorIndex = getUpstashVectorIndex();
+  const results = await vectorIndex.query({
+    data: text,
+    topK: VECTOR_SEARCH_TOP_K,
+    includeMetadata: true,
+  });
+
+  const selfId = String(report._id);
+  const matches: DuplicateMatch[] = [];
+
+  for (const row of results) {
+    const meta = (row.metadata || {}) as Record<string, unknown>;
+    const reportId = String(meta.report_id ?? row.id ?? '');
+    if (!reportId || reportId === selfId) continue;
+
+    matches.push({
+      report_id: reportId,
+      score: Number(row.score ?? 0),
+      metadata: meta as Record<string, any>,
+    });
+
+    if (matches.length >= VECTOR_MATCH_RETURN_LIMIT) break;
+  }
+
+  return matches;
 };
 
-export const isAiServiceUnavailable = (error: any) =>
-  !!(
-    error?.code === 'ECONNREFUSED' ||
-    error?.code === 'ECONNABORTED' ||
-    error?.response?.status >= 500 ||
-    error?.message?.includes('connect')
+/** Back-fill index for many reports (admin/triager reindex). */
+export const bulkIndexReports = async (reports: any[]): Promise<number> => {
+  const vectorIndex = getUpstashVectorIndex();
+  const points: { id: string; data: string; metadata: Record<string, unknown> }[] = [];
+
+  for (const report of reports) {
+    const text = buildEmbeddingText(report);
+    if (!text.trim()) continue;
+    points.push({
+      id: String(report._id),
+      data: text,
+      metadata: buildVectorMetadata(report),
+    });
+  }
+
+  for (let i = 0; i < points.length; i += BULK_UPSERT_BATCH) {
+    await vectorIndex.upsert(points.slice(i, i + BULK_UPSERT_BATCH));
+  }
+
+  return points.length;
+};
+
+export const isDuplicateVectorUnavailable = (error: unknown) => {
+  const err = error as {
+    message?: string;
+    code?: string;
+    response?: { status?: number };
+  };
+  const msg = String(err?.message || '');
+  return !!(
+    err?.code === 'ECONNREFUSED' ||
+    err?.code === 'ECONNABORTED' ||
+    (err?.response?.status && err.response.status >= 500) ||
+    msg.includes('connect') ||
+    msg.includes('Upstash Vector is not configured') ||
+    msg.includes('UPSTASH')
   );
+};
+
+/** @deprecated Use isDuplicateVectorUnavailable */
+export const isAiServiceUnavailable = isDuplicateVectorUnavailable;
 
 export type DuplicateCandidatePayload = {
   reportMongoId: mongoose.Types.ObjectId;
@@ -118,7 +177,6 @@ export type DuplicateCandidatePayload = {
   detectedAt: Date;
 };
 
-/** When the report was filed, in ms. Uses `createdAt` (ms precision from Mongoose timestamps); falls back to ObjectId clock (second precision). */
 const reportSubmittedAtMs = (doc: any): number => {
   if (doc?.createdAt != null) {
     const t = new Date(doc.createdAt).getTime();
@@ -133,12 +191,6 @@ const reportSubmittedAtMs = (doc: any): number => {
   }
 };
 
-/**
- * After a report is indexed, search for similar reports in the same program.
- * Only reports submitted **strictly before** this one are candidates (this submission may duplicate them).
- * Later similar reports do not trigger duplicate review on the original.
- * Returns candidates sorted by submission time (earliest first) for fair triage.
- */
 export const runInitialDuplicateScanForNewReport = async (
   newReport: any
 ): Promise<{ candidates: DuplicateCandidatePayload[]; reviewStatus: 'pending' | 'not_applicable' }> => {
@@ -216,10 +268,6 @@ export const runInitialDuplicateScanForNewReport = async (
   }
 };
 
-/**
- * Drops duplicate candidates that are not strictly older than this report (fixes legacy scans
- * before submit-time filtering). Mutates the mongoose document; returns whether save is needed.
- */
 export const pruneDuplicateCandidatesNotOlderThanSelf = (report: any): boolean => {
   const raw = report?.duplicateCandidates;
   if (!Array.isArray(raw) || raw.length === 0) return false;

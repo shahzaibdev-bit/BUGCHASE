@@ -10,9 +10,9 @@ import { getIO } from '../services/socketService';
 import { uploadToCloudinary } from '../utils/cloudinary';
 import {
   embedAndStoreReportVectorWithRetry,
-  isAiServiceUnavailable,
+  isDuplicateVectorUnavailable,
+  bulkIndexReports,
   searchDuplicateReportVectors,
-  buildEmbeddingText,
   runInitialDuplicateScanForNewReport,
 } from '../services/duplicateDetectionService';
 import {
@@ -125,10 +125,12 @@ export const createReport = catchAsync(async (req: Request, res: Response, next:
   try {
     await embedAndStoreReportVectorWithRetry(newReport, 2);
   } catch (error: any) {
-    const msg = isAiServiceUnavailable(error) ? 'AI service unavailable during indexing' : 'Failed to index report vector';
+    const msg = isDuplicateVectorUnavailable(error)
+      ? 'Duplicate detection (Upstash Vector) unavailable during indexing'
+      : 'Failed to index report vector';
     console.error(msg, error?.message || error);
     await Report.findByIdAndDelete(newReport._id);
-    if (isAiServiceUnavailable(error)) {
+    if (isDuplicateVectorUnavailable(error)) {
       return next(new AppError('Unable to submit report right now: duplicate detection service is unavailable. Please retry shortly.', 503));
     }
     return next(new AppError('Unable to submit report because indexing failed. Please retry.', 500));
@@ -472,10 +474,10 @@ export const checkReportDuplicates = catchAsync(async (req: Request, res: Respon
       },
     });
   } catch (error: any) {
-    if (isAiServiceUnavailable(error)) {
-      return next(new AppError('AI Service Unavailable. Please try again shortly.', 503));
+    if (isDuplicateVectorUnavailable(error)) {
+      return next(new AppError('Duplicate detection service unavailable. Please try again shortly.', 503));
     }
-    return next(new AppError(error?.response?.data?.detail || 'Failed to run duplicate detection', 500));
+    return next(new AppError((error as Error)?.message || 'Failed to run duplicate detection', 500));
   }
 });
 
@@ -619,33 +621,17 @@ export const reindexAllReports = catchAsync(async (req: Request, res: Response, 
     return res.status(200).json({ status: 'success', message: 'No reports found to index.', indexed: 0 });
   }
 
-  const items = reports.map((r: any) => ({
-    report_id: String(r._id),
-    text: buildEmbeddingText(r),
-    metadata: {
-      reportId: r.reportId,
-      title: r.title,
-      status: r.status,
-      severity: r.severity,
-      vulnerabilityCategory: r.vulnerabilityCategory,
-      submittedAt: r.createdAt ? new Date(r.createdAt).toISOString() : undefined,
-      programId: String(r.programId ?? ''),
-    },
-  })).filter((item: any) => item.text.trim().length > 0);
-
   try {
-    const axios = (await import('axios')).default;
-    const AI_SERVICE_URL = process.env.AI_SERVICE_URL || 'http://localhost:8001';
-    const response = await axios.post(`${AI_SERVICE_URL}/bulk-index`, { reports: items }, { timeout: 60000 });
+    const indexed = await bulkIndexReports(reports);
     return res.status(200).json({
       status: 'success',
-      message: `Successfully indexed ${response.data?.indexed ?? items.length} reports.`,
-      indexed: response.data?.indexed ?? items.length,
+      message: `Successfully indexed ${indexed} reports in Upstash Vector.`,
+      indexed,
     });
-  } catch (error: any) {
-    if (isAiServiceUnavailable(error)) {
-      return next(new AppError('AI Service Unavailable. Please try again shortly.', 503));
+  } catch (error: unknown) {
+    if (isDuplicateVectorUnavailable(error)) {
+      return next(new AppError('Duplicate detection service unavailable. Please try again shortly.', 503));
     }
-    return next(new AppError(error?.response?.data?.detail || 'Failed to re-index reports', 500));
+    return next(new AppError((error as Error)?.message || 'Failed to re-index reports', 500));
   }
 });

@@ -71,6 +71,18 @@ export interface IUser extends Document {
   statusReason?: string;
   stripeCustomerId?: string;
   payoutHold?: boolean;
+
+  /** KYC documents stored on Cloudinary (no copies on local disk) */
+  kycInfo?: {
+    idCardUrl?: string;
+    idCardPublicId?: string;
+    liveFaceUrl?: string;
+    liveFacePublicId?: string;
+    verifiedAt?: Date;
+    confidence?: number;
+    verdict?: 'VERIFIED' | 'MATCH FAILED' | 'PENDING';
+  };
+
   correctPassword(candidatePassword: string, userPassword: string): Promise<boolean>;
 }
 
@@ -215,6 +227,18 @@ const userSchema = new mongoose.Schema<IUser>({
   payoutHold: {
     type: Boolean,
     default: false,
+  },
+  kycInfo: {
+    idCardUrl: String,
+    idCardPublicId: String,
+    liveFaceUrl: String,
+    liveFacePublicId: String,
+    verifiedAt: Date,
+    confidence: Number,
+    verdict: {
+      type: String,
+      enum: ['VERIFIED', 'MATCH FAILED', 'PENDING'],
+    },
   },
 }, {
   timestamps: true,

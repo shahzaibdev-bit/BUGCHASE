@@ -4,7 +4,8 @@ import { protect } from '../middlewares/authMiddleware';
 import { 
     getPublicProfile, 
     getResearcherLeaderboard,
-    updateKYCStatus, 
+    updateKYCStatus,
+    submitKyc,
     updateMe, 
     uploadAvatar, 
     uploadCoverPhoto,
@@ -49,6 +50,24 @@ const coverUpload = multer({
         }
     }
 });
+const kycUpload = multer({
+    storage: multer.memoryStorage(),
+    limits: {
+        fileSize: 5 * 1024 * 1024, // 5MB per file (CNIC + selfie)
+    },
+    fileFilter: (req, file, cb) => {
+        if (
+            file.mimetype === 'image/jpeg' ||
+            file.mimetype === 'image/png' ||
+            file.mimetype === 'image/jpg' ||
+            file.mimetype === 'image/webp'
+        ) {
+            cb(null, true);
+        } else {
+            cb(new Error('Only JPG/PNG/WEBP images are accepted for KYC.'));
+        }
+    },
+});
 
 // Allow public access mostly, but rate limit it to prevent scraping abuse
 // 20 requests per minute per IP
@@ -60,6 +79,16 @@ router.get('/leaderboard', protect, getResearcherLeaderboard);
 
 // Protected Routes
 router.patch('/verify-kyc-status', protect, updateKYCStatus);
+router.post(
+    '/kyc-verify',
+    protect,
+    uploadLimiter,
+    kycUpload.fields([
+        { name: 'idCard', maxCount: 1 },
+        { name: 'liveFace', maxCount: 1 },
+    ]),
+    submitKyc,
+);
 router.patch('/updateMe', protect, updateMe);
 router.post('/upload-avatar', protect, uploadLimiter, upload.single('avatar'), uploadAvatar);
 router.post('/upload-cover', protect, uploadLimiter, coverUpload.single('coverPhoto'), uploadCoverPhoto);

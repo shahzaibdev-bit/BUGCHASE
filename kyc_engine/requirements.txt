@@ -6,3 +6,5 @@ numpy
 easyocr
 deepface
 tf-keras
+requests
+pydantic

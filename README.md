@@ -37,17 +37,16 @@ Real-time updates use **Socket.IO** where enabled. Duplicate report hints can us
 ## Architecture
 
 ```text
-┌─────────────────┐     HTTP / WS      ┌─────────────────┐
-│  React (Vite)   │ ◄───────────────► │  Express API    │
-│  client/        │    /api, socket   │  server/        │
-└────────┬────────┘                   └────────┬────────┘
-         │                                     │
-         │ /kyc (dev proxy)                    │ MongoDB, Redis, email, Stripe
-         ▼                                     ▼
-┌─────────────────┐                   ┌─────────────────┐
-│  kyc_engine/    │                   │  ai-service/    │◄── Qdrant (optional)
-│  (FastAPI)      │                   │  (FastAPI)      │
-└─────────────────┘                   └─────────────────┘
+┌─────────────────┐     HTTP / WS      ┌─────────────────┐         ┌──────────────┐
+│  React (Vite)   │ ◄───────────────► │  Express API    │ ──────► │  Cloudinary  │
+│  client/        │    /api, socket   │  server/        │ uploads │  (CNIC, etc) │
+└─────────────────┘                   └────────┬────────┘         └──────┬───────┘
+                                               │                         │ URL only
+                                               ▼                         ▼
+                                      ┌─────────────────┐         ┌─────────────────┐
+                                      │ MongoDB, Redis, │         │  kyc_engine/    │
+                                      │ Upstash Vector  │         │  (FastAPI)      │
+                                      └─────────────────┘         └─────────────────┘
 ```
 
 ---
@@ -71,9 +70,8 @@ Real-time updates use **Socket.IO** where enabled. Duplicate report hints can us
 |------|------|
 | `client/` | Vite + React SPA (default dev server **port 3000**) |
 | `server/` | REST API (default **port 5000**), WebSockets in non-Vercel dev |
-| `ai-service/` | Embedding + duplicate search API (default **port 8001**) |
-| `kyc_engine/` | Optional KYC API (dev proxy target **port 8000**) |
-| `docker-compose.qdrant.yml` | Local **Qdrant** for vector storage |
+| `Asset-Discovery/` | Subdomain / Nmap / Shodan worker (FastAPI + Celery, **port 9000**) |
+| `kyc_engine/` | Optional KYC API (**port 8000**, called server-to-server only) |
 
 ---
 
@@ -146,8 +144,16 @@ Point the API at this service with `AI_SERVICE_URL` (see below).
 cd kyc_engine
 python -m venv .venv
 pip install -r requirements.txt
-# Run per your setup; Vite proxies /kyc → http://localhost:8000 in dev
+python main.py    # FastAPI on port 8000
 ```
+
+Researcher KYC flow:
+
+1. The browser POSTs `idCard` + `liveFace` (multipart) to `POST /api/users/kyc-verify`.
+2. Express uploads both images to Cloudinary (`BugChase/kyc/<userId>/`).
+3. Express calls `POST {KYC_ENGINE_URL}/verify-kyc-urls` with `{ id_card_url, live_face_url, researcher_id }`.
+4. The Python engine downloads them to a temp file, runs OCR + DeepFace, returns the verdict, deletes the temp file.
+5. The Cloudinary URLs are saved on `user.kycInfo` for admin audit; the Python service never persists CNIC images.
 
 ---
 
@@ -168,8 +174,9 @@ pip install -r requirements.txt
 | `NODE_ENV` | `development` / `production` |
 | `EMAIL_USER` / `EMAIL_PASS` | SMTP (e.g. Gmail app password) |
 | `STRIPE_SECRET_KEY` | Stripe server secret |
-| `AI_SERVICE_URL` | Base URL for duplicate-detection service (default `http://localhost:8001`) |
+| `UPSTASH_VECTOR_REST_URL` / `UPSTASH_VECTOR_REST_TOKEN` | Upstash Vector index used for duplicate detection (no Python ai-service needed) |
 | `DUPLICATE_SIMILARITY_THRESHOLD` | Optional float (default in code if unset) |
+| `KYC_ENGINE_URL` | Base URL for the Python KYC engine (default `http://127.0.0.1:8000`) |
 | `DUPLICATE_AUTOSCAN_COOLDOWN_MS` | Optional triager autoscan cooldown |
 | `VERCEL` | Set by Vercel when applicable (changes listen / DB log behavior) |
 
@@ -181,7 +188,6 @@ pip install -r requirements.txt
 |----------|---------|
 | `VITE_API_URL` | API base (e.g. `http://localhost:5000/api` or production `/api`) |
 | `VITE_STRIPE_PUBLIC_KEY` | Stripe publishable key (wallet / escrow UI) |
-| `VITE_KYC_API_URL` | KYC service base URL (defaults to `/kyc` in dev) |
 
 ---
 
