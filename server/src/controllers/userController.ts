@@ -553,14 +553,10 @@ export const getResearcherLeaderboard = catchAsync(async (req: Request, res: Res
   });
 });
 
-import Stripe from 'stripe';
 import Transaction from '../models/Transaction';
 import { sendEmail, payoutSuccessTemplate, otpTemplate, cardDeletionOtpTemplate } from '../services/emailService';
 import redisClient from '../config/redis';
-
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY as string, {
-    apiVersion: '2023-10-16' as any,
-});
+import { getStripeClient } from '../utils/stripeClient';
 
 /** Return the current authenticated user's own profile */
 export const getMe = catchAsync(async (req: Request, res: Response, next: NextFunction) => {
@@ -725,6 +721,7 @@ export const clearLegacyNotifications = catchAsync(async (req: Request, res: Res
 
 /** Setup Payout Method via Stripe SetupIntent */
 export const setupPayoutMethod = catchAsync(async (req: Request, res: Response, next: NextFunction) => {
+    const stripe = getStripeClient();
     const user = await User.findById(req.user!._id);
     if (!user) return next(new AppError('User not found', 404));
 
@@ -755,6 +752,7 @@ export const setupPayoutMethod = catchAsync(async (req: Request, res: Response, 
 
 /** List all attached payout methods for the user */
 export const getPayoutMethods = catchAsync(async (req: Request, res: Response, next: NextFunction) => {
+    const stripe = getStripeClient();
     const user = await User.findById(req.user!._id);
     if (!user) return next(new AppError('User not found', 404));
 
@@ -767,7 +765,7 @@ export const getPayoutMethods = catchAsync(async (req: Request, res: Response, n
         type: 'card'
     });
 
-    const formattedMethods = paymentMethods.data.map(pm => ({
+    const formattedMethods = paymentMethods.data.map((pm: any) => ({
         id: pm.id,
         brand: pm.card?.brand,
         last4: pm.card?.last4,
@@ -784,6 +782,7 @@ export const getPayoutMethods = catchAsync(async (req: Request, res: Response, n
 
 /** Request a withdrawal to a specific payment method */
 export const requestPayout = catchAsync(async (req: Request, res: Response, next: NextFunction) => {
+    const stripe = getStripeClient();
     const { amount, paymentMethodId } = req.body;
     const withdrawAmount = Number(amount);
 
@@ -907,6 +906,7 @@ export const verifyPayoutMethodOtp = catchAsync(async (req: Request, res: Respon
 
 /** Remove a payment method from Stripe */
 export const removePayoutMethod = catchAsync(async (req: Request, res: Response, next: NextFunction) => {
+    const stripe = getStripeClient();
     const idParam = req.params.id;
     if (!idParam || Array.isArray(idParam)) return next(new AppError('Payment method ID is required', 400));
     const paymentMethodId = idParam;

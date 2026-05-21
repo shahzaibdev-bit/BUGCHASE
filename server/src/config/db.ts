@@ -6,7 +6,12 @@ const connectDB = async () => {
       console.log('MongoDB already connected');
       return;
     }
-    const conn = await mongoose.connect(process.env.MONGO_URI as string);
+    const mongoUri = process.env.MONGO_URI?.trim();
+    if (!mongoUri) {
+      throw new Error('MONGO_URI is not configured');
+    }
+
+    const conn = await mongoose.connect(mongoUri);
     console.log(`MongoDB Connected: ${conn.connection.host}`);
   } catch (error: any) {
     console.error(`MongoDB Connection Error: ${error.message}`);

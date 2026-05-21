@@ -4,19 +4,71 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 };
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.updatePassword = exports.updateMe = exports.getMe = exports.logout = exports.getLoginHistory = exports.disableTwoFactor = exports.enableTwoFactor = exports.setupTwoFactor = exports.completeLoginWithTwoFactor = exports.login = exports.verifyEmail = exports.signup = void 0;
+const crypto_1 = __importDefault(require("crypto"));
 const User_1 = __importDefault(require("../models/User"));
 const AppError_1 = __importDefault(require("../utils/AppError"));
 const catchAsync_1 = __importDefault(require("../utils/catchAsync"));
 const redis_1 = __importDefault(require("../config/redis"));
 const emailService_1 = require("../services/emailService");
 const tokenService_1 = require("../services/tokenService");
-const otplib_1 = require("otplib");
 const qrcode_1 = __importDefault(require("qrcode"));
 const LoginEvent_1 = __importDefault(require("../models/LoginEvent"));
 const loginAuditService_1 = require("../services/loginAuditService");
 const requestMeta_1 = require("../utils/requestMeta");
 const rateLimit_1 = require("../middlewares/rateLimit");
 const profileCompletionReputation_1 = require("../utils/profileCompletionReputation");
+const BASE32_ALPHABET = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567';
+function generateTotpSecret(length = 32) {
+    const bytes = crypto_1.default.randomBytes(length);
+    let output = '';
+    for (let i = 0; i < bytes.length; i += 1) {
+        output += BASE32_ALPHABET[bytes[i] % BASE32_ALPHABET.length];
+    }
+    return output;
+}
+function decodeBase32(secret) {
+    const clean = secret.toUpperCase().replace(/[^A-Z2-7]/g, '');
+    let bits = '';
+    for (const char of clean) {
+        const value = BASE32_ALPHABET.indexOf(char);
+        if (value === -1)
+            continue;
+        bits += value.toString(2).padStart(5, '0');
+    }
+    const bytes = [];
+    for (let i = 0; i + 8 <= bits.length; i += 8) {
+        bytes.push(parseInt(bits.slice(i, i + 8), 2));
+    }
+    return Buffer.from(bytes);
+}
+function generateTotpToken(secret, timeStep = Math.floor(Date.now() / 1000 / 30)) {
+    const key = decodeBase32(secret);
+    const counter = Buffer.alloc(8);
+    counter.writeUInt32BE(Math.floor(timeStep / 0x100000000), 0);
+    counter.writeUInt32BE(timeStep >>> 0, 4);
+    const hmac = crypto_1.default.createHmac('sha1', key).update(counter).digest();
+    const offset = hmac[hmac.length - 1] & 0x0f;
+    const code = ((hmac[offset] & 0x7f) << 24) |
+        ((hmac[offset + 1] & 0xff) << 16) |
+        ((hmac[offset + 2] & 0xff) << 8) |
+        (hmac[offset + 3] & 0xff);
+    return String(code % 1000000).padStart(6, '0');
+}
+function verifyTotp(secret, token, window = 1) {
+    const cleanToken = String(token || '').replace(/\s/g, '');
+    if (!/^\d{6}$/.test(cleanToken))
+        return false;
+    const currentStep = Math.floor(Date.now() / 1000 / 30);
+    for (let offset = -window; offset <= window; offset += 1) {
+        const expected = generateTotpToken(secret, currentStep + offset);
+        const expectedBuffer = Buffer.from(expected);
+        const tokenBuffer = Buffer.from(cleanToken);
+        if (expectedBuffer.length === tokenBuffer.length && crypto_1.default.timingSafeEqual(expectedBuffer, tokenBuffer)) {
+            return true;
+        }
+    }
+    return false;
+}
 /** Cookie + JWT + profile payload + login audit (new IP / browser email). */
 async function issueSessionAndRespond(req, res, user) {
     const token = (0, tokenService_1.signToken)(user._id.toString());
@@ -129,8 +181,7 @@ exports.login = (0, catchAsync_1.default)(async (req, res, next) => {
         if (!user.twoFactorSecret) {
             return next(new AppError_1.default('Two-factor authentication is misconfigured. Contact support.', 500));
         }
-        const check = (0, otplib_1.verifySync)({ secret: user.twoFactorSecret, token: code });
-        if (!check.valid) {
+        if (!verifyTotp(user.twoFactorSecret, code)) {
             return next(new AppError_1.default('Invalid two-factor code', 401));
         }
     }
@@ -153,19 +204,18 @@ exports.completeLoginWithTwoFactor = (0, catchAsync_1.default)(async (req, res, 
         return next(new AppError_1.default('Invalid session', 401));
     }
     const code = String(totp).replace(/\s/g, '');
-    const check = (0, otplib_1.verifySync)({ secret: user.twoFactorSecret, token: code });
-    if (!check.valid) {
+    if (!verifyTotp(user.twoFactorSecret, code)) {
         return next(new AppError_1.default('Invalid two-factor code', 401));
     }
     await issueSessionAndRespond(req, res, user);
 });
 exports.setupTwoFactor = (0, catchAsync_1.default)(async (req, res, next) => {
     const userId = req.user._id.toString();
-    const secret = (0, otplib_1.generateSecret)();
+    const secret = generateTotpSecret();
     await redis_1.default.set(`2fa_setup:${userId}`, secret, 'EX', 600);
     const issuer = encodeURIComponent('BugChase');
     const label = encodeURIComponent(String(req.user.email || req.user.username || 'account'));
-    const otpauth = `otpauth://totp/${issuer}:${label}?secret=${secret}&issuer=${issuer}`;
+    const otpauth = `otpauth://totp/${issuer}:${label}?secret=${secret}&issuer=${issuer}&algorithm=SHA1&digits=6&period=30`;
     const qrDataUrl = await qrcode_1.default.toDataURL(otpauth);
     res.status(200).json({
         status: 'success',
@@ -180,8 +230,7 @@ exports.enableTwoFactor = (0, catchAsync_1.default)(async (req, res, next) => {
         return next(new AppError_1.default('Setup expired or not started. Open “Set up 2FA” again.', 400));
     }
     const code = String(totp || '').replace(/\s/g, '');
-    const check = (0, otplib_1.verifySync)({ secret, token: code });
-    if (!check.valid) {
+    if (!verifyTotp(secret, code)) {
         return next(new AppError_1.default('Invalid authenticator code', 400));
     }
     await User_1.default.findByIdAndUpdate(userId, { twoFactorEnabled: true, twoFactorSecret: secret });
@@ -204,8 +253,7 @@ exports.disableTwoFactor = (0, catchAsync_1.default)(async (req, res, next) => {
     if (!(await user.correctPassword(password, user.password))) {
         return next(new AppError_1.default('Incorrect password', 401));
     }
-    const check = (0, otplib_1.verifySync)({ secret: user.twoFactorSecret, token: String(totp).replace(/\s/g, '') });
-    if (!check.valid) {
+    if (!verifyTotp(user.twoFactorSecret, String(totp).replace(/\s/g, ''))) {
         return next(new AppError_1.default('Invalid authenticator code', 401));
     }
     user.twoFactorEnabled = false;

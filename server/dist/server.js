@@ -57,14 +57,17 @@ const publicRoutes_1 = __importDefault(require("./routes/publicRoutes"));
 const rateLimit_1 = require("./middlewares/rateLimit");
 // Load env vars
 dotenv_1.default.config(); // Reload env
-// Connect to Database
-(0, db_1.default)();
 const PROGRAM_BAN_CHECK_MS = 60 * 1000;
-setInterval(() => {
-    if (mongoose_1.default.connection.readyState === 1) {
-        (0, programModerationService_1.releaseExpiredProgramBans)().catch((err) => console.error('releaseExpiredProgramBans', err));
-    }
-}, PROGRAM_BAN_CHECK_MS);
+if (!process.env.VERCEL) {
+    (0, db_1.default)();
+}
+if (!process.env.VERCEL) {
+    setInterval(() => {
+        if (mongoose_1.default.connection.readyState === 1) {
+            (0, programModerationService_1.releaseExpiredProgramBans)().catch((err) => console.error('releaseExpiredProgramBans', err));
+        }
+    }, PROGRAM_BAN_CHECK_MS);
+}
 const app = (0, express_1.default)();
 // Trust Proxy for Vercel
 app.set('trust proxy', 1);
@@ -103,6 +106,17 @@ app.options(/(.*)/, (0, cors_1.default)(corsOptions));
 // Body parser, reading data from body into req.body
 app.use(express_1.default.json({ limit: '10kb' }));
 app.use((0, cookie_parser_1.default)());
+app.use(async (req, res, next) => {
+    if (req.path === '/' || req.method === 'OPTIONS')
+        return next();
+    try {
+        await (0, db_1.default)();
+        next();
+    }
+    catch (err) {
+        next(err);
+    }
+});
 // Rate Limiting (Global API) - 100 requests per 15 minutes
 const apiLimiter = (0, rateLimit_1.rateLimiter)(100, 15 * 60);
 app.use('/api', apiLimiter);

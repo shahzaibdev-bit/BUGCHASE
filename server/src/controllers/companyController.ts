@@ -10,7 +10,6 @@ import { sendEmail, inviteMemberTemplate, reportEmailTemplate, walletTopUpTempla
 import { suggestBountyAmount, generateReportMessage as geminiGenerateMessage } from '../services/geminiService';
 import { getIO } from '../services/socketService';
 import { uploadToCloudinary } from '../utils/cloudinary';
-import Stripe from 'stripe';
 import Transaction from '../models/Transaction';
 import redisClient from '../config/redis';
 import {
@@ -18,12 +17,10 @@ import {
   clearReputationMilestonesForReTriage,
 } from '../services/researcherReputationService';
 import { resolveCompanyAccount } from '../utils/companyAccount';
-
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY as string, {
-    apiVersion: '2026-04-22.dahlia',
-});
+import { getStripeClient } from '../utils/stripeClient';
 
 const getOrCreateStripeCustomer = async (userId: string) => {
+    const stripe = getStripeClient('2026-04-22.dahlia');
     const user = await User.findById(userId);
     if (!user) throw new Error('User not found');
 
@@ -1348,6 +1345,7 @@ export const awardBounty = catchAsync(async (req: Request, res: Response, next: 
 });
 
 export const createTopUpIntent = catchAsync(async (req: Request, res: Response, next: NextFunction) => {
+    const stripe = getStripeClient('2026-04-22.dahlia');
     const { amount, paymentMethodId } = req.body;
     if (!amount || isNaN(Number(amount)) || Number(amount) <= 0) {
         return next(new AppError('Please provide a valid top-up amount', 400));
@@ -1407,6 +1405,7 @@ export const createTopUpIntent = catchAsync(async (req: Request, res: Response, 
 
 
 export const confirmTopUp = catchAsync(async (req: Request, res: Response, next: NextFunction) => {
+    const stripe = getStripeClient('2026-04-22.dahlia');
     const { paymentIntentId } = req.body;
     if (!paymentIntentId) return next(new AppError('Payment Intent ID is required', 400));
 
@@ -1457,6 +1456,7 @@ export const getWalletTransactions = catchAsync(async (req: Request, res: Respon
 });
 
 export const createSetupIntent = catchAsync(async (req: Request, res: Response, next: NextFunction) => {
+    const stripe = getStripeClient('2026-04-22.dahlia');
     const customerId = await getOrCreateStripeCustomer(req.user!.id);
 
     const setupIntent = await stripe.setupIntents.create({
@@ -1475,6 +1475,7 @@ export const createSetupIntent = catchAsync(async (req: Request, res: Response, 
 });
 
 export const getPaymentMethods = catchAsync(async (req: Request, res: Response, next: NextFunction) => {
+    const stripe = getStripeClient('2026-04-22.dahlia');
     const customerId = await getOrCreateStripeCustomer(req.user!.id);
 
     const paymentMethods = await stripe.paymentMethods.list({
@@ -1526,6 +1527,7 @@ export const verifyPaymentMethodOtp = catchAsync(async (req: Request, res: Respo
 });
 
 export const detachPaymentMethod = catchAsync(async (req: Request, res: Response, next: NextFunction) => {
+    const stripe = getStripeClient('2026-04-22.dahlia');
     const paymentMethodIdParam = req.params.paymentMethodId;
 
     if (!paymentMethodIdParam || Array.isArray(paymentMethodIdParam)) {

@@ -6,13 +6,72 @@ import catchAsync from '../utils/catchAsync';
 import redisClient from '../config/redis';
 import { sendEmail, otpTemplate } from '../services/emailService';
 import { signToken, signTwoFactorLoginPendingToken, verifyTwoFactorLoginPendingToken } from '../services/tokenService';
-import { generateSecret, verifySync } from 'otplib';
 import QRCode from 'qrcode';
 import LoginEvent from '../models/LoginEvent';
 import { recordSuccessfulLoginAndNotify, pruneLoginEvents } from '../services/loginAuditService';
 import { getClientIp } from '../utils/requestMeta';
 import { rateLimiter, resetRateLimit } from '../middlewares/rateLimit';
 import { getProfileCompletionReputationScore } from '../utils/profileCompletionReputation';
+
+const BASE32_ALPHABET = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567';
+
+function generateTotpSecret(length = 32): string {
+  const bytes = crypto.randomBytes(length);
+  let output = '';
+  for (let i = 0; i < bytes.length; i += 1) {
+    output += BASE32_ALPHABET[bytes[i] % BASE32_ALPHABET.length];
+  }
+  return output;
+}
+
+function decodeBase32(secret: string): Buffer {
+  const clean = secret.toUpperCase().replace(/[^A-Z2-7]/g, '');
+  let bits = '';
+  for (const char of clean) {
+    const value = BASE32_ALPHABET.indexOf(char);
+    if (value === -1) continue;
+    bits += value.toString(2).padStart(5, '0');
+  }
+
+  const bytes: number[] = [];
+  for (let i = 0; i + 8 <= bits.length; i += 8) {
+    bytes.push(parseInt(bits.slice(i, i + 8), 2));
+  }
+  return Buffer.from(bytes);
+}
+
+function generateTotpToken(secret: string, timeStep = Math.floor(Date.now() / 1000 / 30)): string {
+  const key = decodeBase32(secret);
+  const counter = Buffer.alloc(8);
+  counter.writeUInt32BE(Math.floor(timeStep / 0x100000000), 0);
+  counter.writeUInt32BE(timeStep >>> 0, 4);
+
+  const hmac = crypto.createHmac('sha1', key).update(counter).digest();
+  const offset = hmac[hmac.length - 1] & 0x0f;
+  const code =
+    ((hmac[offset] & 0x7f) << 24) |
+    ((hmac[offset + 1] & 0xff) << 16) |
+    ((hmac[offset + 2] & 0xff) << 8) |
+    (hmac[offset + 3] & 0xff);
+
+  return String(code % 1_000_000).padStart(6, '0');
+}
+
+function verifyTotp(secret: string, token: string, window = 1): boolean {
+  const cleanToken = String(token || '').replace(/\s/g, '');
+  if (!/^\d{6}$/.test(cleanToken)) return false;
+
+  const currentStep = Math.floor(Date.now() / 1000 / 30);
+  for (let offset = -window; offset <= window; offset += 1) {
+    const expected = generateTotpToken(secret, currentStep + offset);
+    const expectedBuffer = Buffer.from(expected);
+    const tokenBuffer = Buffer.from(cleanToken);
+    if (expectedBuffer.length === tokenBuffer.length && crypto.timingSafeEqual(expectedBuffer, tokenBuffer)) {
+      return true;
+    }
+  }
+  return false;
+}
 
 /** Cookie + JWT + profile payload + login audit (new IP / browser email). */
 async function issueSessionAndRespond(req: Request, res: Response, user: any) {
@@ -152,8 +211,7 @@ export const login = catchAsync(async (req: Request, res: Response, next: NextFu
     if (!user.twoFactorSecret) {
       return next(new AppError('Two-factor authentication is misconfigured. Contact support.', 500));
     }
-    const check = verifySync({ secret: user.twoFactorSecret, token: code });
-    if (!check.valid) {
+    if (!verifyTotp(user.twoFactorSecret, code)) {
       return next(new AppError('Invalid two-factor code', 401));
     }
   }
@@ -179,8 +237,7 @@ export const completeLoginWithTwoFactor = catchAsync(async (req: Request, res: R
   }
 
   const code = String(totp).replace(/\s/g, '');
-  const check = verifySync({ secret: user.twoFactorSecret, token: code });
-  if (!check.valid) {
+  if (!verifyTotp(user.twoFactorSecret, code)) {
     return next(new AppError('Invalid two-factor code', 401));
   }
 
@@ -189,12 +246,12 @@ export const completeLoginWithTwoFactor = catchAsync(async (req: Request, res: R
 
 export const setupTwoFactor = catchAsync(async (req: Request, res: Response, next: NextFunction) => {
   const userId = (req.user as any)._id.toString();
-  const secret = generateSecret();
+  const secret = generateTotpSecret();
   await redisClient.set(`2fa_setup:${userId}`, secret, 'EX', 600);
 
   const issuer = encodeURIComponent('BugChase');
   const label = encodeURIComponent(String((req.user as any).email || (req.user as any).username || 'account'));
-  const otpauth = `otpauth://totp/${issuer}:${label}?secret=${secret}&issuer=${issuer}`;
+  const otpauth = `otpauth://totp/${issuer}:${label}?secret=${secret}&issuer=${issuer}&algorithm=SHA1&digits=6&period=30`;
   const qrDataUrl = await QRCode.toDataURL(otpauth);
 
   res.status(200).json({
@@ -211,8 +268,7 @@ export const enableTwoFactor = catchAsync(async (req: Request, res: Response, ne
     return next(new AppError('Setup expired or not started. Open “Set up 2FA” again.', 400));
   }
   const code = String(totp || '').replace(/\s/g, '');
-  const check = verifySync({ secret, token: code });
-  if (!check.valid) {
+  if (!verifyTotp(secret, code)) {
     return next(new AppError('Invalid authenticator code', 400));
   }
 
@@ -242,8 +298,7 @@ export const disableTwoFactor = catchAsync(async (req: Request, res: Response, n
     return next(new AppError('Incorrect password', 401));
   }
 
-  const check = verifySync({ secret: user.twoFactorSecret, token: String(totp).replace(/\s/g, '') });
-  if (!check.valid) {
+  if (!verifyTotp(user.twoFactorSecret, String(totp).replace(/\s/g, ''))) {
     return next(new AppError('Invalid authenticator code', 401));
   }
 

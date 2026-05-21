@@ -518,13 +518,10 @@ exports.getResearcherLeaderboard = (0, catchAsync_1.default)(async (req, res, ne
         }
     });
 });
-const stripe_1 = __importDefault(require("stripe"));
 const Transaction_1 = __importDefault(require("../models/Transaction"));
 const emailService_1 = require("../services/emailService");
 const redis_1 = __importDefault(require("../config/redis"));
-const stripe = new stripe_1.default(process.env.STRIPE_SECRET_KEY, {
-    apiVersion: '2023-10-16',
-});
+const stripeClient_1 = require("../utils/stripeClient");
 /** Return the current authenticated user's own profile */
 exports.getMe = (0, catchAsync_1.default)(async (req, res, next) => {
     const user = await User_1.default.findById(req.user._id).select('-password');
@@ -667,6 +664,7 @@ exports.clearLegacyNotifications = (0, catchAsync_1.default)(async (req, res, _n
 });
 /** Setup Payout Method via Stripe SetupIntent */
 exports.setupPayoutMethod = (0, catchAsync_1.default)(async (req, res, next) => {
+    const stripe = (0, stripeClient_1.getStripeClient)();
     const user = await User_1.default.findById(req.user._id);
     if (!user)
         return next(new AppError_1.default('User not found', 404));
@@ -693,6 +691,7 @@ exports.setupPayoutMethod = (0, catchAsync_1.default)(async (req, res, next) => 
 });
 /** List all attached payout methods for the user */
 exports.getPayoutMethods = (0, catchAsync_1.default)(async (req, res, next) => {
+    const stripe = (0, stripeClient_1.getStripeClient)();
     const user = await User_1.default.findById(req.user._id);
     if (!user)
         return next(new AppError_1.default('User not found', 404));
@@ -703,7 +702,7 @@ exports.getPayoutMethods = (0, catchAsync_1.default)(async (req, res, next) => {
         customer: user.stripeCustomerId,
         type: 'card'
     });
-    const formattedMethods = paymentMethods.data.map(pm => ({
+    const formattedMethods = paymentMethods.data.map((pm) => ({
         id: pm.id,
         brand: pm.card?.brand,
         last4: pm.card?.last4,
@@ -718,6 +717,7 @@ exports.getPayoutMethods = (0, catchAsync_1.default)(async (req, res, next) => {
 });
 /** Request a withdrawal to a specific payment method */
 exports.requestPayout = (0, catchAsync_1.default)(async (req, res, next) => {
+    const stripe = (0, stripeClient_1.getStripeClient)();
     const { amount, paymentMethodId } = req.body;
     const withdrawAmount = Number(amount);
     if (!withdrawAmount || withdrawAmount <= 0) {
@@ -817,6 +817,7 @@ exports.verifyPayoutMethodOtp = (0, catchAsync_1.default)(async (req, res, next)
 });
 /** Remove a payment method from Stripe */
 exports.removePayoutMethod = (0, catchAsync_1.default)(async (req, res, next) => {
+    const stripe = (0, stripeClient_1.getStripeClient)();
     const idParam = req.params.id;
     if (!idParam || Array.isArray(idParam))
         return next(new AppError_1.default('Payment method ID is required', 400));

@@ -47,15 +47,13 @@ const emailService_1 = require("../services/emailService");
 const geminiService_1 = require("../services/geminiService");
 const socketService_1 = require("../services/socketService");
 const cloudinary_1 = require("../utils/cloudinary");
-const stripe_1 = __importDefault(require("stripe"));
 const Transaction_1 = __importDefault(require("../models/Transaction"));
 const redis_1 = __importDefault(require("../config/redis"));
 const researcherReputationService_1 = require("../services/researcherReputationService");
 const companyAccount_1 = require("../utils/companyAccount");
-const stripe = new stripe_1.default(process.env.STRIPE_SECRET_KEY, {
-    apiVersion: '2026-04-22.dahlia',
-});
+const stripeClient_1 = require("../utils/stripeClient");
 const getOrCreateStripeCustomer = async (userId) => {
+    const stripe = (0, stripeClient_1.getStripeClient)('2026-04-22.dahlia');
     const user = await User_1.default.findById(userId);
     if (!user)
         throw new Error('User not found');
@@ -1136,6 +1134,7 @@ exports.awardBounty = (0, catchAsync_1.default)(async (req, res, next) => {
     })();
 });
 exports.createTopUpIntent = (0, catchAsync_1.default)(async (req, res, next) => {
+    const stripe = (0, stripeClient_1.getStripeClient)('2026-04-22.dahlia');
     const { amount, paymentMethodId } = req.body;
     if (!amount || isNaN(Number(amount)) || Number(amount) <= 0) {
         return next(new AppError_1.default('Please provide a valid top-up amount', 400));
@@ -1183,6 +1182,7 @@ exports.createTopUpIntent = (0, catchAsync_1.default)(async (req, res, next) => 
     });
 });
 exports.confirmTopUp = (0, catchAsync_1.default)(async (req, res, next) => {
+    const stripe = (0, stripeClient_1.getStripeClient)('2026-04-22.dahlia');
     const { paymentIntentId } = req.body;
     if (!paymentIntentId)
         return next(new AppError_1.default('Payment Intent ID is required', 400));
@@ -1225,6 +1225,7 @@ exports.getWalletTransactions = (0, catchAsync_1.default)(async (req, res, next)
     });
 });
 exports.createSetupIntent = (0, catchAsync_1.default)(async (req, res, next) => {
+    const stripe = (0, stripeClient_1.getStripeClient)('2026-04-22.dahlia');
     const customerId = await getOrCreateStripeCustomer(req.user.id);
     const setupIntent = await stripe.setupIntents.create({
         customer: customerId,
@@ -1239,6 +1240,7 @@ exports.createSetupIntent = (0, catchAsync_1.default)(async (req, res, next) => 
     });
 });
 exports.getPaymentMethods = (0, catchAsync_1.default)(async (req, res, next) => {
+    const stripe = (0, stripeClient_1.getStripeClient)('2026-04-22.dahlia');
     const customerId = await getOrCreateStripeCustomer(req.user.id);
     const paymentMethods = await stripe.paymentMethods.list({
         customer: customerId,
@@ -1283,6 +1285,7 @@ exports.verifyPaymentMethodOtp = (0, catchAsync_1.default)(async (req, res, next
     res.status(200).json({ status: 'success', message: 'Identity verified successfully' });
 });
 exports.detachPaymentMethod = (0, catchAsync_1.default)(async (req, res, next) => {
+    const stripe = (0, stripeClient_1.getStripeClient)('2026-04-22.dahlia');
     const paymentMethodIdParam = req.params.paymentMethodId;
     if (!paymentMethodIdParam || Array.isArray(paymentMethodIdParam)) {
         return next(new AppError_1.default('Payment Method ID is required', 400));

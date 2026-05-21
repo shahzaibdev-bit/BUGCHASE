@@ -22,15 +22,18 @@ import { rateLimiter } from './middlewares/rateLimit';
 // Load env vars
 dotenv.config(); // Reload env
 
-// Connect to Database
-connectDB();
-
 const PROGRAM_BAN_CHECK_MS = 60 * 1000;
-setInterval(() => {
+if (!process.env.VERCEL) {
+  connectDB();
+}
+
+if (!process.env.VERCEL) {
+  setInterval(() => {
     if (mongoose.connection.readyState === 1) {
         releaseExpiredProgramBans().catch((err) => console.error('releaseExpiredProgramBans', err));
     }
-}, PROGRAM_BAN_CHECK_MS);
+  }, PROGRAM_BAN_CHECK_MS);
+}
 
 const app = express();
 
@@ -78,6 +81,17 @@ app.options(/(.*)/, cors(corsOptions));
 // Body parser, reading data from body into req.body
 app.use(express.json({ limit: '10kb' }));
 app.use(cookieParser());
+
+app.use(async (req, res, next) => {
+  if (req.path === '/' || req.method === 'OPTIONS') return next();
+
+  try {
+    await connectDB();
+    next();
+  } catch (err) {
+    next(err);
+  }
+});
 
 // Rate Limiting (Global API) - 100 requests per 15 minutes
 const apiLimiter = rateLimiter(100, 15 * 60);
