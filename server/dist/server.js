@@ -78,6 +78,9 @@ const allowedOrigins = new Set([
     'http://localhost:3000',
     'http://localhost:5173',
     'https://bugchase-client.vercel.app',
+    'https://bugchase.imkasim.xyz',
+    'https://bugchase.com',
+    'https://www.bugchase.com',
 ]);
 if (process.env.CLIENT_URL) {
     process.env.CLIENT_URL.split(',')
@@ -85,6 +88,11 @@ if (process.env.CLIENT_URL) {
         .filter(Boolean)
         .forEach((origin) => allowedOrigins.add(origin));
 }
+// Patterns for dynamic origins (Vercel preview URLs + any bugchase.com subdomain).
+const dynamicOriginPatterns = [
+    /^https:\/\/bugchase-client-[a-z0-9-]+\.vercel\.app$/i,
+    /^https:\/\/([a-z0-9-]+\.)*bugchase\.com$/i,
+];
 const corsOptions = {
     origin(origin, callback) {
         // Allow same-origin/server-to-server requests with no Origin header.
@@ -92,7 +100,7 @@ const corsOptions = {
             return callback(null, true);
         const normalizedOrigin = origin.replace(/\/$/, '');
         const isAllowed = allowedOrigins.has(normalizedOrigin) ||
-            /^https:\/\/bugchase-client-[a-z0-9-]+\.vercel\.app$/i.test(normalizedOrigin);
+            dynamicOriginPatterns.some((pattern) => pattern.test(normalizedOrigin));
         if (isAllowed)
             return callback(null, true);
         return callback(new AppError_1.default(`CORS blocked origin: ${origin}`, 403));

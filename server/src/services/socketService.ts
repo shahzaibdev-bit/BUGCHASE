@@ -8,6 +8,9 @@ export const initSocket = (server: HttpServer) => {
         'http://localhost:3000',
         'http://localhost:5173',
         'https://bugchase-client.vercel.app',
+        'https://bugchase.imkasim.xyz',
+        'https://bugchase.com',
+        'https://www.bugchase.com',
     ]);
     if (process.env.CLIENT_URL) {
         process.env.CLIENT_URL.split(',')
@@ -15,6 +18,11 @@ export const initSocket = (server: HttpServer) => {
             .filter(Boolean)
             .forEach((origin) => allowedOrigins.add(origin));
     }
+
+    const dynamicOriginPatterns: RegExp[] = [
+        /^https:\/\/bugchase-client-[a-z0-9-]+\.vercel\.app$/i,
+        /^https:\/\/([a-z0-9-]+\.)*bugchase\.com$/i,
+    ];
 
     io = new Server(server, {
         cors: {
@@ -24,7 +32,7 @@ export const initSocket = (server: HttpServer) => {
                 const normalizedOrigin = origin.replace(/\/$/, '');
                 const isAllowed =
                     allowedOrigins.has(normalizedOrigin) ||
-                    /^https:\/\/bugchase-client-[a-z0-9-]+\.vercel\.app$/i.test(normalizedOrigin);
+                    dynamicOriginPatterns.some((pattern) => pattern.test(normalizedOrigin));
 
                 if (isAllowed) return callback(null, true);
                 return callback(new Error(`CORS blocked origin: ${origin}`));
