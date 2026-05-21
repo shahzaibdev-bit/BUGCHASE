@@ -49,6 +49,7 @@ const allowedOrigins = new Set([
   'http://localhost:5173',
   'https://bugchase-client.vercel.app',
   'https://bugchase.imkasim.xyz',
+  'https://bugchase.com'
 ]);
 
 if (process.env.CLIENT_URL) {
