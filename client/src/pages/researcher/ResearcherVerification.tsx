@@ -15,7 +15,7 @@ const STEPS = [
 ];
 
 export default function ResearcherVerification() {
-  const { user } = useAuth();
+  const { user, refreshUser, updateUser } = useAuth();
   const navigate = useNavigate();
   const [currentStep, setCurrentStep] = useState(0);
   const [cnicFile, setCnicFile] = useState<File | null>(null);
@@ -120,6 +120,9 @@ export default function ResearcherVerification() {
       const data = await response.json().catch(() => ({} as { success?: boolean; message?: string }));
 
       if (response.ok && data.success) {
+        updateUser({ isVerified: true });
+        await refreshUser();
+        window.dispatchEvent(new Event('bugchase:user-updated'));
         toast.success('Identity Verified Successfully!', {
           description: `Match confidence ${data.confidence ?? ''}%. Verified badge awarded.`,
         });

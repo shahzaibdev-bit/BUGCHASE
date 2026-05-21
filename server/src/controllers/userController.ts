@@ -1020,28 +1020,77 @@ export const submitKyc = catchAsync(async (req: Request, res: Response, next: Ne
         return next(new AppError('Could not upload KYC documents. Please try again.', 502));
     }
 
+    // KYC engine base URL. In production this points at the Hugging Face Space:
+    //   https://chshahzaib123-bugchase-kyc-engine.hf.space
+    // For local development the fallback is the local FastAPI on port 8000.
     const kycEngineUrl = (process.env.KYC_ENGINE_URL || 'http://127.0.0.1:8000').replace(/\/$/, '');
+    const kycTimeoutMs = Number(process.env.KYC_ENGINE_TIMEOUT_MS || 120_000);
+    const kycPayload = {
+        id_card_url: idCardAsset.url,
+        live_face_url: liveFaceAsset.url,
+        researcher_id: user._id.toString(),
+    };
+
+    // Hugging Face Spaces sleep when idle and can take 30-90s to wake. We allow
+    // a long per-attempt timeout, and on a transient cold-start error we retry
+    // once after a short delay before giving up.
+    const isTransientEngineError = (err: any): boolean => {
+        const status = err?.response?.status;
+        const code = err?.code;
+        if (code === 'ECONNABORTED' || code === 'ECONNRESET' || code === 'ETIMEDOUT' || code === 'ENOTFOUND') {
+            return true;
+        }
+        if (typeof status === 'number' && (status === 503 || status === 504 || status === 408 || status === 502)) {
+            return true;
+        }
+        return false;
+    };
 
     let pythonData: { success?: boolean; confidence?: number; verdict?: string; message?: string; error?: string } = {};
-    try {
-        const response = await axios.post(
-            `${kycEngineUrl}/verify-kyc-urls`,
-            {
-                id_card_url: idCardAsset.url,
-                live_face_url: liveFaceAsset.url,
-                researcher_id: user._id.toString(),
-            },
-            { timeout: 60_000 },
-        );
-        pythonData = response.data || {};
-    } catch (err: any) {
-        console.error('[kyc] engine call failed:', err?.response?.data || err?.message);
+    let lastErr: any = null;
+    for (let attempt = 1; attempt <= 2; attempt++) {
+        try {
+            const response = await axios.post(
+                `${kycEngineUrl}/verify-kyc-urls`,
+                kycPayload,
+                {
+                    timeout: kycTimeoutMs,
+                    headers: { 'Content-Type': 'application/json' },
+                    // Treat only 2xx as success; everything else flows into catch.
+                    validateStatus: (s) => s >= 200 && s < 300,
+                },
+            );
+            pythonData = response.data || {};
+            lastErr = null;
+            break;
+        } catch (err: any) {
+            lastErr = err;
+            const transient = isTransientEngineError(err);
+            console.error(
+                `[kyc] engine call attempt ${attempt} failed${transient ? ' (transient)' : ''}:`,
+                err?.response?.status || err?.code || '',
+                err?.response?.data || err?.message,
+            );
+            if (attempt === 1 && transient) {
+                // Give the HF Space a moment to finish waking up.
+                await new Promise((r) => setTimeout(r, 4_000));
+                continue;
+            }
+            break;
+        }
+    }
+
+    if (lastErr) {
         // Don't keep orphaned uploads if we couldn't even reach the engine.
         await Promise.all([
             deleteFromCloudinary(idCardAsset.public_id),
             deleteFromCloudinary(liveFaceAsset.public_id),
         ]);
-        return next(new AppError('Verification engine is unreachable. Try again shortly.', 503));
+        const isTimeout = lastErr?.code === 'ECONNABORTED' || lastErr?.code === 'ETIMEDOUT';
+        const msg = isTimeout
+            ? 'Verification engine is starting up. Please try again in a few seconds.'
+            : 'Verification engine is unreachable. Try again shortly.';
+        return next(new AppError(msg, 503));
     }
 
     const success = Boolean(pythonData.success);

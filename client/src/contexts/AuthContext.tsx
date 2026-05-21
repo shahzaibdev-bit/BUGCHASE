@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useCallback, useEffect } from 'react';
+import React, { createContext, useContext, useState, useCallback, useEffect, useRef } from 'react';
 import { User, UserRole } from '@/types';
 import { API_URL } from '@/config';
 import { toast } from 'sonner';
@@ -17,7 +17,8 @@ interface AuthContextType {
   logout: () => void;
   signup: (email: string, password: string, name: string, role: 'researcher' | 'company') => Promise<{ success: boolean; error?: string }>;
   verifyEmail: (email: string, otp: string) => Promise<{ success: boolean; error?: string }>;
-  refreshUser: () => Promise<void>;
+  refreshUser: () => Promise<User | null>;
+  updateUser: (patch: Partial<User>) => void;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -25,28 +26,40 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const userRef = useRef<User | null>(null);
+  const lastRefreshAtRef = useRef(0);
+
+  useEffect(() => {
+    userRef.current = user;
+  }, [user]);
+
+  const fetchCurrentUser = useCallback(async (): Promise<User | null> => {
+    const token = localStorage.getItem('token');
+    const headers: HeadersInit = {};
+    if (token) headers.Authorization = `Bearer ${token}`;
+
+    const res = await fetch(`${API_URL}/auth/me`, {
+      headers,
+      credentials: 'include',
+    });
+    const data = await res.json();
+
+    if (res.ok && data.user) {
+      setUser(data.user);
+      lastRefreshAtRef.current = Date.now();
+      return data.user;
+    }
+
+    localStorage.removeItem('token');
+    setUser(null);
+    userRef.current = null;
+    return null;
+  }, []);
 
   useEffect(() => {
     const checkAuth = async () => {
       try {
-        const token = localStorage.getItem('token');
-        
-        const headers: HeadersInit = {};
-        if (token) {
-            headers['Authorization'] = `Bearer ${token}`;
-        }
-
-        const res = await fetch(`${API_URL}/auth/me`, {
-          headers,
-          credentials: 'include',
-        }); 
-        const data = await res.json();
-        if (res.ok && data.user) {
-          setUser(data.user);
-        } else {
-          localStorage.removeItem('token');
-          setUser(null);
-        }
+        await fetchCurrentUser();
       } catch (error) {
         localStorage.removeItem('token');
         setUser(null);
@@ -55,7 +68,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
     };
     checkAuth();
-  }, []);
+  }, [fetchCurrentUser]);
 
   const login = useCallback(async (email: string, password: string, totp?: string): Promise<LoginOutcome> => {
     try {
@@ -173,25 +186,42 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   }, []);
 
-  const refreshUser = useCallback(async () => {
+  const refreshUser = useCallback(async (): Promise<User | null> => {
     try {
       const token = localStorage.getItem('token');
-      if (!token) return;
-
-      const res = await fetch(`${API_URL}/auth/me`, {
-        headers: { 
-          'Authorization': `Bearer ${token}` 
-        },
-        credentials: 'include',
-      }); 
-      const data = await res.json();
-      if (res.ok && data.user) {
-        setUser(data.user);
-      }
+      if (!token) return null;
+      return await fetchCurrentUser();
     } catch (error) {
       console.error('Failed to refresh user', error);
+      return null;
     }
+  }, [fetchCurrentUser]);
+
+  const updateUser = useCallback((patch: Partial<User>) => {
+    setUser((current) => (current ? { ...current, ...patch } : current));
   }, []);
+
+  useEffect(() => {
+    const refreshIfStale = () => {
+      if (!userRef.current || !localStorage.getItem('token')) return;
+      if (Date.now() - lastRefreshAtRef.current < 10_000) return;
+      void refreshUser();
+    };
+
+    const onVisibilityChange = () => {
+      if (document.visibilityState === 'visible') refreshIfStale();
+    };
+
+    window.addEventListener('focus', refreshIfStale);
+    document.addEventListener('visibilitychange', onVisibilityChange);
+    window.addEventListener('bugchase:user-updated', refreshIfStale);
+
+    return () => {
+      window.removeEventListener('focus', refreshIfStale);
+      document.removeEventListener('visibilitychange', onVisibilityChange);
+      window.removeEventListener('bugchase:user-updated', refreshIfStale);
+    };
+  }, [refreshUser]);
 
   return (
     <AuthContext.Provider
@@ -205,6 +235,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         signup,
         verifyEmail,
         refreshUser,
+        updateUser,
       }}
     >
       {children}
