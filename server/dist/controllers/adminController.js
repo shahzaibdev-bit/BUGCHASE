@@ -57,12 +57,6 @@ const toDisplay = (v) => {
     return String(v);
 };
 const notifyAdminChange = async (user, section, details, changes = []) => {
-    await Notification_1.default.create({
-        recipient: user._id,
-        title: 'Admin Updated Your Profile',
-        message: `${section}: ${details}`,
-        type: 'system',
-    });
     if (user.email) {
         try {
             await (0, emailService_1.sendEmail)(user.email, 'Admin updated your BugChase profile', (0, emailService_1.adminProfileUpdateTemplate)(user.name, section, changes.length ? changes : [{ field: section, before: '-', after: details }]));
@@ -150,19 +144,10 @@ exports.broadcastAnnouncement = (0, catchAsync_1.default)(async (req, res, next)
     if (!users.length) {
         return next(new AppError_1.default('No users found for selected audience', 404));
     }
-    // 2. Prepare notifications and send emails
-    const notifications = [];
+    // 2. Send rich email notifications; only fallback to plain in-app when email is missing.
+    const fallbackNotifications = [];
     const emailPromises = [];
     for (const user of users) {
-        // Notification
-        notifications.push({
-            recipient: user._id,
-            title: 'Platform Announcement',
-            message: message,
-            type: 'announcement',
-            read: false
-        });
-        // Email
         if (user.email) {
             // Note: In production, use a queue like BullMQ or batching. 
             // For now, simple parallel promises.
@@ -170,9 +155,20 @@ exports.broadcastAnnouncement = (0, catchAsync_1.default)(async (req, res, next)
                 .then(() => console.log(`Email sent to ${user.email}`))
                 .catch(err => console.error(`Failed to email ${user.email}:`, err.message)));
         }
+        else {
+            fallbackNotifications.push({
+                recipient: user._id,
+                title: 'Platform Announcement',
+                message: message,
+                type: 'announcement',
+                read: false
+            });
+        }
     }
-    // 3. Bulk insert notifications
-    await Notification_1.default.insertMany(notifications);
+    // 3. Bulk insert fallback notifications only for users without email.
+    if (fallbackNotifications.length > 0) {
+        await Notification_1.default.insertMany(fallbackNotifications);
+    }
     // 4. Wait for emails (fail-safe: don't block response too long, or do? 
     // Usually, we respond first or process async. 
     // But user wants to KNOW it happened. Let's await for now for demo purposes.)
@@ -397,12 +393,6 @@ exports.sendUserEmailByAdmin = (0, catchAsync_1.default)(async (req, res, next) 
         return next(new AppError_1.default('User does not have an email address', 400));
     const html = (0, emailService_1.adminDirectMessageTemplate)(user.name || 'there', subject, message);
     await (0, emailService_1.sendEmail)(user.email, subject, html);
-    await Notification_1.default.create({
-        recipient: user._id,
-        title: 'Message from Admin',
-        message: subject,
-        type: 'system',
-    });
     res.status(200).json({
         status: 'success',
         message: 'Email sent successfully',
@@ -493,12 +483,6 @@ exports.updateUserStatus = (0, catchAsync_1.default)(async (req, res, next) => {
             console.error(`Failed to send ${status} email to user`, error);
         }
     }
-    await Notification_1.default.create({
-        recipient: user._id,
-        title: notifTitle,
-        message: notifMsg,
-        type: 'system',
-    });
     await notifyAdminChange(user, 'Account Status', `Status changed to ${status}${reason ? ` (${reason})` : ''}`);
     res.status(200).json({
         status: 'success',
@@ -1036,12 +1020,14 @@ exports.updateProgramStatus = (0, catchAsync_1.default)(async (req, res, next) =
                 }
             }
         }
-        await Notification_1.default.create({
-            recipient: company._id,
-            title: notifTitle,
-            message: notifMsg,
-            type: 'system',
-        });
+        if (!company.email) {
+            await Notification_1.default.create({
+                recipient: company._id,
+                title: notifTitle,
+                message: notifMsg,
+                type: 'system',
+            });
+        }
     }
     res.status(200).json({
         status: 'success',

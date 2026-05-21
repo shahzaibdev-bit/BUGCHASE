@@ -3,15 +3,49 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.updatePassword = exports.updateMe = exports.getMe = exports.logout = exports.login = exports.verifyEmail = exports.signup = void 0;
+exports.updatePassword = exports.updateMe = exports.getMe = exports.logout = exports.getLoginHistory = exports.disableTwoFactor = exports.enableTwoFactor = exports.setupTwoFactor = exports.completeLoginWithTwoFactor = exports.login = exports.verifyEmail = exports.signup = void 0;
 const User_1 = __importDefault(require("../models/User"));
 const AppError_1 = __importDefault(require("../utils/AppError"));
 const catchAsync_1 = __importDefault(require("../utils/catchAsync"));
 const redis_1 = __importDefault(require("../config/redis"));
 const emailService_1 = require("../services/emailService");
 const tokenService_1 = require("../services/tokenService");
+const otplib_1 = require("otplib");
+const qrcode_1 = __importDefault(require("qrcode"));
+const LoginEvent_1 = __importDefault(require("../models/LoginEvent"));
+const loginAuditService_1 = require("../services/loginAuditService");
+const requestMeta_1 = require("../utils/requestMeta");
 const rateLimit_1 = require("../middlewares/rateLimit");
 const profileCompletionReputation_1 = require("../utils/profileCompletionReputation");
+/** Cookie + JWT + profile payload + login audit (new IP / browser email). */
+async function issueSessionAndRespond(req, res, user) {
+    const token = (0, tokenService_1.signToken)(user._id.toString());
+    res.cookie('jwt', token, {
+        expires: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
+        httpOnly: true,
+        secure: process.env.NODE_ENV === 'production',
+        sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
+    });
+    const userObj = user.toObject ? user.toObject() : { ...user };
+    delete userObj.password;
+    delete userObj.twoFactorSecret;
+    userObj.profileCompletionScore = (0, profileCompletionReputation_1.getProfileCompletionReputationScore)(userObj);
+    await (0, rateLimit_1.resetRateLimit)(req, 'auth');
+    const ip = (0, requestMeta_1.getClientIp)(req);
+    const rawUa = req.get('user-agent') || '';
+    void (0, loginAuditService_1.recordSuccessfulLoginAndNotify)({
+        userId: user._id,
+        email: user.email,
+        name: user.name,
+        ip,
+        rawUa,
+    }).then(() => (0, loginAuditService_1.pruneLoginEvents)(user._id).catch(() => { }));
+    res.status(200).json({
+        status: 'success',
+        token,
+        user: userObj,
+    });
+}
 exports.signup = (0, catchAsync_1.default)(async (req, res, next) => {
     const { name, email, password, role } = req.body;
     const existingUser = await User_1.default.findOne({ email });
@@ -65,64 +99,141 @@ exports.verifyEmail = (0, catchAsync_1.default)(async (req, res, next) => {
     await user.save({ validateBeforeSave: false });
     // Clear OTP
     await redis_1.default.del(`otp:${email}`);
-    // Generate Token (Single Session Token)
-    const token = (0, tokenService_1.signToken)(user._id.toString());
-    // Set Token Cookie
-    res.cookie('jwt', token, {
-        expires: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000), // 7 days (match with JWT_EXPIRES_IN if possible, covering simplified case)
-        httpOnly: true,
-        secure: process.env.NODE_ENV === 'production',
-        sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
-    });
-    // Remove password from output
-    const userObj = user.toObject();
-    delete userObj.password;
-    userObj.profileCompletionScore = (0, profileCompletionReputation_1.getProfileCompletionReputationScore)(userObj);
-    // Reset Rate Limit on Success
-    await (0, rateLimit_1.resetRateLimit)(req, 'auth');
-    res.status(200).json({
-        status: 'success',
-        token,
-        user: userObj,
-    });
+    await issueSessionAndRespond(req, res, user);
 });
 exports.login = (0, catchAsync_1.default)(async (req, res, next) => {
-    const { email, password } = req.body;
-    // Check if email & password exist
-    console.log("Login attempt:", email, password ? "***" : "MISSING");
+    const { email, password, totp } = req.body;
+    console.log('Login attempt:', email, password ? '***' : 'MISSING');
     if (!email || !password) {
         return next(new AppError_1.default('Please provide email and password', 400));
     }
-    // Check if user exists && password is correct
-    // Allow login with email or username
     const user = await User_1.default.findOne({
-        $or: [{ email: email }, { username: email }]
-    }).select('+password');
+        $or: [{ email: email }, { username: email }],
+    }).select('+password +twoFactorSecret');
     if (!user || !(await user.correctPassword(password, user.password))) {
         return next(new AppError_1.default('Incorrect email or password', 401));
     }
     if (!user.isEmailVerified) {
         return next(new AppError_1.default('Please verify your email first', 401));
     }
-    // Generate Token
-    const token = (0, tokenService_1.signToken)(user._id.toString());
-    // Set Token Cookie
-    res.cookie('jwt', token, {
-        expires: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000), // 7 days
-        httpOnly: true,
-        secure: process.env.NODE_ENV === 'production',
-        sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
-    });
-    const userObj = user.toObject();
-    delete userObj.password;
-    userObj.profileCompletionScore = (0, profileCompletionReputation_1.getProfileCompletionReputationScore)(userObj);
-    // Reset Rate Limit on Success
-    await (0, rateLimit_1.resetRateLimit)(req, 'auth');
+    if (user.twoFactorEnabled) {
+        const code = totp != null && String(totp).trim() !== '' ? String(totp).replace(/\s/g, '') : '';
+        if (!code) {
+            const twoFactorToken = (0, tokenService_1.signTwoFactorLoginPendingToken)(user._id.toString());
+            return res.status(200).json({
+                status: 'success',
+                requiresTwoFactor: true,
+                twoFactorToken,
+            });
+        }
+        if (!user.twoFactorSecret) {
+            return next(new AppError_1.default('Two-factor authentication is misconfigured. Contact support.', 500));
+        }
+        const check = (0, otplib_1.verifySync)({ secret: user.twoFactorSecret, token: code });
+        if (!check.valid) {
+            return next(new AppError_1.default('Invalid two-factor code', 401));
+        }
+    }
+    await issueSessionAndRespond(req, res, user);
+});
+exports.completeLoginWithTwoFactor = (0, catchAsync_1.default)(async (req, res, next) => {
+    const { twoFactorToken, totp } = req.body;
+    if (!twoFactorToken || totp == null || String(totp).trim() === '') {
+        return next(new AppError_1.default('Missing two-factor authentication fields', 400));
+    }
+    let userId;
+    try {
+        userId = (0, tokenService_1.verifyTwoFactorLoginPendingToken)(String(twoFactorToken)).id;
+    }
+    catch {
+        return next(new AppError_1.default('Session expired. Please log in again with your password.', 401));
+    }
+    const user = await User_1.default.findById(userId).select('+twoFactorSecret');
+    if (!user || !user.twoFactorEnabled || !user.twoFactorSecret) {
+        return next(new AppError_1.default('Invalid session', 401));
+    }
+    const code = String(totp).replace(/\s/g, '');
+    const check = (0, otplib_1.verifySync)({ secret: user.twoFactorSecret, token: code });
+    if (!check.valid) {
+        return next(new AppError_1.default('Invalid two-factor code', 401));
+    }
+    await issueSessionAndRespond(req, res, user);
+});
+exports.setupTwoFactor = (0, catchAsync_1.default)(async (req, res, next) => {
+    const userId = req.user._id.toString();
+    const secret = (0, otplib_1.generateSecret)();
+    await redis_1.default.set(`2fa_setup:${userId}`, secret, 'EX', 600);
+    const issuer = encodeURIComponent('BugChase');
+    const label = encodeURIComponent(String(req.user.email || req.user.username || 'account'));
+    const otpauth = `otpauth://totp/${issuer}:${label}?secret=${secret}&issuer=${issuer}`;
+    const qrDataUrl = await qrcode_1.default.toDataURL(otpauth);
     res.status(200).json({
         status: 'success',
-        token,
-        user: userObj,
+        data: { secret, qrDataUrl },
     });
+});
+exports.enableTwoFactor = (0, catchAsync_1.default)(async (req, res, next) => {
+    const { totp } = req.body;
+    const userId = req.user._id.toString();
+    const secret = await redis_1.default.get(`2fa_setup:${userId}`);
+    if (!secret) {
+        return next(new AppError_1.default('Setup expired or not started. Open “Set up 2FA” again.', 400));
+    }
+    const code = String(totp || '').replace(/\s/g, '');
+    const check = (0, otplib_1.verifySync)({ secret, token: code });
+    if (!check.valid) {
+        return next(new AppError_1.default('Invalid authenticator code', 400));
+    }
+    await User_1.default.findByIdAndUpdate(userId, { twoFactorEnabled: true, twoFactorSecret: secret });
+    await redis_1.default.del(`2fa_setup:${userId}`);
+    const updated = await User_1.default.findById(userId);
+    const userObj = updated.toObject();
+    delete userObj.password;
+    userObj.profileCompletionScore = (0, profileCompletionReputation_1.getProfileCompletionReputationScore)(userObj);
+    res.status(200).json({ status: 'success', user: userObj });
+});
+exports.disableTwoFactor = (0, catchAsync_1.default)(async (req, res, next) => {
+    const { password, totp } = req.body;
+    if (!password || totp == null || String(totp).trim() === '') {
+        return next(new AppError_1.default('Password and authenticator code are required', 400));
+    }
+    const user = await User_1.default.findById(req.user._id).select('+password +twoFactorSecret');
+    if (!user || !user.twoFactorEnabled || !user.twoFactorSecret) {
+        return next(new AppError_1.default('Two-factor authentication is not enabled', 400));
+    }
+    if (!(await user.correctPassword(password, user.password))) {
+        return next(new AppError_1.default('Incorrect password', 401));
+    }
+    const check = (0, otplib_1.verifySync)({ secret: user.twoFactorSecret, token: String(totp).replace(/\s/g, '') });
+    if (!check.valid) {
+        return next(new AppError_1.default('Invalid authenticator code', 401));
+    }
+    user.twoFactorEnabled = false;
+    user.set('twoFactorSecret', undefined);
+    await user.save({ validateBeforeSave: false });
+    const userObj = user.toObject();
+    delete userObj.password;
+    delete userObj.twoFactorSecret;
+    userObj.profileCompletionScore = (0, profileCompletionReputation_1.getProfileCompletionReputationScore)(userObj);
+    res.status(200).json({ status: 'success', user: userObj });
+});
+exports.getLoginHistory = (0, catchAsync_1.default)(async (req, res) => {
+    const items = await LoginEvent_1.default.find({
+        userId: req.user._id,
+        success: true,
+    })
+        .sort({ createdAt: -1 })
+        .limit(50)
+        .select('ip browserSummary userAgent createdAt')
+        .lean();
+    const mapped = items.map((row, idx) => ({
+        id: String(row._id),
+        ip: row.ip || '—',
+        browserSummary: row.browserSummary || 'Unknown',
+        createdAt: row.createdAt,
+        isCurrent: idx === 0,
+    }));
+    res.status(200).json({ status: 'success', data: { items: mapped } });
 });
 const logout = (req, res) => {
     res.cookie('jwt', 'loggedout', {

@@ -18,7 +18,9 @@ exports.verifySchema = zod_1.z.object({
 });
 exports.loginSchema = zod_1.z.object({
     body: zod_1.z.object({
-        email: zod_1.z.string().email('Invalid email address'),
+        /** Email or username (same as login handler). */
+        email: zod_1.z.string().min(1, 'Email or username is required'),
         password: zod_1.z.string().min(1, 'Password is required'),
+        totp: zod_1.z.string().optional(),
     }),
 });

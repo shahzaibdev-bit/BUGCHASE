@@ -10,7 +10,6 @@ const cloudinary_1 = require("../utils/cloudinary");
 const Report_1 = __importDefault(require("../models/Report"));
 const User_1 = __importDefault(require("../models/User"));
 const Program_1 = __importDefault(require("../models/Program"));
-const Notification_1 = __importDefault(require("../models/Notification"));
 const emailService_1 = require("../services/emailService");
 const geminiService_1 = require("../services/geminiService");
 const socketService_1 = require("../services/socketService");
@@ -644,20 +643,6 @@ exports.submitDecision = (0, catchAsync_1.default)(async (req, res, next) => {
     (async () => {
         const researcher = report.researcherId;
         console.log('[EMAIL DEBUG] researcher email:', researcher?.email, '| status:', status);
-        // In-App Notification — separate try-catch so it doesn't block email
-        try {
-            const recipientId = researcher?._id || researcher;
-            await Notification_1.default.create({
-                recipient: recipientId,
-                title: `Report Status Updated: ${report.title}`,
-                message: `Your report has been marked as ${status}.`,
-                type: 'report_status',
-                link: `/researcher/reports/${report._id}`
-            });
-        }
-        catch (notifErr) {
-            console.error('[EMAIL DEBUG] Notification.create failed:', notifErr);
-        }
         // Email Researcher — own try-catch
         try {
             if (researcher?.email) {

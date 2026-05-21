@@ -41,19 +41,39 @@ app.set('trust proxy', 1);
 app.use(helmet());
 
 // Cross-Origin Resource Sharing
-const allowedOrigins = [
+const allowedOrigins = new Set([
   'http://localhost:3000',
   'http://localhost:5173',
-  'https://bugchase-client.vercel.app'
-];
-if (process.env.CLIENT_URL && !allowedOrigins.includes(process.env.CLIENT_URL)) {
-  allowedOrigins.push(process.env.CLIENT_URL);
+  'https://bugchase-client.vercel.app',
+]);
+
+if (process.env.CLIENT_URL) {
+  process.env.CLIENT_URL.split(',')
+    .map((origin) => origin.trim().replace(/\/$/, ''))
+    .filter(Boolean)
+    .forEach((origin) => allowedOrigins.add(origin));
 }
 
-app.use(cors({
-  origin: allowedOrigins,
+const corsOptions: cors.CorsOptions = {
+  origin(origin, callback) {
+    // Allow same-origin/server-to-server requests with no Origin header.
+    if (!origin) return callback(null, true);
+
+    const normalizedOrigin = origin.replace(/\/$/, '');
+    const isAllowed =
+      allowedOrigins.has(normalizedOrigin) ||
+      /^https:\/\/bugchase-client-[a-z0-9-]+\.vercel\.app$/i.test(normalizedOrigin);
+
+    if (isAllowed) return callback(null, true);
+    return callback(new AppError(`CORS blocked origin: ${origin}`, 403));
+  },
   credentials: true,
-}));
+  methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization'],
+};
+
+app.use(cors(corsOptions));
+app.options(/(.*)/, cors(corsOptions));
 
 // Body parser, reading data from body into req.body
 app.use(express.json({ limit: '10kb' }));

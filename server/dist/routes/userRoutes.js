@@ -23,6 +23,37 @@ const upload = (0, multer_1.default)({
         }
     }
 });
+const coverUpload = (0, multer_1.default)({
+    storage: multer_1.default.memoryStorage(),
+    limits: {
+        fileSize: 5 * 1024 * 1024, // 5MB limit for cover photos
+    },
+    fileFilter: (req, file, cb) => {
+        if (file.mimetype === 'image/jpeg' || file.mimetype === 'image/png' || file.mimetype === 'image/jpg' || file.mimetype === 'image/webp') {
+            cb(null, true);
+        }
+        else {
+            cb(new Error('Not an image! Please upload only images.'));
+        }
+    }
+});
+const kycUpload = (0, multer_1.default)({
+    storage: multer_1.default.memoryStorage(),
+    limits: {
+        fileSize: 5 * 1024 * 1024, // 5MB per file (CNIC + selfie)
+    },
+    fileFilter: (req, file, cb) => {
+        if (file.mimetype === 'image/jpeg' ||
+            file.mimetype === 'image/png' ||
+            file.mimetype === 'image/jpg' ||
+            file.mimetype === 'image/webp') {
+            cb(null, true);
+        }
+        else {
+            cb(new Error('Only JPG/PNG/WEBP images are accepted for KYC.'));
+        }
+    },
+});
 // Allow public access mostly, but rate limit it to prevent scraping abuse
 // 20 requests per minute per IP
 const publicProfileLimiter = (0, rateLimit_1.rateLimiter)(20, 60, 'profile');
@@ -31,10 +62,18 @@ router.get('/p/:username', publicProfileLimiter, userController_1.getPublicProfi
 router.get('/leaderboard', authMiddleware_1.protect, userController_1.getResearcherLeaderboard);
 // Protected Routes
 router.patch('/verify-kyc-status', authMiddleware_1.protect, userController_1.updateKYCStatus);
+router.post('/kyc-verify', authMiddleware_1.protect, uploadLimiter, kycUpload.fields([
+    { name: 'idCard', maxCount: 1 },
+    { name: 'liveFace', maxCount: 1 },
+]), userController_1.submitKyc);
 router.patch('/updateMe', authMiddleware_1.protect, userController_1.updateMe);
 router.post('/upload-avatar', authMiddleware_1.protect, uploadLimiter, upload.single('avatar'), userController_1.uploadAvatar);
+router.post('/upload-cover', authMiddleware_1.protect, uploadLimiter, coverUpload.single('coverPhoto'), userController_1.uploadCoverPhoto);
 router.get('/me', authMiddleware_1.protect, userController_1.getMe);
 router.get('/wallet', authMiddleware_1.protect, userController_1.getWalletData);
+router.get('/notifications', authMiddleware_1.protect, userController_1.getMyNotifications);
+router.delete('/notifications/legacy', authMiddleware_1.protect, userController_1.clearLegacyNotifications);
+router.patch('/notifications/:id/read', authMiddleware_1.protect, userController_1.markNotificationRead);
 // Payout Routes
 router.post('/payout-setup', authMiddleware_1.protect, userController_1.setupPayoutMethod);
 router.get('/payout-methods', authMiddleware_1.protect, userController_1.getPayoutMethods);

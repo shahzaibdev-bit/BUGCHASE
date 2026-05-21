@@ -1,37 +1,4 @@
 "use strict";
-var __createBinding = (this && this.__createBinding) || (Object.create ? (function(o, m, k, k2) {
-    if (k2 === undefined) k2 = k;
-    var desc = Object.getOwnPropertyDescriptor(m, k);
-    if (!desc || ("get" in desc ? !m.__esModule : desc.writable || desc.configurable)) {
-      desc = { enumerable: true, get: function() { return m[k]; } };
-    }
-    Object.defineProperty(o, k2, desc);
-}) : (function(o, m, k, k2) {
-    if (k2 === undefined) k2 = k;
-    o[k2] = m[k];
-}));
-var __setModuleDefault = (this && this.__setModuleDefault) || (Object.create ? (function(o, v) {
-    Object.defineProperty(o, "default", { enumerable: true, value: v });
-}) : function(o, v) {
-    o["default"] = v;
-});
-var __importStar = (this && this.__importStar) || (function () {
-    var ownKeys = function(o) {
-        ownKeys = Object.getOwnPropertyNames || function (o) {
-            var ar = [];
-            for (var k in o) if (Object.prototype.hasOwnProperty.call(o, k)) ar[ar.length] = k;
-            return ar;
-        };
-        return ownKeys(o);
-    };
-    return function (mod) {
-        if (mod && mod.__esModule) return mod;
-        var result = {};
-        if (mod != null) for (var k = ownKeys(mod), i = 0; i < k.length; i++) if (k[i] !== "default") __createBinding(result, mod, k[i]);
-        __setModuleDefault(result, mod);
-        return result;
-    };
-})();
 var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
@@ -114,6 +81,7 @@ exports.createReport = (0, catchAsync_1.default)(async (req, res, next) => {
         reportId: generatedReportId,
         title,
         vulnerableEndpoint,
+        assetType: assetType ? String(assetType).trim() : undefined,
         vulnerabilityCategory,
         severity,
         cvssVector,
@@ -131,10 +99,12 @@ exports.createReport = (0, catchAsync_1.default)(async (req, res, next) => {
         await (0, duplicateDetectionService_1.embedAndStoreReportVectorWithRetry)(newReport, 2);
     }
     catch (error) {
-        const msg = (0, duplicateDetectionService_1.isAiServiceUnavailable)(error) ? 'AI service unavailable during indexing' : 'Failed to index report vector';
+        const msg = (0, duplicateDetectionService_1.isDuplicateVectorUnavailable)(error)
+            ? 'Duplicate detection (Upstash Vector) unavailable during indexing'
+            : 'Failed to index report vector';
         console.error(msg, error?.message || error);
         await Report_1.default.findByIdAndDelete(newReport._id);
-        if ((0, duplicateDetectionService_1.isAiServiceUnavailable)(error)) {
+        if ((0, duplicateDetectionService_1.isDuplicateVectorUnavailable)(error)) {
             return next(new AppError_1.default('Unable to submit report right now: duplicate detection service is unavailable. Please retry shortly.', 503));
         }
         return next(new AppError_1.default('Unable to submit report because indexing failed. Please retry.', 500));
@@ -433,10 +403,10 @@ exports.checkReportDuplicates = (0, catchAsync_1.default)(async (req, res, next)
         });
     }
     catch (error) {
-        if ((0, duplicateDetectionService_1.isAiServiceUnavailable)(error)) {
-            return next(new AppError_1.default('AI Service Unavailable. Please try again shortly.', 503));
+        if ((0, duplicateDetectionService_1.isDuplicateVectorUnavailable)(error)) {
+            return next(new AppError_1.default('Duplicate detection service unavailable. Please try again shortly.', 503));
         }
-        return next(new AppError_1.default(error?.response?.data?.detail || 'Failed to run duplicate detection', 500));
+        return next(new AppError_1.default(error?.message || 'Failed to run duplicate detection', 500));
     }
 });
 exports.markReportAsDuplicate = (0, catchAsync_1.default)(async (req, res, next) => {
@@ -558,33 +528,18 @@ exports.reindexAllReports = (0, catchAsync_1.default)(async (req, res, next) => 
     if (!reports.length) {
         return res.status(200).json({ status: 'success', message: 'No reports found to index.', indexed: 0 });
     }
-    const items = reports.map((r) => ({
-        report_id: String(r._id),
-        text: (0, duplicateDetectionService_1.buildEmbeddingText)(r),
-        metadata: {
-            reportId: r.reportId,
-            title: r.title,
-            status: r.status,
-            severity: r.severity,
-            vulnerabilityCategory: r.vulnerabilityCategory,
-            submittedAt: r.createdAt ? new Date(r.createdAt).toISOString() : undefined,
-            programId: String(r.programId ?? ''),
-        },
-    })).filter((item) => item.text.trim().length > 0);
     try {
-        const axios = (await Promise.resolve().then(() => __importStar(require('axios')))).default;
-        const AI_SERVICE_URL = process.env.AI_SERVICE_URL || 'http://localhost:8001';
-        const response = await axios.post(`${AI_SERVICE_URL}/bulk-index`, { reports: items }, { timeout: 60000 });
+        const indexed = await (0, duplicateDetectionService_1.bulkIndexReports)(reports);
         return res.status(200).json({
             status: 'success',
-            message: `Successfully indexed ${response.data?.indexed ?? items.length} reports.`,
-            indexed: response.data?.indexed ?? items.length,
+            message: `Successfully indexed ${indexed} reports in Upstash Vector.`,
+            indexed,
         });
     }
     catch (error) {
-        if ((0, duplicateDetectionService_1.isAiServiceUnavailable)(error)) {
-            return next(new AppError_1.default('AI Service Unavailable. Please try again shortly.', 503));
+        if ((0, duplicateDetectionService_1.isDuplicateVectorUnavailable)(error)) {
+            return next(new AppError_1.default('Duplicate detection service unavailable. Please try again shortly.', 503));
         }
-        return next(new AppError_1.default(error?.response?.data?.detail || 'Failed to re-index reports', 500));
+        return next(new AppError_1.default(error?.message || 'Failed to re-index reports', 500));
     }
 });

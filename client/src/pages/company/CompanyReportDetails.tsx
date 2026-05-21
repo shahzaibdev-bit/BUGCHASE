@@ -511,7 +511,7 @@ export default function CompanyReportDetails() {
   // Real-time socket — join report room, receive live updates from other actors
   useEffect(() => {
     if (!id) return;
-    const socketUrl = import.meta.env.VITE_API_URL || '/';
+    const socketUrl = (import.meta.env.VITE_API_URL || '/').replace(/\/api\/?$/, '');
     const socket = socketIO(socketUrl, {
       withCredentials: true,
       transports: ['websocket'],

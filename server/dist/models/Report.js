@@ -22,6 +22,8 @@ const reportSchema = new mongoose_1.default.Schema({
         index: true,
     },
     vulnerableEndpoint: { type: String, trim: true },
+    /** Submission wizard: Web | API | Contract — improves public profile analytics when set. */
+    assetType: { type: String, trim: true },
     description: { type: String, required: true },
     pocSteps: { type: String, required: true },
     severity: {

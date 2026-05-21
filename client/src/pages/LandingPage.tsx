@@ -22,7 +22,7 @@ function Cyber3DCard({ children, className = '', delay = 0 }: { children: React.
       <div className="relative z-10">{children}</div>
       {/* Animated background element */}
        <div className="absolute inset-0 -z-10 opacity-0 group-hover:opacity-100 transition-opacity duration-700">
-        <div className="absolute inset-0 bg-[url('https://grainy-gradients.vercel.app/noise.svg')] opacity-20 brightness-100"></div>
+        <div className="absolute inset-0 bg-[url('/noise.svg')] opacity-20 brightness-100"></div>
       </div>
     </InvertedTiltCard>
   );

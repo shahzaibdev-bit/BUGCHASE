@@ -43,6 +43,18 @@ const userSchema = new mongoose_1.default.Schema({
         type: String,
         default: 'default.jpg',
     },
+    coverPhoto: {
+        type: String,
+        default: '',
+    },
+    hireable: {
+        type: Boolean,
+        default: true,
+    },
+    showPayouts: {
+        type: Boolean,
+        default: false,
+    },
     // Researcher Specific
     reputationScore: { type: Number, default: 0 },
     walletBalance: { type: Number, default: 0 },
@@ -101,7 +113,12 @@ const userSchema = new mongoose_1.default.Schema({
                 default: 'verified'
             },
             inScope: [String],
-            outScope: [String]
+            outScope: [String],
+            discovered: [String],
+            portScanData: {
+                type: mongoose_1.default.Schema.Types.Mixed,
+                default: undefined,
+            },
         }],
     achievements: [{
             title: String,
@@ -110,6 +127,14 @@ const userSchema = new mongoose_1.default.Schema({
             desc: String,
             icon: String // store icon name e.g. 'Clock'
         }],
+    twoFactorEnabled: {
+        type: Boolean,
+        default: false,
+    },
+    twoFactorSecret: {
+        type: String,
+        select: false,
+    },
     status: {
         type: String,
         enum: ['Active', 'Suspended', 'Banned'],
@@ -120,6 +145,18 @@ const userSchema = new mongoose_1.default.Schema({
     payoutHold: {
         type: Boolean,
         default: false,
+    },
+    kycInfo: {
+        idCardUrl: String,
+        idCardPublicId: String,
+        liveFaceUrl: String,
+        liveFacePublicId: String,
+        verifiedAt: Date,
+        confidence: Number,
+        verdict: {
+            type: String,
+            enum: ['VERIFIED', 'MATCH FAILED', 'PENDING'],
+        },
     },
 }, {
     timestamps: true,

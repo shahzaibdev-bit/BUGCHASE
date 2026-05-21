@@ -94,7 +94,7 @@ const SecurityRewards = () => {
                             className="h-full bg-white dark:bg-[#0a0a0a] border border-black/15 dark:border-white/10 p-6 rounded-xl flex flex-col justify-between group hover:border-black/50 dark:hover:border-white/20 transition-all shadow-xl shadow-zinc-200/50 dark:shadow-2xl relative overflow-hidden"
                         >
                            {/* Noise Texture Overlay for Premium Feel */}
-                           <div className="absolute inset-0 opacity-[0.03] bg-[url('https://grainy-gradients.vercel.app/noise.svg')] pointer-events-none" />
+                           <div className="absolute inset-0 opacity-[0.03] bg-[url('/noise.svg')] pointer-events-none" />
 
                            {/* Card Top */}
                            <div className="mb-6 space-y-4 relative z-10">

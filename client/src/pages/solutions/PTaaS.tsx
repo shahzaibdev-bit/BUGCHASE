@@ -119,7 +119,7 @@ const PTaaS = () => {
                             className="h-full bg-white dark:bg-[#050505] border border-black/15 dark:border-white/10 p-8 rounded-2xl flex flex-col justify-between group hover:border-black/50 dark:hover:border-white/30 transition-all relative overflow-hidden shadow-xl shadow-zinc-200/50 dark:shadow-none"
                         >
                            {/* Noise & Scanlines */}
-                           <div className="absolute inset-0 opacity-[0.05] bg-[url('https://grainy-gradients.vercel.app/noise.svg')] pointer-events-none" />
+                           <div className="absolute inset-0 opacity-[0.05] bg-[url('/noise.svg')] pointer-events-none" />
                            <div className="absolute inset-0 bg-[linear-gradient(to_bottom,transparent_0%,rgba(0,0,0,0.02)_50%,transparent_100%)] dark:bg-[linear-gradient(to_bottom,transparent_0%,rgba(255,255,255,0.02)_50%,transparent_100%)] bg-[length:100%_4px] pointer-events-none" />
 
                            {/* Header */}

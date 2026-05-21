@@ -15,7 +15,7 @@ export const PublicLayout = ({ simpleNavbar = false }: { simpleNavbar?: boolean 
              <AnimatedBackground />
              
              {/* Static Noise Overlay (Optional global texture) */}
-             <div className="fixed inset-0 z-0 pointer-events-none bg-[url('https://grainy-gradients.vercel.app/noise.svg')] opacity-[0.02] brightness-100" />
+             <div className="fixed inset-0 z-0 pointer-events-none bg-[url('/noise.svg')] opacity-[0.02] brightness-100" />
              
              {/* Navbar - Fixed Z-50 */}
              <MorphingNavbar simple={simpleNavbar} />

@@ -4,17 +4,29 @@ exports.getIO = exports.initSocket = void 0;
 const socket_io_1 = require("socket.io");
 let io;
 const initSocket = (server) => {
-    const allowedOrigins = [
+    const allowedOrigins = new Set([
         'http://localhost:3000',
         'http://localhost:5173',
-        'https://bugchase-client.vercel.app'
-    ];
-    if (process.env.CLIENT_URL && !allowedOrigins.includes(process.env.CLIENT_URL)) {
-        allowedOrigins.push(process.env.CLIENT_URL);
+        'https://bugchase-client.vercel.app',
+    ]);
+    if (process.env.CLIENT_URL) {
+        process.env.CLIENT_URL.split(',')
+            .map((origin) => origin.trim().replace(/\/$/, ''))
+            .filter(Boolean)
+            .forEach((origin) => allowedOrigins.add(origin));
     }
     io = new socket_io_1.Server(server, {
         cors: {
-            origin: allowedOrigins,
+            origin(origin, callback) {
+                if (!origin)
+                    return callback(null, true);
+                const normalizedOrigin = origin.replace(/\/$/, '');
+                const isAllowed = allowedOrigins.has(normalizedOrigin) ||
+                    /^https:\/\/bugchase-client-[a-z0-9-]+\.vercel\.app$/i.test(normalizedOrigin);
+                if (isAllowed)
+                    return callback(null, true);
+                return callback(new Error(`CORS blocked origin: ${origin}`));
+            },
             methods: ['GET', 'POST'],
             credentials: true
         }

@@ -18,6 +18,7 @@ import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContaine
 import { InvertedTiltCard } from '@/components/InvertedTiltCard';
 import { InverseSpotlightCard } from '@/components/InverseSpotlightCard';
 import { cn } from '@/lib/utils';
+import { API_URL } from '@/config';
 
 // --- Mock Data ---
 const INITIAL_SEVERITY = [
@@ -80,7 +81,7 @@ export default function CompanyAnalytics() {
     const fetchAnalytics = async () => {
       try {
         setIsLoading(true);
-        const res = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:5000/api'}/company/analytics`, {
+        const res = await fetch(`${API_URL}/company/analytics`, {
           headers: {
             'Authorization': `Bearer ${localStorage.getItem('token')}`
           }

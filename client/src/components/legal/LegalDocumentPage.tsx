@@ -32,7 +32,7 @@ export const LegalDocumentPage: React.FC<LegalDocumentPageProps> = ({
         <div className="relative min-h-screen bg-zinc-50 dark:bg-black text-zinc-900 dark:text-white font-mono overflow-hidden transition-colors duration-300">
             {/* 1. Global Layout & Theme: Static Gradient */}
             <div className="fixed inset-0 z-0 bg-gradient-to-b from-white via-zinc-50 to-zinc-100 dark:from-[#050505] dark:via-[#0a0a0a] dark:to-[#000000]" />
-            <div className="fixed inset-0 z-0 pointer-events-none bg-[url('https://grainy-gradients.vercel.app/noise.svg')] opacity-[0.03] dark:opacity-[0.02]" />
+            <div className="fixed inset-0 z-0 pointer-events-none bg-[url('/noise.svg')] opacity-[0.03] dark:opacity-[0.02]" />
             
             {/* Navigation */}
             <MorphingNavbar />
