@@ -15,9 +15,24 @@ const AnimatedBackground = ({ opacity = 1, maskColor: customMaskColor }: Animate
     const { theme } = useTheme();
     const isMobile = useIsMobile();
     const [mounted, setMounted] = useState(false);
+    const [useStaticBackground, setUseStaticBackground] = useState(false);
 
     // After mounting, we have access to the theme
     useEffect(() => {
+        const ua = navigator.userAgent || '';
+        const isIOSWebKit = /iPad|iPhone|iPod/.test(ua) || (ua.includes('Macintosh') && navigator.maxTouchPoints > 1);
+        const hasWebGL = (() => {
+            try {
+                const canvas = document.createElement('canvas');
+                return Boolean(canvas.getContext('webgl') || canvas.getContext('experimental-webgl'));
+            } catch {
+                return false;
+            }
+        })();
+
+        // iOS browsers all use Safari/WebKit. The WebGL shader is decorative,
+        // so prefer the static background there to avoid blank-page crashes.
+        setUseStaticBackground(isIOSWebKit || !hasWebGL);
         setMounted(true);
     }, []);
 
@@ -33,7 +48,7 @@ const AnimatedBackground = ({ opacity = 1, maskColor: customMaskColor }: Animate
 
     // --- MOBILE OPTIMIZATION ---
     // If on mobile, we return a lightweight static background instead of the heavy WebGL shader.
-    if (isMobile) {
+    if (isMobile || useStaticBackground) {
         return (
              <div 
                 className="fixed inset-0 z-0 pointer-events-none transition-colors duration-300"

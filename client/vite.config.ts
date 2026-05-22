@@ -4,6 +4,11 @@ import path from "path";
 
 // https://vitejs.dev/config/
 export default defineConfig({
+  build: {
+    // iOS Chrome uses Safari/WebKit, so keep the production bundle conservative.
+    target: ['es2018', 'safari13'],
+    cssTarget: ['safari13'],
+  },
   server: {
     host: true, // Listen on all addresses
     allowedHosts: true, // Allow localtunnel domains
