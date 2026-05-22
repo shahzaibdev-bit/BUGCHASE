@@ -13,6 +13,7 @@ import CyberpunkEditor from '@/components/ui/CyberpunkEditor';
 import { format } from 'date-fns';
 import { toast } from '@/hooks/use-toast';
 import { API_URL } from '@/config';
+import { getRealtimeSocketUrl } from '@/lib/realtime';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import rehypeRaw from 'rehype-raw';
@@ -92,6 +93,7 @@ export default function ReportDetails() {
   const [commentContent, setCommentContent] = useState('');
   const [report, setReport] = useState<any>(null);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [previewMedia, setPreviewMedia] = useState<{ url: string; type: 'image' | 'video' } | null>(null);
   const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -99,13 +101,23 @@ export default function ReportDetails() {
 
   const fetchReport = async () => {
     try {
-        const res = await fetch(`${API_URL}/reports/${id}`);
+        setLoadError(null);
+        const token = localStorage.getItem('token');
+        const res = await fetch(`${API_URL}/reports/${id}`, {
+          headers: token ? { Authorization: `Bearer ${token}` } : {},
+          credentials: 'include',
+        });
         const data = await res.json();
         if (res.ok) {
             setReport(data.data);
+        } else if (res.status === 401) {
+            setLoadError('Your session expired or you are not logged in on this domain. Please log in again.');
+        } else {
+            setLoadError(data.message || 'Could not load this report.');
         }
     } catch (err) {
         console.error(err);
+        setLoadError('Could not connect to the server. Please try again.');
     } finally {
         setLoading(false);
     }
@@ -118,7 +130,9 @@ export default function ReportDetails() {
   // Real-time socket — receive live updates from triager/company actions
   useEffect(() => {
     if (!id) return;
-    const socketUrl = (import.meta.env.VITE_API_URL || '/').replace(/\/api\/?$/, '');
+    const socketUrl = getRealtimeSocketUrl();
+    if (!socketUrl) return;
+
     const socket = socketIO(socketUrl, { withCredentials: true });
     socket.on('connect', () => socket.emit('join_report', id));
 
@@ -213,8 +227,21 @@ export default function ReportDetails() {
       }
   };
 
-  if (loading || !report) {
+  if (loading) {
       return <div className="p-10 text-center">Loading report...</div>;
+  }
+
+  if (loadError || !report) {
+      return (
+        <div className="p-10 text-center space-y-4">
+          <p className="text-sm text-zinc-600 dark:text-zinc-400">{loadError || 'Report not found.'}</p>
+          {loadError?.includes('log in') ? (
+            <Link to="/login" className="inline-flex rounded-md bg-black px-4 py-2 text-sm font-medium text-white dark:bg-white dark:text-black">
+              Go to login
+            </Link>
+          ) : null}
+        </div>
+      );
   }
 
   // Calculate status step

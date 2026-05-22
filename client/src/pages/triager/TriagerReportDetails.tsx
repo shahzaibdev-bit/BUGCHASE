@@ -65,6 +65,7 @@ import {
 } from '@/components/ui/select';
 import { toast } from '@/hooks/use-toast';
 import { io } from 'socket.io-client';
+import { getRealtimeSocketUrl } from '@/lib/realtime';
 import { CvssInteractiveModal } from '@/components/CvssInteractiveModal';
 import { ReportTimelineNode } from '@/components/reports/ReportTimelineNode';
 import type { ReportTimelineEvent } from '@/components/reports/ReportTimelineNode';
@@ -411,7 +412,9 @@ export default function TriagerReportDetails() {
     useEffect(() => {
         if (!id) return;
         
-        const socketUrl = API_URL.replace(/\/api\/?$/, '');
+        const socketUrl = getRealtimeSocketUrl();
+        if (!socketUrl) return;
+
         const socket = io(socketUrl, {
             withCredentials: true
         });

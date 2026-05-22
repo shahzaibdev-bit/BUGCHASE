@@ -68,6 +68,7 @@ import {
 import { toast } from '@/hooks/use-toast';
 import { cn } from '@/lib/utils';
 import { API_URL } from '@/config';
+import { getRealtimeSocketUrl } from '@/lib/realtime';
 
 // --- Constants ---
 const STATUS_REASONS: Record<string, string[]> = {
@@ -511,7 +512,9 @@ export default function CompanyReportDetails() {
   // Real-time socket — join report room, receive live updates from other actors
   useEffect(() => {
     if (!id) return;
-    const socketUrl = (import.meta.env.VITE_API_URL || '/').replace(/\/api\/?$/, '');
+    const socketUrl = getRealtimeSocketUrl();
+    if (!socketUrl) return;
+
     const socket = socketIO(socketUrl, {
       withCredentials: true,
       transports: ['websocket'],

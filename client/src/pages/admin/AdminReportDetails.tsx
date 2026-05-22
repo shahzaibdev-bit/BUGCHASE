@@ -3,6 +3,7 @@ import { useNavigate, useParams, useLocation } from 'react-router-dom';
 import { ArrowLeft, Clock, CheckCircle, XCircle, Calculator, Send, Pencil } from 'lucide-react';
 import { io } from 'socket.io-client';
 import { API_URL } from '@/config';
+import { getRealtimeSocketUrl } from '@/lib/realtime';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { ScrollArea } from '@/components/ui/scroll-area';
@@ -145,7 +146,9 @@ export default function AdminReportDetails() {
 
   useEffect(() => {
     if (!id) return;
-    const socketUrl = API_URL.replace(/\/api\/?$/, '');
+    const socketUrl = getRealtimeSocketUrl();
+    if (!socketUrl) return;
+
     const socket = io(socketUrl, { withCredentials: true });
     socket.on('connect', () => socket.emit('join_report', id));
     socket.on('new_activity', (activity: any) => {
