@@ -1,12 +1,11 @@
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react-swc";
+import legacy from "@vitejs/plugin-legacy";
 import path from "path";
 
 // https://vitejs.dev/config/
 export default defineConfig({
   build: {
-    // iOS Chrome uses Safari/WebKit, so keep the production bundle conservative.
-    target: ['es2018', 'safari13'],
     cssTarget: ['safari13'],
   },
   server: {
@@ -28,7 +27,14 @@ export default defineConfig({
       },
     },
   },
-  plugins: [react()],
+  plugins: [
+    react(),
+    legacy({
+      targets: ['defaults', 'iOS >= 12'],
+      modernPolyfills: true,
+      renderLegacyChunks: true,
+    }),
+  ],
   resolve: {
     alias: {
       "@": path.resolve(__dirname, "./src"),
