@@ -1,6 +1,7 @@
 import express from 'express';
 import multer from 'multer';
 import { protect } from '../middlewares/auth';
+import { spamGuardMiddleware } from '../middlewares/spamGuardMiddleware';
 import {
   createReport,
   getMyReports,
@@ -21,10 +22,10 @@ router.use(protect);
 
 router
   .route('/')
-  .post(upload.array('files', 5), createReport)
+  .post(upload.array('files', 5), spamGuardMiddleware, createReport)
   .get(getMyReports);
 
-router.post('/submit', upload.array('files', 5), createReport);
+router.post('/submit', upload.array('files', 5), spamGuardMiddleware, createReport);
 router.post('/check-duplicates/:id', checkReportDuplicates);
 router.post('/reindex-all', reindexAllReports);
 
