@@ -257,6 +257,92 @@ body { margin: 0; padding: 0; background-color: #000000; }
   return juice(html);
 };
 
+export const inviteSupportTemplate = (
+  name: string,
+  email: string,
+  username: string,
+  password: string,
+  loginUrl: string,
+  specializations: string[] = [],
+) => {
+  const specsList =
+    specializations.length > 0
+      ? specializations
+          .map(
+            (s) =>
+              `<span style="background: #27272a; color: #fff; padding: 2px 6px; border-radius: 4px; border: 1px solid #3f3f46; font-size: 10px; margin-right: 4px; text-transform: uppercase;">${s}</span>`,
+          )
+          .join('')
+      : '<span style="color: #52525b; font-style: italic;">General Support</span>';
+
+  const html = `
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>You've been invited to BugChase Support</title>
+<style>
+body { margin: 0; padding: 0; background-color: #000000; }
+.wrapper { width: 100%; table-layout: fixed; background-color: #000000; padding-bottom: 40px; }
+.container { background-color: #09090b; margin: 0 auto; width: 100%; max-width: 800px; border: 1px solid #27272a; border-radius: 8px; overflow: hidden; }
+.header { background-color: #18181b; padding: 20px; text-align: center; border-bottom: 1px solid #27272a; }
+.logo { color: #ffffff; font-family: 'Courier New', Courier, monospace; font-weight: bold; font-size: 20px; letter-spacing: 1px; text-transform: uppercase; text-decoration: none; }
+.content { padding: 40px 20px; text-align: center; font-family: 'Courier New', Courier, monospace; }
+.title { font-size: 24px; margin: 0 0 20px; color: #ffffff; }
+.text { font-size: 16px; color: #a1a1aa; line-height: 1.5; margin: 0 0 30px; }
+.box { background-color: #18181b; border: 1px solid #27272a; border-radius: 8px; padding: 20px; text-align: left; margin: 0 auto 30px auto; display: block; width: 85%; }
+.label { font-size: 12px; color: #71717a; margin-bottom: 5px; text-transform: uppercase; letter-spacing: 1px; }
+.value { font-size: 16px; color: #ffffff; margin-bottom: 15px; font-weight: bold; font-family: monospace; display: block; word-break: break-all; }
+.button { display: inline-block; background-color: #ffffff; color: #000000; padding: 14px 28px; border-radius: 6px; text-decoration: none; font-weight: bold; font-size: 14px; font-family: 'Courier New', Courier, monospace; text-transform: uppercase; }
+.footer { padding: 20px; text-align: center; color: #52525b; font-size: 12px; font-family: 'Courier New', Courier, monospace; border-top: 1px solid #27272a; background-color: #09090b; }
+@media only screen and (max-width: 800px) {
+    .content { padding: 30px 15px; }
+    .box { width: 100%; box-sizing: border-box; }
+}
+</style>
+</head>
+<body>
+<div class="wrapper">
+    <div style="height: 40px;"></div>
+    <div class="container">
+      <div class="header">
+        <a href="#" class="logo">BugChase Security</a>
+      </div>
+      <div class="content">
+        <h1 class="title">Support Access Granted</h1>
+        <p class="text">Hello ${name},<br/>You have been authorized as a member of the BugChase Support Team.</p>
+
+        <div class="box">
+          <div class="label">Assigned Areas</div>
+          <div class="value" style="margin-bottom: 20px;">
+            ${specsList}
+          </div>
+
+          <div class="label">Username</div>
+          <div class="value" style="color: #d4d4d8;">${username}</div>
+
+          <div class="label">Email</div>
+          <div class="value" style="color: #d4d4d8;">${email}</div>
+
+          <div class="label" style="color: #10b981;">Support Access Credential</div>
+          <div class="value" style="font-size: 20px; letter-spacing: 2px;">${password}</div>
+        </div>
+
+        <p class="text">These are your credentials for support login.<br/>Please log in and secure your account immediately.</p>
+        <a href="${loginUrl}" class="button">Access Support Portal</a>
+      </div>
+      <div class="footer">
+        &copy; ${new Date().getFullYear()} BugChase. All rights reserved.
+      </div>
+    </div>
+</div>
+</body>
+</html>
+  `;
+  return juice(html);
+};
+
 export const broadcastTemplate = (message: string) => {
   const html = `
 <!DOCTYPE html>

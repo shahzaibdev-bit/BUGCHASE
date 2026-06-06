@@ -17,6 +17,7 @@ import adminRoutes from './routes/adminRoutes';
 import triagerRoutes from './routes/triagerRoutes';
 import programRoutes from './routes/programRoutes';
 import publicRoutes from './routes/publicRoutes';
+import disputeRoutes from './routes/disputeRoutes';
 import { rateLimiter } from './middlewares/rateLimit';
 
 // Load env vars
@@ -46,6 +47,7 @@ app.use(helmet());
 // Cross-Origin Resource Sharing
 const allowedOrigins = new Set([
   'http://localhost:3000',
+  'http://localhost:3100',
   'http://localhost:5173',
   'https://bugchase-client.vercel.app',
   'https://bugchase.imkasim.xyz',
@@ -119,6 +121,7 @@ app.use('/api/company', companyRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/triager', triagerRoutes);
 app.use('/api/programs', programRoutes);
+app.use('/api/disputes', disputeRoutes);
 
 const strictLimiter = rateLimiter(10, 15 * 60); // 10 requests per 15 minutes
 app.use('/api/public', strictLimiter, publicRoutes);
@@ -145,6 +148,12 @@ if (process.env.NODE_ENV !== 'production' && !process.env.VERCEL) {
   // Initialize WebSockets
   import('./services/socketService').then(({ initSocket }) => {
       initSocket(server);
+      // Once sockets are up we can safely re-queue any reports that were
+      // mid-flight before the previous shutdown so the AI pipeline picks up
+      // where it left off (FIFO, one at a time).
+      import('./services/reportProcessingQueue').then(({ recoverPendingReportsIntoQueue }) => {
+          recoverPendingReportsIntoQueue();
+      });
   });
 
   // Handle Unhandled Rejections

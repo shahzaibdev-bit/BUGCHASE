@@ -1,172 +1,393 @@
 import mongoose from 'mongoose';
 import Report from '../models/Report';
-import { getUpstashVectorIndex } from '../config/upstashVector';
+import { DUPLICATE_SEARCH_INDEX_NAME } from '../config/searchIndexes';
+import {
+  DuplicateLlmVerdict,
+  isDuplicateLlmEnabled,
+  runDuplicateLlmAnalysis,
+} from './duplicateLlmService';
 
-/** Cosine similarity threshold for auto-flagging duplicate review (0–1). */
-export const DUPLICATE_MATCH_THRESHOLD = Number(
-  process.env.DUPLICATE_SIMILARITY_THRESHOLD || 0.55
-);
+/* -------------------------------------------------------------------------- */
+/*                                Tunables                                    */
+/* -------------------------------------------------------------------------- */
 
-const VECTOR_SEARCH_TOP_K = Number(process.env.UPSTASH_VECTOR_SEARCH_TOP_K || 32);
-const VECTOR_MATCH_RETURN_LIMIT = Number(process.env.DUPLICATE_MATCH_RETURN_LIMIT || 15);
-const BULK_UPSERT_BATCH = Number(process.env.UPSTASH_VECTOR_BULK_BATCH || 100);
+const TOP_K = Math.max(1, Math.min(10, Number(process.env.DUPLICATE_SEARCH_TOP_K || 5)));
+const OVERFETCH = Math.max(TOP_K * 4, 20); // Atlas Search pre-filter overshoot
 
-/** Strip HTML so embeddings match on text, not tags (rich-text submissions). */
+const HYDRATE_FIELDS =
+  '_id reportId title vulnerabilityCategory vulnerableEndpoint description pocSteps impact severity status programId createdAt';
+
+/* -------------------------------------------------------------------------- */
+/*                          Normalisation utilities                           */
+/* -------------------------------------------------------------------------- */
+
+const normalize = (text: string) => String(text || '').replace(/\s+/g, ' ').trim();
+
 export const stripHtmlForEmbedding = (raw: unknown): string => {
   const s = String(raw ?? '');
   return normalize(s.replace(/<[^>]+>/g, ' '));
 };
 
+/**
+ * Normalise a vulnerable-endpoint URL into a comparable shape:
+ *  - strip protocol/host if present
+ *  - lowercase
+ *  - collapse common dynamic ID segments (UUID, ObjectId, numeric) to placeholders
+ *  - extract distinct query-parameter names
+ */
+export function normalizeEndpoint(rawEndpoint: unknown): {
+  raw: string;
+  path: string;
+  queryParams: string[];
+} {
+  const raw = String(rawEndpoint ?? '').trim();
+  if (!raw) return { raw: '', path: '', queryParams: [] };
+
+  let pathname = raw;
+  let search = '';
+  try {
+    const probe = raw.match(/^https?:\/\//i)
+      ? raw
+      : `http://placeholder.local${raw.startsWith('/') ? '' : '/'}${raw}`;
+    const url = new URL(probe);
+    pathname = url.pathname || '/';
+    search = url.search || '';
+  } catch {
+    const qIdx = raw.indexOf('?');
+    if (qIdx >= 0) {
+      pathname = raw.slice(0, qIdx);
+      search = raw.slice(qIdx);
+    }
+  }
+
+  const path =
+    pathname
+      .replace(/\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/gi, '/:uuid')
+      .replace(/\/[0-9a-f]{24}\b/gi, '/:objectid')
+      .replace(/\/\d+/g, '/:id')
+      .replace(/\/+/g, '/')
+      .replace(/\/+$/, '')
+      .toLowerCase() || '/';
+
+  const queryParams: string[] = [];
+  if (search) {
+    try {
+      const params = new URLSearchParams(search.startsWith('?') ? search.slice(1) : search);
+      for (const [k] of params) {
+        const key = k.toLowerCase();
+        if (key && !queryParams.includes(key)) queryParams.push(key);
+      }
+    } catch {
+      /* ignore malformed query strings */
+    }
+  }
+
+  return { raw, path, queryParams };
+}
+
+function pickPrimaryParameter(report: any, endpointParams: string[]): string {
+  if (endpointParams.length) return endpointParams[0];
+  const candidates = [report?.parameter, report?.parameterName, report?.parameter_name];
+  for (const c of candidates) {
+    if (typeof c === 'string' && c.trim()) return c.trim().toLowerCase();
+  }
+  return '';
+}
+
+function pickBugCategory(report: any): string {
+  const candidates = [report?.vulnerabilityCategory, report?.bug_category, report?.bugCategory];
+  for (const c of candidates) {
+    if (typeof c === 'string' && c.trim()) return c.trim();
+  }
+  return '';
+}
+
+/* -------------------------------------------------------------------------- */
+/*                Atlas Search aggregation – step 3 of the spec               */
+/* -------------------------------------------------------------------------- */
+
 export interface DuplicateMatch {
   report_id: string;
   score: number;
+  source: 'strict' | 'fallback';
   metadata?: Record<string, any>;
 }
 
-const normalize = (text: string) => String(text || '').replace(/\s+/g, ' ').trim();
+/** Detect transport-level / aggregation errors so callers can fall back safely. */
+function isAtlasSearchUnavailableError(error: unknown): boolean {
+  const err = error as { code?: number; codeName?: string; message?: string };
+  if (!err) return false;
+  const msg = String(err.message || '');
+  if (err.codeName === 'SearchNotEnabled') return true;
+  if (/atlas search|\$search.*not allowed|searchNotEnabled/i.test(msg)) return true;
+  if (/index.*not.*found|no such index/i.test(msg)) return true;
+  if (err.code === 13 /* Unauthorized */) return true;
+  if (err.code === 31082 /* PlanExecutionError for missing index */) return true;
+  return false;
+}
 
-const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+/**
+ * Run the Atlas Search compound query against the reports collection.
+ *
+ *   1. Strict: exact endpoint AND exact category
+ *   2. Fallback: broad endpoint match OR (title text + endpoint prefix)
+ *
+ * Always filters out:
+ *   - the report itself
+ *   - reports from other programs
+ *   - reports already marked Duplicate / Spam
+ *   - reports submitted at or after the new report (the report can only
+ *     duplicate something that was filed *before* it)
+ */
+export const searchDuplicateCandidates = async (
+  report: any,
+  options: { topK?: number } = {}
+): Promise<DuplicateMatch[]> => {
+  const topK = Math.max(1, Math.min(10, options.topK || TOP_K));
+  const selfObjectId = (() => {
+    try {
+      return new mongoose.Types.ObjectId(String(report._id));
+    } catch {
+      return null;
+    }
+  })();
 
-/** Text encoded for similarity search — semantic fields only (no public reportId in text). */
-export const buildEmbeddingText = (report: any) => {
-  const lines: string[] = [];
-  const add = (label: string, value: unknown, stripTags = false) => {
-    const v = stripTags ? stripHtmlForEmbedding(value) : normalize(String(value ?? ''));
-    if (v) lines.push(`${label}: ${v}`);
+  const programIdRaw = report.programId ?? '';
+  const programIdObj = (() => {
+    if (programIdRaw instanceof mongoose.Types.ObjectId) return programIdRaw;
+    try {
+      return new mongoose.Types.ObjectId(String(programIdRaw));
+    } catch {
+      return null;
+    }
+  })();
+  const programIdMatch: any[] = [];
+  if (programIdRaw) programIdMatch.push(String(programIdRaw));
+  if (programIdObj) programIdMatch.push(programIdObj);
+
+  const { raw: rawEndpoint, path: normalizedPath } = normalizeEndpoint(
+    report.vulnerableEndpoint
+  );
+  const bugCategory = pickBugCategory(report);
+  const title = String(report.title || '').trim();
+  const endpointPrefix = normalizedPath
+    ? normalizedPath.split('/').slice(0, 3).filter(Boolean).join('/')
+    : '';
+
+  const selfSubmittedAt = report.createdAt ? new Date(report.createdAt) : new Date();
+
+  const buildPostFilter = () => {
+    const filter: any = {
+      status: { $nin: ['Duplicate', 'Spam'] },
+      createdAt: { $lt: selfSubmittedAt },
+    };
+    if (selfObjectId) filter._id = { $ne: selfObjectId };
+    if (programIdMatch.length) filter.programId = { $in: programIdMatch };
+    return filter;
   };
 
-  add('Title', report.title, false);
-  add('Vulnerable endpoint', report.vulnerableEndpoint, false);
-  add('Description', report.description, true);
-  add('Steps to reproduce', report.pocSteps, true);
+  const projectStage = {
+    $project: {
+      _id: 1,
+      reportId: 1,
+      title: 1,
+      vulnerabilityCategory: 1,
+      vulnerableEndpoint: 1,
+      pocSteps: 1,
+      impact: 1,
+      programId: 1,
+      status: 1,
+      createdAt: 1,
+      score: { $meta: 'searchScore' },
+    },
+  };
 
-  const fallback =
-    normalize(report.title || '') ||
-    stripHtmlForEmbedding(report.description) ||
-    stripHtmlForEmbedding(report.pocSteps);
-  return lines.join('\n').trim() || fallback;
-};
+  /* ---- 1) Strict: endpoint + category --------------------------------- */
+  if (rawEndpoint && bugCategory) {
+    const strictPipeline: any[] = [
+      {
+        $search: {
+          index: DUPLICATE_SEARCH_INDEX_NAME,
+          compound: {
+            must: [
+              { text: { path: 'vulnerableEndpoint', query: rawEndpoint } },
+              { text: { path: 'vulnerabilityCategory', query: bugCategory } },
+            ],
+          },
+        },
+      },
+      { $limit: OVERFETCH },
+      { $match: buildPostFilter() },
+      { $limit: topK },
+      projectStage,
+    ];
 
-const buildVectorMetadata = (report: any) => ({
-  report_id: String(report._id),
-  reportId: report.reportId ?? null,
-  title: report.title ?? '',
-  vulnerableEndpoint: report.vulnerableEndpoint ?? '',
-  description: report.description ?? '',
-  pocSteps: report.pocSteps ?? '',
-  status: report.status,
-  severity: report.severity,
-  vulnerabilityCategory: report.vulnerabilityCategory,
-  submittedAt: report.createdAt
-    ? new Date(report.createdAt).toISOString()
-    : new Date().toISOString(),
-  programId: String(report.programId ?? ''),
-});
-
-/** Upsert one report into Upstash Vector (Upstash embeds `data` server-side). */
-export const embedAndStoreReportVector = async (report: any) => {
-  const text = buildEmbeddingText(report);
-  if (!text) {
-    throw new Error('Report has no indexable text for duplicate detection');
-  }
-
-  const vectorIndex = getUpstashVectorIndex();
-  await vectorIndex.upsert({
-    id: String(report._id),
-    data: text,
-    metadata: buildVectorMetadata(report),
-  });
-};
-
-export const embedAndStoreReportVectorWithRetry = async (report: any, retries = 2) => {
-  let lastError: unknown;
-  for (let attempt = 0; attempt <= retries; attempt += 1) {
     try {
-      await embedAndStoreReportVector(report);
-      return;
-    } catch (error: unknown) {
-      lastError = error;
-      if (attempt < retries) {
-        await sleep(500 * (attempt + 1));
+      const strictResults = await Report.collection
+        .aggregate(strictPipeline, { allowDiskUse: false })
+        .toArray();
+      if (strictResults.length > 0) {
+        return strictResults.map((doc: any) => ({
+          report_id: String(doc._id),
+          score: Number(doc.score || 0),
+          source: 'strict' as const,
+          metadata: doc,
+        }));
+      }
+    } catch (err) {
+      if (!isAtlasSearchUnavailableError(err)) {
+        console.error('[duplicate-detection] strict $search failed:', err);
+      } else {
+        console.warn(
+          '[duplicate-detection] Atlas Search unavailable, skipping strict pass.'
+        );
+        return [];
       }
     }
   }
-  throw lastError;
+
+  /* ---- 2) Fallback: broad endpoint OR (title + endpoint prefix) --------
+   * Uses the tokenized multi-analyzer field (`vulnerableEndpoint.standard`)
+   * so partial paths / prefixes can match individual URL segments. */
+  const should: any[] = [];
+  if (rawEndpoint) {
+    should.push({ text: { path: 'vulnerableEndpoint.standard', query: rawEndpoint } });
+  }
+  if (endpointPrefix) {
+    should.push({ text: { path: 'vulnerableEndpoint.standard', query: endpointPrefix } });
+  }
+  if (title) {
+    should.push({ text: { path: 'title', query: title } });
+  }
+  if (!should.length) return [];
+
+  const fallbackPipeline: any[] = [
+    {
+      $search: {
+        index: DUPLICATE_SEARCH_INDEX_NAME,
+        compound: { should, minimumShouldMatch: 1 },
+      },
+    },
+    { $limit: OVERFETCH },
+    { $match: buildPostFilter() },
+    { $limit: topK },
+    projectStage,
+  ];
+
+  try {
+    const fallbackResults = await Report.collection
+      .aggregate(fallbackPipeline, { allowDiskUse: false })
+      .toArray();
+    return fallbackResults.map((doc: any) => ({
+      report_id: String(doc._id),
+      score: Number(doc.score || 0),
+      source: 'fallback' as const,
+      metadata: doc,
+    }));
+  } catch (err) {
+    if (!isAtlasSearchUnavailableError(err)) {
+      console.error('[duplicate-detection] fallback $search failed:', err);
+    } else {
+      console.warn(
+        '[duplicate-detection] Atlas Search unavailable for fallback pass.'
+      );
+    }
+    return [];
+  }
 };
 
-/** Query Upstash Vector for similar reports (cosine score 0–1). */
-export const searchDuplicateReportVectors = async (report: any) => {
-  const text = buildEmbeddingText(report);
-  if (!text) return [] as DuplicateMatch[];
+/* -------------------------------------------------------------------------- */
+/*                            Mongo hydration                                 */
+/* -------------------------------------------------------------------------- */
 
-  const vectorIndex = getUpstashVectorIndex();
-  const results = await vectorIndex.query({
-    data: text,
-    topK: VECTOR_SEARCH_TOP_K,
-    includeMetadata: true,
-  });
+interface HydratedCandidate {
+  _id: mongoose.Types.ObjectId;
+  report_id: string;
+  reportId?: string | null;
+  programId?: string;
+  status?: string;
+  title?: string;
+  bug_category?: string;
+  vulnerable_endpoint?: string;
+  parameter?: string;
+  steps_to_reproduce?: string;
+  impact?: string;
+  payload?: string;
+  createdAt?: Date;
+  searchScore: number;
+  searchSource: 'strict' | 'fallback';
+}
 
-  const selfId = String(report._id);
-  const matches: DuplicateMatch[] = [];
+async function hydrateCandidatesFromMongo(
+  matches: DuplicateMatch[],
+  selfReport: any
+): Promise<HydratedCandidate[]> {
+  if (!matches.length) return [];
 
-  for (const row of results) {
-    const meta = (row.metadata || {}) as Record<string, unknown>;
-    const reportId = String(meta.report_id ?? row.id ?? '');
-    if (!reportId || reportId === selfId) continue;
+  // The $search pipeline already projected the contextual fields we need,
+  // so most of the time we can build the hydrated payload directly from
+  // `match.metadata`. Fall back to a re-fetch only if metadata is missing.
+  const missingIds: mongoose.Types.ObjectId[] = [];
+  for (const m of matches) {
+    if (!m.metadata?.title) {
+      try {
+        missingIds.push(new mongoose.Types.ObjectId(m.report_id));
+      } catch {
+        /* skip */
+      }
+    }
+  }
 
-    matches.push({
-      report_id: reportId,
-      score: Number(row.score ?? 0),
-      metadata: meta as Record<string, any>,
+  let metaById = new Map<string, any>();
+  if (missingIds.length) {
+    const docs = await Report.find({ _id: { $in: missingIds } })
+      .select(HYDRATE_FIELDS)
+      .lean();
+    metaById = new Map(docs.map((d: any) => [String(d._id), d]));
+  }
+
+  const selfMs = reportSubmittedAtMs(selfReport);
+  const result: HydratedCandidate[] = [];
+
+  for (const m of matches) {
+    const doc: any = m.metadata?.title ? m.metadata : metaById.get(m.report_id);
+    if (!doc) continue;
+    if (['Duplicate', 'Spam'].includes(doc.status)) continue;
+    if (
+      String(doc.programId ?? '').trim() !==
+      String(selfReport.programId ?? '').trim()
+    ) {
+      continue;
+    }
+    const candidateMs = reportSubmittedAtMs(doc);
+    if (candidateMs >= selfMs) continue;
+
+    const { queryParams } = normalizeEndpoint(doc.vulnerableEndpoint);
+
+    result.push({
+      _id: doc._id,
+      report_id: String(doc._id),
+      reportId: doc.reportId,
+      programId: doc.programId ? String(doc.programId) : undefined,
+      status: doc.status,
+      title: doc.title,
+      bug_category: doc.vulnerabilityCategory,
+      vulnerable_endpoint: doc.vulnerableEndpoint,
+      parameter: pickPrimaryParameter(doc, queryParams) || undefined,
+      steps_to_reproduce: doc.pocSteps,
+      impact: doc.impact,
+      payload: undefined,
+      createdAt: doc.createdAt,
+      searchScore: m.score,
+      searchSource: m.source,
     });
-
-    if (matches.length >= VECTOR_MATCH_RETURN_LIMIT) break;
   }
+  return result;
+}
 
-  return matches;
-};
-
-/** Back-fill index for many reports (admin/triager reindex). */
-export const bulkIndexReports = async (reports: any[]): Promise<number> => {
-  const vectorIndex = getUpstashVectorIndex();
-  const points: { id: string; data: string; metadata: Record<string, unknown> }[] = [];
-
-  for (const report of reports) {
-    const text = buildEmbeddingText(report);
-    if (!text.trim()) continue;
-    points.push({
-      id: String(report._id),
-      data: text,
-      metadata: buildVectorMetadata(report),
-    });
-  }
-
-  for (let i = 0; i < points.length; i += BULK_UPSERT_BATCH) {
-    await vectorIndex.upsert(points.slice(i, i + BULK_UPSERT_BATCH));
-  }
-
-  return points.length;
-};
-
-export const isDuplicateVectorUnavailable = (error: unknown) => {
-  const err = error as {
-    message?: string;
-    code?: string;
-    response?: { status?: number };
-  };
-  const msg = String(err?.message || '');
-  return !!(
-    err?.code === 'ECONNREFUSED' ||
-    err?.code === 'ECONNABORTED' ||
-    (err?.response?.status && err.response.status >= 500) ||
-    msg.includes('connect') ||
-    msg.includes('Upstash Vector is not configured') ||
-    msg.includes('UPSTASH')
-  );
-};
-
-/** @deprecated Use isDuplicateVectorUnavailable */
-export const isAiServiceUnavailable = isDuplicateVectorUnavailable;
+/* -------------------------------------------------------------------------- */
+/*                                Pipeline                                    */
+/* -------------------------------------------------------------------------- */
 
 export type DuplicateCandidatePayload = {
   reportMongoId: mongoose.Types.ObjectId;
@@ -175,6 +396,22 @@ export type DuplicateCandidatePayload = {
   candidateTitle?: string;
   candidateSubmittedAt?: Date;
   detectedAt: Date;
+  source: 'strict' | 'fallback' | 'llm';
+};
+
+export type DuplicateScanResult = {
+  candidates: DuplicateCandidatePayload[];
+  reviewStatus: 'pending' | 'not_applicable';
+  aiAnalysis: {
+    status: 'completed' | 'failed' | 'no_candidates' | 'skipped';
+    isDuplicate: boolean;
+    confidenceScore: number;
+    primaryDuplicateId?: string | null;
+    reasoning?: string;
+    researcherCommunication?: string;
+    error?: string;
+    processedAt: Date;
+  };
 };
 
 const reportSubmittedAtMs = (doc: any): number => {
@@ -191,83 +428,174 @@ const reportSubmittedAtMs = (doc: any): number => {
   }
 };
 
+function newReportForLlm(report: any): Record<string, any> {
+  const { raw, queryParams } = normalizeEndpoint(report.vulnerableEndpoint);
+  return {
+    report_id: String(report._id),
+    title: report.title,
+    bug_category: pickBugCategory(report),
+    vulnerable_endpoint: raw,
+    parameter: pickPrimaryParameter(report, queryParams),
+    steps_to_reproduce: stripHtmlForEmbedding(report.pocSteps),
+    impact: stripHtmlForEmbedding(report.impact),
+    payload: undefined,
+  };
+}
+
+/**
+ * The full 5-step duplicate-detection pipeline.
+ *
+ *   1. Atlas Search compound query (strict → fallback)
+ *   2. Hydrate the small top-N from MongoDB
+ *   3. Run local LLM deep reasoning via the duplicate_engine FastAPI service
+ *   4. Map result → report metadata for the triager dashboard
+ *   5. Fail-safe: any failure returns raw keyword matches instead of throwing
+ */
 export const runInitialDuplicateScanForNewReport = async (
   newReport: any
-): Promise<{ candidates: DuplicateCandidatePayload[]; reviewStatus: 'pending' | 'not_applicable' }> => {
+): Promise<DuplicateScanResult> => {
+  const now = new Date();
+  const failSafe = (extra?: Partial<DuplicateScanResult['aiAnalysis']>): DuplicateScanResult => ({
+    candidates: [],
+    reviewStatus: 'not_applicable',
+    aiAnalysis: {
+      status: 'failed',
+      isDuplicate: false,
+      confidenceScore: 0,
+      primaryDuplicateId: null,
+      processedAt: now,
+      ...extra,
+    },
+  });
+
+  let matches: DuplicateMatch[] = [];
   try {
-    const matches = await searchDuplicateReportVectors(newReport);
-    const seen = new Set<string>();
-    const above = matches.filter((m) => Number(m.score || 0) >= DUPLICATE_MATCH_THRESHOLD);
-    const ids = above
-      .map((m) => String(m.report_id || ''))
-      .filter((id) => id && id !== String(newReport._id));
+    matches = await searchDuplicateCandidates(newReport, { topK: TOP_K });
+  } catch (err) {
+    console.error('[duplicate-detection] Atlas Search failed:', err);
+    return failSafe({ error: 'Atlas Search unavailable' });
+  }
 
-    if (!ids.length) {
-      return { candidates: [], reviewStatus: 'not_applicable' };
-    }
+  if (!matches.length) {
+    return {
+      candidates: [],
+      reviewStatus: 'not_applicable',
+      aiAnalysis: {
+        status: 'no_candidates',
+        isDuplicate: false,
+        confidenceScore: 0,
+        primaryDuplicateId: null,
+        processedAt: now,
+      },
+    };
+  }
 
-    const objectIds = ids
-      .map((id) => {
-        try {
-          return new mongoose.Types.ObjectId(id);
-        } catch {
-          return null;
-        }
-      })
-      .filter((id): id is mongoose.Types.ObjectId => !!id);
+  let hydrated: HydratedCandidate[] = [];
+  try {
+    hydrated = await hydrateCandidatesFromMongo(matches, newReport);
+  } catch (err) {
+    console.error('[duplicate-detection] mongo hydration failed:', err);
+  }
 
-    if (!objectIds.length) {
-      return { candidates: [], reviewStatus: 'not_applicable' };
-    }
+  if (!hydrated.length) {
+    return {
+      candidates: [],
+      reviewStatus: 'not_applicable',
+      aiAnalysis: {
+        status: 'no_candidates',
+        isDuplicate: false,
+        confidenceScore: 0,
+        primaryDuplicateId: null,
+        processedAt: now,
+      },
+    };
+  }
 
-    const others = await Report.find({ _id: { $in: objectIds } })
-      .select('_id reportId title createdAt programId status')
-      .lean();
+  const rawCandidates: DuplicateCandidatePayload[] = hydrated.map((h) => ({
+    reportMongoId: h._id,
+    similarityScore: h.searchScore,
+    candidateReportId: h.reportId || undefined,
+    candidateTitle: h.title || undefined,
+    candidateSubmittedAt: h.createdAt ? new Date(h.createdAt) : undefined,
+    detectedAt: now,
+    source: h.searchSource,
+  }));
 
-    const byId = new Map(others.map((o: any) => [String(o._id), o]));
-    const candidates: DuplicateCandidatePayload[] = [];
-    const thisSubmittedMs = reportSubmittedAtMs(newReport);
+  if (!isDuplicateLlmEnabled()) {
+    return {
+      candidates: rawCandidates,
+      reviewStatus: 'pending',
+      aiAnalysis: {
+        status: 'skipped',
+        isDuplicate: false,
+        confidenceScore: 0,
+        primaryDuplicateId: null,
+        processedAt: now,
+      },
+    };
+  }
 
-    for (const m of above) {
-      const oid = String(m.report_id || '');
-      if (!oid || oid === String(newReport._id) || seen.has(oid)) continue;
-      const o: any = byId.get(oid);
-      if (!o) continue;
-      const sameProgram =
-        String(o.programId ?? '').trim() === String(newReport.programId ?? '').trim();
-      if (!sameProgram) continue;
-      if (['Duplicate', 'Spam'].includes(o.status)) continue;
+  let verdict: DuplicateLlmVerdict | null = null;
+  let llmError: string | undefined;
+  try {
+    verdict = await runDuplicateLlmAnalysis(newReportForLlm(newReport), hydrated);
+  } catch (err) {
+    llmError = (err as Error)?.message || String(err);
+    console.error(
+      '[duplicate-detection] LLM failed, falling back to keyword matches:',
+      llmError
+    );
+  }
 
-      const candidateSubmittedMs = reportSubmittedAtMs(o);
-      if (candidateSubmittedMs >= thisSubmittedMs) continue;
+  if (!verdict) {
+    return {
+      candidates: rawCandidates,
+      reviewStatus: 'pending',
+      aiAnalysis: {
+        status: 'failed',
+        isDuplicate: false,
+        confidenceScore: 0,
+        primaryDuplicateId: null,
+        error: llmError || 'LLM unavailable',
+        processedAt: now,
+      },
+    };
+  }
 
-      seen.add(oid);
-      candidates.push({
-        reportMongoId: o._id,
-        similarityScore: Number(m.score || 0),
-        candidateReportId: o.reportId || undefined,
-        candidateTitle: o.title || undefined,
-        candidateSubmittedAt: o.createdAt ? new Date(o.createdAt) : undefined,
-        detectedAt: new Date(),
+  if (verdict.primary_duplicate_id) {
+    const hasPrimary = rawCandidates.some(
+      (c) => String(c.reportMongoId) === verdict!.primary_duplicate_id
+    );
+    if (hasPrimary) {
+      rawCandidates.sort((a, b) => {
+        if (String(a.reportMongoId) === verdict!.primary_duplicate_id) return -1;
+        if (String(b.reportMongoId) === verdict!.primary_duplicate_id) return 1;
+        return (b.similarityScore || 0) - (a.similarityScore || 0);
       });
     }
-
-    candidates.sort(
-      (a, b) =>
-        (a.candidateSubmittedAt?.getTime() || 0) - (b.candidateSubmittedAt?.getTime() || 0)
-    );
-
-    const top = candidates.slice(0, 12);
-    return {
-      candidates: top,
-      reviewStatus: top.length ? 'pending' : 'not_applicable',
-    };
-  } catch (err) {
-    console.error('[duplicate-scan] initial scan failed:', err);
-    return { candidates: [], reviewStatus: 'not_applicable' };
   }
+
+  return {
+    candidates: rawCandidates,
+    reviewStatus: rawCandidates.length ? 'pending' : 'not_applicable',
+    aiAnalysis: {
+      status: 'completed',
+      isDuplicate: !!verdict.is_duplicate,
+      confidenceScore: verdict.confidence_score,
+      primaryDuplicateId: verdict.primary_duplicate_id,
+      reasoning: verdict.reasoning,
+      researcherCommunication: verdict.researcher_communication,
+      processedAt: now,
+    },
+  };
 };
 
+/**
+ * Drop any duplicate candidates whose submitted_at is >= this report's
+ * submitted_at. The new pipeline already enforces this, but the helper is
+ * kept so historic rows persisted from the previous pipeline get cleaned
+ * up the first time a triager opens the report.
+ */
 export const pruneDuplicateCandidatesNotOlderThanSelf = (report: any): boolean => {
   const raw = report?.duplicateCandidates;
   if (!Array.isArray(raw) || raw.length === 0) return false;

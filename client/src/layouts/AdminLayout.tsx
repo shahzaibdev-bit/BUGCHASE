@@ -23,15 +23,15 @@ const navItems = [
     icon: Users,
     items: [
       { label: 'USER MANAGEMENT', path: '/admin/users' },
-      { label: 'TRIAGERS', path: '/admin/triagers' }
+      { label: 'TRIAGERS', path: '/admin/triagers' },
+      { label: 'SUPPORT TEAM', path: '/admin/support' }
     ]
   },
   { 
     label: 'OPERATIONS', 
     icon: Layers,
     items: [
-      { label: 'PROGRAMS', path: '/admin/programs' },
-      { label: 'DISPUTES', path: '/admin/disputes' }
+      { label: 'PROGRAMS', path: '/admin/programs' }
     ]
   },
   { 

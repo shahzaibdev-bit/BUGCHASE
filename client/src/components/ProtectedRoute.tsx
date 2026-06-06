@@ -31,6 +31,7 @@ export const ProtectedRoute = ({ allowedRoles }: ProtectedRouteProps) => {
         if (user.role === 'researcher') return <Navigate to="/researcher" replace />;
         if (user.role === 'company') return <Navigate to="/company" replace />;
         if (user.role === 'triager') return <Navigate to="/triager" replace />;
+        if (user.role === 'support') return <Navigate to="/support" replace />;
         if (user.role === 'admin') return <Navigate to="/admin" replace />;
         
         return <Navigate to="/" replace />;

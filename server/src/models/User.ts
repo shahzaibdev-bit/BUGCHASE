@@ -6,7 +6,7 @@ export interface IUser extends Document {
   username: string;
   email: string;
   password?: string;
-  role: 'researcher' | 'company' | 'triager' | 'admin';
+  role: 'researcher' | 'company' | 'triager' | 'support' | 'admin';
   isVerified: boolean;
   isEmailVerified: boolean;
   avatar: string;
@@ -109,7 +109,7 @@ const userSchema = new mongoose.Schema<IUser>({
   },
   role: {
     type: String,
-    enum: ['researcher', 'company', 'triager', 'admin'],
+    enum: ['researcher', 'company', 'triager', 'support', 'admin'],
     default: 'researcher',
   },
   isVerified: {

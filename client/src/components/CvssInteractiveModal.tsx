@@ -1,5 +1,5 @@
 
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { 
   Calculator, 
   Brain, 
@@ -138,8 +138,17 @@ export const CvssInteractiveModal = ({
     };
 
     const [metrics, setMetrics] = useState<Record<string, string>>(
-        parseVector(currentVector || aiVector || researcherVector || '')
+        parseVector(currentVector || '')
     );
+
+    // Do not preload the editable "Your Score" from AI/researcher sources.
+    // The active score should represent only a triager-selected vector; source
+    // cards can still be clicked to apply a vector intentionally.
+    useEffect(() => {
+        if (isOpen) {
+            setMetrics(parseVector(currentVector || ''));
+        }
+    }, [currentVector, isOpen]);
 
     const localVector = buildVector(metrics);
     

@@ -15,6 +15,7 @@ import {
   runInitialDuplicateScanForNewReport,
   pruneDuplicateCandidatesNotOlderThanSelf,
 } from '../services/duplicateDetectionService';
+import { isReportInAiTriage } from '../services/cvssTriageService';
 import { isReopenToTriaging, formatReopenForTriageMarkdown } from '../utils/reopenTriageNotice';
 import {
   applyResearcherReputationOnStatusTransition,
@@ -222,6 +223,13 @@ export const claimReport = catchAsync(async (req: Request, res: Response, next: 
         return next(new AppError('Report already claimed by another triager', 400));
     }
 
+    // Block claim while AI CVSS triage is still in progress. The report is
+    // visible in the queue so triagers can see what is coming, but they
+    // cannot claim it until automated triage finishes.
+    if (isReportInAiTriage(report)) {
+        return next(new AppError('Report is still in the system process. Please wait until automated triage is complete before claiming.', 409));
+    }
+
     // --- NEW: Concurrency Enforcements ---
     const triagerRecord = await User.findById(triagerId).select('maxConcurrentReports');
     if (triagerRecord) {
@@ -267,12 +275,23 @@ Best regards,
         const dupStatus = String(report.duplicateReviewStatus || 'not_applicable');
         const hasCandidates = Array.isArray(report.duplicateCandidates) && report.duplicateCandidates.length > 0;
         if (!['cleared', 'confirmed_duplicate'].includes(dupStatus) && !hasCandidates) {
-            const { candidates, reviewStatus } = await runInitialDuplicateScanForNewReport(report);
+            const { candidates, reviewStatus, aiAnalysis } = await runInitialDuplicateScanForNewReport(report);
             report.duplicateLastScannedAt = new Date();
             if (candidates.length > 0) {
                 report.duplicateCandidates = candidates as any;
                 report.duplicateReviewStatus = reviewStatus;
             }
+            report.aiDuplicateAnalysis = {
+                status: aiAnalysis.status,
+                isDuplicate: aiAnalysis.isDuplicate,
+                confidenceScore: aiAnalysis.confidenceScore,
+                primaryDuplicateId: aiAnalysis.primaryDuplicateId ?? null,
+                reasoning: aiAnalysis.reasoning,
+                researcherCommunication: aiAnalysis.researcherCommunication,
+                error: aiAnalysis.error,
+                processedAt: aiAnalysis.processedAt,
+                communicationPosted: report.aiDuplicateAnalysis?.communicationPosted ?? false,
+            } as any;
             await report.save();
         }
     } catch (dupErr) {
@@ -383,12 +402,23 @@ export const getReportDetails = catchAsync(async (req: Request, res: Response, n
 
     if (tryAutoScan) {
         try {
-            const { candidates, reviewStatus } = await runInitialDuplicateScanForNewReport(report);
+            const { candidates, reviewStatus, aiAnalysis } = await runInitialDuplicateScanForNewReport(report);
             report.duplicateLastScannedAt = new Date();
             if (candidates.length > 0) {
                 report.duplicateCandidates = candidates as any;
                 report.duplicateReviewStatus = reviewStatus;
             }
+            report.aiDuplicateAnalysis = {
+                status: aiAnalysis.status,
+                isDuplicate: aiAnalysis.isDuplicate,
+                confidenceScore: aiAnalysis.confidenceScore,
+                primaryDuplicateId: aiAnalysis.primaryDuplicateId ?? null,
+                reasoning: aiAnalysis.reasoning,
+                researcherCommunication: aiAnalysis.researcherCommunication,
+                error: aiAnalysis.error,
+                processedAt: aiAnalysis.processedAt,
+                communicationPosted: report.aiDuplicateAnalysis?.communicationPosted ?? false,
+            } as any;
             await report.save();
             report = await loadPopulated();
             if (!report) {

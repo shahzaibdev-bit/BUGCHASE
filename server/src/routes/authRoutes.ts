@@ -7,6 +7,7 @@ import {
   getMe,
   updateMe,
   updatePassword,
+  supportGoogleLogin,
   completeLoginWithTwoFactor,
   setupTwoFactor,
   enableTwoFactor,
@@ -26,6 +27,7 @@ const authLimiter = rateLimiter(10, 600, 'auth');
 router.post('/signup', authLimiter, validate(signupSchema), signup);
 router.post('/verify-email', authLimiter, validate(verifySchema), verifyEmail);
 router.post('/login', authLimiter, validate(loginSchema), login);
+router.post('/support/google', authLimiter, supportGoogleLogin);
 router.post('/login-2fa', authLimiter, completeLoginWithTwoFactor);
 router.get('/logout', logout);
 router.get('/login-history', protect, getLoginHistory);

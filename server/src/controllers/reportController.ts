@@ -8,18 +8,13 @@ import mongoose from 'mongoose';
 import { sendEmail, reportEmailTemplate } from '../services/emailService';
 import { getIO } from '../services/socketService';
 import { uploadToCloudinary } from '../utils/cloudinary';
-import {
-  embedAndStoreReportVectorWithRetry,
-  isDuplicateVectorUnavailable,
-  bulkIndexReports,
-  searchDuplicateReportVectors,
-  runInitialDuplicateScanForNewReport,
-} from '../services/duplicateDetectionService';
+import { searchDuplicateCandidates } from '../services/duplicateDetectionService';
 import {
   formatDuplicateClosureMarkdown,
   duplicateClosureTimelineSummary,
 } from '../utils/duplicateClosureNotice';
 import { applyResearcherReputationOnStatusTransition } from '../services/researcherReputationService';
+import { enqueueReportProcessing, getQueueSnapshot } from '../services/reportProcessingQueue';
 
 const randomAlphaNum = (length: number) => {
   const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
@@ -100,6 +95,7 @@ export const createReport = catchAsync(async (req: Request, res: Response, next:
   }
 
   // Basic validation mapping
+  const aiTriageEnabled = (process.env.CVSS_TRIAGE_ENABLED || 'true').toLowerCase() !== 'false';
   const reportData = {
     researcherId: req.user!.id,
     programId,
@@ -109,53 +105,58 @@ export const createReport = catchAsync(async (req: Request, res: Response, next:
     assetType: assetType ? String(assetType).trim() : undefined,
     vulnerabilityCategory,
     severity,
+    researcherSeverity: severity,
     cvssVector,
     cvssScore,
     description: vulnerabilityDetails,
     pocSteps: validationSteps,
     impact,
     assets: target ? [target, ...uploadedUrls] : uploadedUrls, // Use target as primary asset, append Cloudinary URLs
-    status: 'Submitted'
+    status: 'Submitted',
+    aiTriage: {
+      status: aiTriageEnabled ? 'pending' : 'skipped',
+    },
+    // `pending` here means "queued, waiting for the single-worker AI pipeline".
+    // The processing queue transitions it through processing → completed/failed
+    // when its turn arrives.
+    aiDuplicateAnalysis: {
+      status: 'pending',
+      isDuplicate: false,
+      confidenceScore: 0,
+      primaryDuplicateId: null,
+      communicationPosted: false,
+    },
   };
 
+  // Single database write — Atlas Search automatically syncs the indexed
+  // fields (vulnerableEndpoint / vulnerabilityCategory / title) inside the
+  // cluster, so we no longer need a second external indexing call.
   const newReport = await Report.create(reportData);
 
-  // Index report at submission-time (before response) so duplicate checks are immediately useful.
-  // If indexing fails, rollback the created report to keep DB and vector index consistent.
-  try {
-    await embedAndStoreReportVectorWithRetry(newReport, 2);
-  } catch (error: any) {
-    const msg = isDuplicateVectorUnavailable(error)
-      ? 'Duplicate detection (Upstash Vector) unavailable during indexing'
-      : 'Failed to index report vector';
-    console.error(msg, error?.message || error);
-    await Report.findByIdAndDelete(newReport._id);
-    if (isDuplicateVectorUnavailable(error)) {
-      return next(new AppError('Unable to submit report right now: duplicate detection service is unavailable. Please retry shortly.', 503));
-    }
-    return next(new AppError('Unable to submit report because indexing failed. Please retry.', 500));
-  }
-
-  // Automatic similarity scan against prior reports (same program). Does not block submission if scan fails.
-  try {
-    const { candidates, reviewStatus } = await runInitialDuplicateScanForNewReport(newReport);
-    if (candidates.length > 0) {
-      newReport.duplicateCandidates = candidates as any;
-      newReport.duplicateReviewStatus = reviewStatus;
-      await newReport.save();
-    }
-  } catch (scanErr) {
-    console.error('Post-submit duplicate scan error:', scanErr);
-  }
-
+  // Respond to the researcher IMMEDIATELY — duplicate detection and CVSS
+  // triage continue in the background. The researcher gets redirected to
+  // their reports list without waiting for Atlas Search + LLM.
   const createdPayload: any = newReport.toJSON ? newReport.toJSON() : newReport;
   delete createdPayload.duplicateCandidates;
   delete createdPayload.duplicateReviewStatus;
 
   res.status(201).json({
     status: 'success',
-    data: createdPayload
+    data: createdPayload,
   });
+
+  // Enqueue the heavy AI pipeline (duplicate scan + CVSS triage) into the
+  // single-worker queue. If another report is already being processed, this
+  // one waits its turn instead of competing for the local LLM.
+  enqueueReportProcessing(String(newReport._id));
+  try {
+    const snap = getQueueSnapshot();
+    console.log(
+      `[createReport] enqueued ${newReport._id} — queue depth=${snap.depth}, processing=${snap.processing}`,
+    );
+  } catch {
+    /* logging only */
+  }
 
   // Send submission confirmation to researcher in background
   (async () => {
@@ -240,6 +241,15 @@ export const getReport = catchAsync(async (req: Request, res: Response, next: Ne
   if (req.user!.role === 'researcher') {
     delete payload.duplicateCandidates;
     delete payload.duplicateReviewStatus;
+    // Keep only the high-level processing status for researchers.
+    // Never expose the LLM reasoning / discrepancy report — that's posted
+    // explicitly by a triager when (and if) the report is confirmed duplicate.
+    if (payload.aiDuplicateAnalysis) {
+      payload.aiDuplicateAnalysis = {
+        status: payload.aiDuplicateAnalysis.status || 'pending',
+        processedAt: payload.aiDuplicateAnalysis.processedAt,
+      };
+    }
   }
 
   res.status(200).json({
@@ -452,16 +462,17 @@ export const checkReportDuplicates = catchAsync(async (req: Request, res: Respon
   }
 
   try {
-    // Self-heal: ensure this report has an embedding before searching duplicates.
-    await embedAndStoreReportVectorWithRetry(report, 1);
-
-    const matches = await searchDuplicateReportVectors(report);
+    const matches = await searchDuplicateCandidates(report);
     const formatted = matches.map((m) => ({
       reportMongoId: m.report_id,
       score: Number(m.score || 0),
-      similarityPercent: Math.round(Number(m.score || 0) * 100),
+      source: m.source,
       confidence:
-        Number(m.score || 0) > 0.85 ? 'HIGH_CONFIDENCE' : Number(m.score || 0) >= 0.7 ? 'POTENTIAL' : 'LOW',
+        m.source === 'strict'
+          ? 'HIGH_CONFIDENCE'
+          : Number(m.score || 0) >= 1
+          ? 'POTENTIAL'
+          : 'LOW',
       metadata: m.metadata || {},
     }));
 
@@ -474,10 +485,9 @@ export const checkReportDuplicates = catchAsync(async (req: Request, res: Respon
       },
     });
   } catch (error: any) {
-    if (isDuplicateVectorUnavailable(error)) {
-      return next(new AppError('Duplicate detection service unavailable. Please try again shortly.', 503));
-    }
-    return next(new AppError((error as Error)?.message || 'Failed to run duplicate detection', 500));
+    return next(
+      new AppError((error as Error)?.message || 'Failed to run duplicate detection', 500)
+    );
   }
 });
 
@@ -514,6 +524,19 @@ export const markReportAsDuplicate = catchAsync(async (req: Request, res: Respon
     actorDisplayName: actorDisplay,
   });
 
+  // If the local LLM produced a researcher-facing Discrepancy Report and the
+  // triager hasn't pushed it yet, include it now. This is the webhook
+  // attachment point requested in the duplicate-pipeline spec: the
+  // researcher_communication only goes out once a human triager confirms.
+  const aiAnalysis: any = (report as any).aiDuplicateAnalysis || {};
+  const aiCommunication = String(aiAnalysis?.researcherCommunication || '').trim();
+  const shouldPostAi =
+    aiCommunication.length > 0 && !aiAnalysis?.communicationPosted;
+
+  const fullClosureMessage = shouldPostAi
+    ? `${closureNotice}\n\n---\n\n**AI Discrepancy Report**\n${aiCommunication}`
+    : closureNotice;
+
   report.comments.push({
     sender: req.user!.id as any,
     content: duplicateClosureTimelineSummary(),
@@ -523,10 +546,19 @@ export const markReportAsDuplicate = catchAsync(async (req: Request, res: Respon
       newStatus: 'Duplicate',
       duplicateOf: String(duplicateParent._id),
       duplicateOfReportId: parentRid,
-      reason: closureNotice,
+      reason: fullClosureMessage,
+      aiConfidenceScore: aiAnalysis?.confidenceScore,
+      aiIsDuplicate: aiAnalysis?.isDuplicate,
     },
     createdAt: new Date(),
   } as any);
+
+  if (shouldPostAi) {
+    (report as any).aiDuplicateAnalysis = {
+      ...aiAnalysis,
+      communicationPosted: true,
+    };
+  }
 
   await applyResearcherReputationOnStatusTransition(report, oldStatus, 'Duplicate', 'mark_duplicate');
 
@@ -565,7 +597,7 @@ export const markReportAsDuplicate = catchAsync(async (req: Request, res: Respon
             previousStatus: oldStatus,
             canonicalReportId: parentRid,
             newStatus: 'Duplicate',
-            message: closureNotice,
+            message: fullClosureMessage,
             messageSectionLabel: 'Duplicate resolution',
             suppressVulnerabilitySummary: true,
             link: `${process.env.CLIENT_URL}/researcher/reports/${report._id}`,
@@ -613,25 +645,16 @@ export const reindexAllReports = catchAsync(async (req: Request, res: Response, 
     return next(new AppError('Only triagers/admin can trigger re-indexing', 403));
   }
 
-  const reports = await Report.find({}).select(
-    'title vulnerabilityCategory vulnerableEndpoint description pocSteps impact severity reportId status programId createdAt'
-  ).lean();
+  // Atlas Search keeps the duplicate_detection_index continuously in sync with
+  // the reports collection — there is nothing for the application server to
+  // backfill. The endpoint is kept so existing admin UIs do not 404.
+  const total = await Report.estimatedDocumentCount();
 
-  if (!reports.length) {
-    return res.status(200).json({ status: 'success', message: 'No reports found to index.', indexed: 0 });
-  }
-
-  try {
-    const indexed = await bulkIndexReports(reports);
-    return res.status(200).json({
-      status: 'success',
-      message: `Successfully indexed ${indexed} reports in Upstash Vector.`,
-      indexed,
-    });
-  } catch (error: unknown) {
-    if (isDuplicateVectorUnavailable(error)) {
-      return next(new AppError('Duplicate detection service unavailable. Please try again shortly.', 503));
-    }
-    return next(new AppError((error as Error)?.message || 'Failed to re-index reports', 500));
-  }
+  return res.status(200).json({
+    status: 'success',
+    message:
+      'Atlas Search continuously syncs the duplicate_detection_index. No backfill is required.',
+    totalReports: total,
+    indexed: total,
+  });
 });

@@ -1,5 +1,6 @@
 import { Request, Response, NextFunction } from 'express';
 import crypto from 'crypto';
+import { OAuth2Client } from 'google-auth-library';
 import User from '../models/User';
 import AppError from '../utils/AppError';
 import catchAsync from '../utils/catchAsync';
@@ -14,6 +15,7 @@ import { rateLimiter, resetRateLimit } from '../middlewares/rateLimit';
 import { getProfileCompletionReputationScore } from '../utils/profileCompletionReputation';
 
 const BASE32_ALPHABET = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567';
+const googleOAuthClient = new OAuth2Client();
 
 function generateTotpSecret(length = 32): string {
   const bytes = crypto.randomBytes(length);
@@ -216,6 +218,52 @@ export const login = catchAsync(async (req: Request, res: Response, next: NextFu
     }
   }
 
+  await issueSessionAndRespond(req, res, user);
+});
+
+export const supportGoogleLogin = catchAsync(async (req: Request, res: Response, next: NextFunction) => {
+  const { credential } = req.body;
+  const clientId = process.env.GOOGLE_CLIENT_ID || process.env.SUPPORT_GOOGLE_CLIENT_ID;
+
+  if (!clientId) {
+    return next(new AppError('Google login is not configured for this portal', 500));
+  }
+  if (!credential) {
+    return next(new AppError('Missing Google login credential', 400));
+  }
+
+  let payload;
+  try {
+    const ticket = await googleOAuthClient.verifyIdToken({
+      idToken: String(credential),
+      audience: clientId,
+    });
+    payload = ticket.getPayload();
+  } catch {
+    return next(new AppError('Invalid Google login credential', 401));
+  }
+
+  const email = payload?.email?.toLowerCase();
+  if (!email || !payload?.email_verified) {
+    return next(new AppError('Google account email is not verified', 401));
+  }
+
+  const user = await User.findOne({ email }).select('+twoFactorSecret');
+  if (!user) {
+    return next(new AppError('No BugChase support account exists for this Google email', 403));
+  }
+  if (user.role !== 'support' && user.role !== 'admin') {
+    return next(new AppError('This portal is restricted to BugChase support staff', 403));
+  }
+  if ((user as any).status === 'Banned' || (user as any).status === 'Suspended') {
+    return next(new AppError('Your account is not active. Contact an administrator.', 403));
+  }
+  if (user.twoFactorEnabled) {
+    return next(new AppError('This account has 2FA enabled. Please use email/password login.', 403));
+  }
+
+  user.isEmailVerified = true;
+  await user.save({ validateBeforeSave: false });
   await issueSessionAndRespond(req, res, user);
 });
 

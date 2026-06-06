@@ -25,6 +25,12 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from '@/components/ui/tooltip';
 import { toast } from '@/hooks/use-toast';
 import { useNavigate } from 'react-router-dom';
 import { InvertedTiltCard } from '@/components/InvertedTiltCard';
@@ -48,7 +54,15 @@ interface TriageReport {
   assignedTo?: string; // 'me' or undefined for this context
   expertise: 'Web' | 'Mobile' | 'Source Code' | 'IoT' | 'Cloud';
   createdAt?: string;
+  aiTriage?: {
+    status?: 'pending' | 'processing' | 'completed' | 'failed' | 'skipped';
+  };
 }
+
+const isInAiTriage = (report: TriageReport): boolean => {
+  const status = report.aiTriage?.status;
+  return status === 'pending' || status === 'processing';
+};
 
 // Removed Mock Data
 
@@ -361,9 +375,33 @@ export default function TriagerQueue() {
                             </div>
 
                              <div className="flex flex-col justify-center gap-2 lg:border-l lg:border-zinc-200 dark:lg:border-zinc-800 lg:pl-6">
-                                    <Button className="w-full lg:w-32 bg-black dark:bg-white text-white dark:text-black hover:bg-zinc-800 dark:hover:bg-zinc-200 font-mono text-xs font-bold gap-2" onClick={() => handleClaim(report._id || report.id)}>
-                                    <Lock className="h-3 w-3" /> CLAIM
-                                </Button>
+                                {isInAiTriage(report) ? (
+                                    <TooltipProvider delayDuration={150}>
+                                        <Tooltip>
+                                            <TooltipTrigger asChild>
+                                                <span tabIndex={0} className="w-full lg:w-32">
+                                                    <Button
+                                                        disabled
+                                                        aria-disabled
+                                                        className="w-full lg:w-32 bg-zinc-200 dark:bg-zinc-800 text-zinc-500 dark:text-zinc-400 font-mono text-xs font-bold gap-2 cursor-not-allowed opacity-80"
+                                                    >
+                                                        <Lock className="h-3 w-3" /> PROCESSING…
+                                                    </Button>
+                                                </span>
+                                            </TooltipTrigger>
+                                            <TooltipContent className="max-w-xs text-xs font-mono">
+                                                Report is still in the system process. Automated CVSS triage is running — you can claim it once it completes.
+                                            </TooltipContent>
+                                        </Tooltip>
+                                    </TooltipProvider>
+                                ) : (
+                                    <Button
+                                        className="w-full lg:w-32 bg-black dark:bg-white text-white dark:text-black hover:bg-zinc-800 dark:hover:bg-zinc-200 font-mono text-xs font-bold gap-2"
+                                        onClick={() => handleClaim(report._id || report.id)}
+                                    >
+                                        <Lock className="h-3 w-3" /> CLAIM
+                                    </Button>
+                                )}
                             </div>
                         </div>
                     </div>

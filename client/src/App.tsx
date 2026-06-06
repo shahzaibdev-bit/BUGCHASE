@@ -67,6 +67,9 @@ import TriagerReportDetails from "./pages/triager/TriagerReportDetails";
 import TriagerReportPeek from "./pages/triager/TriagerReportPeek";
 import TriagerProfile from "./pages/triager/TriagerProfile";
 
+// Support Pages
+import SupportDashboard from "./pages/support/SupportDashboard";
+
 // Components
 import { ProtectedRoute } from "./components/ProtectedRoute";
 
@@ -74,14 +77,14 @@ import { ProtectedRoute } from "./components/ProtectedRoute";
 import AdminDashboard from "./pages/admin/AdminDashboard";
 import AdminUsers from "./pages/admin/AdminUsers";
 import AdminFinance from "./pages/admin/AdminFinance";
-import AdminDisputes from "./pages/admin/AdminDisputes";
-import AdminDisputeDetails from "./pages/admin/AdminDisputeDetails";
 import AdminLogs from "./pages/admin/AdminLogs";
 import AdminPrograms from "./pages/admin/AdminPrograms";
 import AdminProgramDetails from "./pages/admin/AdminProgramDetails";
 import AdminAnnouncements from "./pages/admin/AdminAnnouncements";
 import AdminTriagers from "./pages/admin/AdminTriagers";
 import AdminTriagerDetails from "./pages/admin/AdminTriagerDetails";
+import AdminSupport from "./pages/admin/AdminSupport";
+import AdminSupportDetails from "./pages/admin/AdminSupportDetails";
 import AdminUserDetails from "./pages/admin/AdminUserDetails";
 import AdminReportDetails from "./pages/admin/AdminReportDetails";
 
@@ -183,6 +186,11 @@ const App = () => (
                   </Route>
               </Route>
 
+              {/* Support Routes */}
+              <Route element={<ProtectedRoute allowedRoles={['support']} />}>
+                  <Route path="/support" element={<SupportDashboard />} />
+              </Route>
+
               {/* Admin Routes */}
               <Route element={<ProtectedRoute allowedRoles={['admin']} />}>
                   <Route path="/admin" element={<AdminLayout />}>
@@ -193,10 +201,10 @@ const App = () => (
                     <Route path="users/:id" element={<AdminUserDetails />} />
                     <Route path="triagers" element={<AdminTriagers />} />
                     <Route path="triagers/:id" element={<AdminTriagerDetails />} />
+                    <Route path="support" element={<AdminSupport />} />
+                    <Route path="support/:id" element={<AdminSupportDetails />} />
                     <Route path="reports/:id" element={<AdminReportDetails />} />
                     <Route path="finance" element={<AdminFinance />} />
-                    <Route path="disputes" element={<AdminDisputes />} />
-                    <Route path="disputes/:id" element={<AdminDisputeDetails />} />
                     <Route path="logs" element={<AdminLogs />} />
                     <Route path="announcements" element={<AdminAnnouncements />} />
                   </Route>

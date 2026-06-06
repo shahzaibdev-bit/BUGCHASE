@@ -7,6 +7,8 @@ import {
   updateUserStatus,
   createTriager,
   getTriagers,
+  createSupport,
+  getSupport,
   getAllPrograms,
   updateProgramStatus,
   getProgramDetails,
@@ -47,6 +49,9 @@ router.patch('/users/:id/wallet-hold', setWalletHold);
 
 router.post('/triagers', createTriager);
 router.get('/triagers', getTriagers);
+
+router.post('/support', createSupport);
+router.get('/support', getSupport);
 
 // Programs
 router.get('/programs', getAllPrograms);

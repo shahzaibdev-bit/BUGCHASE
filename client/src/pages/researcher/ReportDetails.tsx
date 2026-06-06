@@ -268,9 +268,25 @@ export default function ReportDetails() {
             <span className="text-zinc-500 dark:text-zinc-400 font-mono text-xs uppercase tracking-widest flex items-center gap-2">
                 <Shield className="w-3 h-3" /> Bug Bounty Report
             </span>
-            <div className="flex items-center gap-4">
+            <div className="flex items-center gap-4 flex-wrap">
                  <h1 className="text-3xl font-bold text-zinc-900 dark:text-white tracking-tight">{report.title}</h1>
                  <Badge variant="outline" className="font-mono">{report.status}</Badge>
+                 {(() => {
+                    const aiDup = report?.aiDuplicateAnalysis?.status;
+                    const aiTri = report?.aiTriage?.status;
+                    const duplicateProcessing = aiDup === 'pending' || aiDup === 'processing';
+                    const triageProcessing = aiTri === 'pending' || aiTri === 'processing';
+                    if (!duplicateProcessing && !triageProcessing) return null;
+                    return (
+                        <Badge
+                            variant="outline"
+                            className="font-mono gap-2 border-blue-300 bg-blue-50 text-blue-700 dark:border-blue-900/60 dark:bg-blue-950/30 dark:text-blue-200"
+                        >
+                            <span className="inline-block h-2 w-2 rounded-full bg-blue-500 animate-pulse" />
+                            UNDER SYSTEM PROCESS
+                        </Badge>
+                    );
+                 })()}
             </div>
         </div>
         <Timeline currentStep={currentStep} />
@@ -442,44 +458,66 @@ export default function ReportDetails() {
                  </div>
 
 
-                 {/* Comments */}
-                 {report.comments?.map((comment: any, idx: number) => {
-                     // Check if previous comment is same author
-                     let isConsecutive = false;
-                     if (idx === 0) {
-                         // Compare first comment with the initial submission author
-                         isConsecutive = comment.sender?.username === report.researcherId?.username;
-                     } else {
-                         isConsecutive = report.comments[idx - 1].sender?.username === comment.sender?.username && report.comments[idx - 1].sender?.name === comment.sender?.name;
-                     }
+                {/* Comments */}
+                {report.comments?.map((comment: any, idx: number) => {
+                    // Check if previous comment is same author
+                    let isConsecutive = false;
+                    if (idx === 0) {
+                        // Compare first comment with the initial submission author
+                        isConsecutive = comment.sender?.username === report.researcherId?.username;
+                    } else {
+                        isConsecutive = report.comments[idx - 1].sender?.username === comment.sender?.username && report.comments[idx - 1].sender?.name === comment.sender?.name;
+                    }
 
-                     return (
-                     <div key={idx} className="relative group pl-12 -ml-12 mt-4 pt-2">
-                         {/* Line Segment */}
-                         <div className="absolute left-[23px] top-0 -bottom-12 w-0.5 bg-zinc-200 dark:bg-zinc-800 z-0" />
+                    const senderUsername = String(comment.sender?.username || '').toLowerCase();
+                    const isAiTriage = comment.type === 'ai_triage' || senderUsername === 'bugchase_ai_triage';
 
-                         {!isConsecutive ? (
-                             <div className={cn(
-                                 "absolute left-[4px] top-2 w-10 h-10 rounded-full flex items-center justify-center border-4 border-white dark:border-zinc-950 z-10",
-                                 !comment.sender?.avatar && "bg-blue-600 text-white dark:bg-blue-600 dark:text-white"
-                             )}>
-                                  {comment.sender?.avatar ? (
-                                    <img 
-                                        src={comment.sender.avatar} 
-                                        alt={comment.sender.name} 
-                                        className="w-full h-full rounded-full object-cover"
+                    return (
+                    <div key={idx} className="relative group pl-12 -ml-12 mt-4 pt-2">
+                        {/* Line Segment */}
+                        <div className="absolute left-[23px] top-0 -bottom-12 w-0.5 bg-zinc-200 dark:bg-zinc-800 z-0" />
+
+                        {!isConsecutive ? (
+                            isAiTriage ? (
+                                <div className="absolute left-[4px] top-2 w-10 h-10 rounded-xl flex items-center justify-center border-4 border-white dark:border-zinc-950 z-10 bg-white">
+                                    <img
+                                        src={comment.sender?.avatar && comment.sender.avatar !== 'default.jpg' ? comment.sender.avatar : '/favicon.svg'}
+                                        alt="BugChase AI"
+                                        className="w-full h-full rounded-lg object-contain p-0.5"
                                     />
-                                 ) : (
-                                    <span className="font-bold text-xs">{comment.sender?.name?.charAt(0) || '?'}</span>
-                                 )}
-                             </div>
-                         ) : (
-                             <div className="absolute left-[18px] top-6 w-3 h-3 rounded-full border-2 border-zinc-300 dark:border-zinc-700 bg-background z-10" />
-                         )}
+                                </div>
+                            ) : (
+                                <div className={cn(
+                                    "absolute left-[4px] top-2 w-10 h-10 rounded-full flex items-center justify-center border-4 border-white dark:border-zinc-950 z-10",
+                                    !comment.sender?.avatar && "bg-blue-600 text-white dark:bg-blue-600 dark:text-white"
+                                )}>
+                                    {comment.sender?.avatar ? (
+                                       <img
+                                           src={comment.sender.avatar}
+                                           alt={comment.sender.name}
+                                           className="w-full h-full rounded-full object-cover"
+                                       />
+                                    ) : (
+                                       <span className="font-bold text-xs">{comment.sender?.name?.charAt(0) || '?'}</span>
+                                    )}
+                                </div>
+                            )
+                        ) : (
+                            <div className="absolute left-[18px] top-6 w-3 h-3 rounded-full border-2 border-zinc-300 dark:border-zinc-700 bg-background z-10" />
+                        )}
 
-                         <div className="flex flex-col gap-2">
-                             <div className="flex items-center gap-2 flex-wrap">
-                                {comment.sender?.role === 'researcher' ? (
+                        <div className="flex flex-col gap-2">
+                            <div className="flex items-center gap-2 flex-wrap">
+                               {isAiTriage ? (
+                                   <div className="flex items-center gap-2">
+                                       <span className="text-sm font-bold text-zinc-900 dark:text-zinc-100">
+                                           BugChase AI @bugchase_ai_triage
+                                       </span>
+                                       <Badge variant="outline" className="text-[10px] px-1 py-0 border-cyan-300 dark:border-cyan-800/60 text-cyan-700 dark:text-cyan-300 font-medium bg-cyan-50 dark:bg-cyan-950/40">
+                                           BugChase AI
+                                       </Badge>
+                                   </div>
+                               ) : comment.sender?.role === 'researcher' ? (
                                     <div className="flex items-center gap-2">
                                         <HoverCard>
                                             <HoverCardTrigger asChild>
@@ -569,12 +607,36 @@ export default function ReportDetails() {
                                         </div>
                                     )}
                                 </div>
-                             ) : comment.type === 'severity_update' ? (
-                                <div className="flex items-center gap-1 mt-1 text-sm text-zinc-500 dark:text-zinc-400">
-                                    <span>updated severity —</span>
-                                    <span className="font-bold" dangerouslySetInnerHTML={{ __html: comment.content }} />
-                                </div>
-                             ) : (
+                            ) : comment.type === 'severity_update' ? (
+                               <div className="flex items-center gap-1 mt-1 text-sm text-zinc-500 dark:text-zinc-400">
+                                   <span>updated severity —</span>
+                                   <span className="font-bold" dangerouslySetInnerHTML={{ __html: comment.content }} />
+                               </div>
+                            ) : comment.type === 'ai_triage' ? (
+                               <div className="mt-1 bg-gradient-to-br from-cyan-50/80 to-white dark:from-cyan-950/30 dark:to-zinc-900/60 rounded-xl p-3 px-4 text-sm text-zinc-800 dark:text-zinc-200 border border-cyan-200/70 dark:border-cyan-900/40 max-w-full font-inter leading-relaxed">
+                                   {comment.metadata?.oldSeverity && comment.metadata?.newSeverity && (
+                                       <div className="mb-2 flex items-center flex-wrap gap-2 text-[12px] text-zinc-600 dark:text-zinc-300">
+                                           <span className="font-medium">Severity changed:</span>
+                                           <span className="px-1.5 py-0.5 rounded bg-zinc-100 dark:bg-zinc-800 font-mono">{comment.metadata.oldSeverity}</span>
+                                           <span>→</span>
+                                           <span className="px-1.5 py-0.5 rounded bg-cyan-100 dark:bg-cyan-900/40 font-mono">{comment.metadata.newSeverity}</span>
+                                           {typeof comment.metadata.cvssScore === 'number' && (
+                                               <span className="ml-2 text-zinc-500">CVSS {Number(comment.metadata.cvssScore).toFixed(1)}</span>
+                                           )}
+                                       </div>
+                                   )}
+                                   <div className="prose prose-sm prose-zinc dark:prose-invert max-w-none [&>*:first-child]:mt-0 [&>*:last-child]:mb-0">
+                                       <ReactMarkdown rehypePlugins={[rehypeRaw]} remarkPlugins={[remarkGfm]}>
+                                           {(comment.content || '').replace(/\s*[·•]\s*\*Model:\*[^\n\r]*/gi, '').replace(/\s*[·•]\s*<strong>Model:<\/strong>[^\n\r<]*/gi, '') || '_The AI did not return a reasoning breakdown._'}
+                                       </ReactMarkdown>
+                                   </div>
+                                   {comment.metadata?.cvssVector && (
+                                       <div className="mt-2 pt-2 border-t border-cyan-200/50 dark:border-cyan-900/40 text-[11px] font-mono text-zinc-500 dark:text-zinc-400 break-all">
+                                           {comment.metadata.cvssVector}
+                                       </div>
+                                   )}
+                               </div>
+                            ) : (
                                 <div className="mt-1 bg-white dark:bg-zinc-900/50 rounded-xl p-3 px-4 text-sm text-zinc-800 dark:text-zinc-200 border border-zinc-200 dark:border-zinc-800 shadow-sm inline-block max-w-full font-inter leading-relaxed">
                                      <div className="prose prose-sm prose-zinc dark:prose-invert max-w-none focus:outline-none break-words prose-p:m-0 prose-ul:m-0 prose-ol:m-0 [&>*:not(:last-child)]:mb-2" dangerouslySetInnerHTML={{ __html: comment.content }} />
                                     {comment.attachments && comment.attachments.length > 0 && (

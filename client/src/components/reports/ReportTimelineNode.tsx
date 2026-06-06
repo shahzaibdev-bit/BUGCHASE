@@ -9,7 +9,14 @@ import { HoverCard, HoverCardContent, HoverCardTrigger } from '@/components/ui/h
 
 export interface ReportTimelineEvent {
   id: string;
-  type: 'comment' | 'status_change' | 'action' | 'assignment' | 'severity_update' | 'bounty_awarded';
+  type:
+    | 'comment'
+    | 'status_change'
+    | 'action'
+    | 'assignment'
+    | 'severity_update'
+    | 'bounty_awarded'
+    | 'ai_triage';
   author: string;
   authorAvatar?: string;
   role: 'Triager' | 'Researcher' | 'Company' | 'System' | 'Admin';
@@ -18,6 +25,26 @@ export interface ReportTimelineEvent {
   timestamp: string;
   metadata?: any;
 }
+
+// The dedicated AI triage system user. Detected by username so the timeline
+// can render the BugChase logo + a clean "BugChase AI" handle regardless of
+// what role the backend persists for the user record.
+const AI_TRIAGE_USERNAME = 'bugchase_ai_triage';
+const AI_TRIAGE_DISPLAY = 'BugChase AI';
+const AI_TRIAGE_AVATAR = '/favicon.svg';
+
+/**
+ * Strip the legacy `· *Model:* <name>` segment from older AI-triage
+ * comments that were persisted before we stopped surfacing the model label
+ * in the UI. Pure render-time scrub so old records render the same as new
+ * ones without needing a database migration.
+ */
+const stripModelLabelFromAiContent = (raw: string): string => {
+  if (!raw) return raw;
+  return raw
+    .replace(/\s*[·•]\s*\*Model:\*[^\n\r]*/gi, '')
+    .replace(/\s*[·•]\s*<strong>Model:<\/strong>[^\n\r<]*/gi, '');
+};
 
 export function ReportTimelineNode({
   event,
@@ -41,9 +68,19 @@ export function ReportTimelineNode({
     return name.substring(0, 2).toUpperCase();
   };
 
-  const roleBadgeLabel =
-    event.role === 'Triager' ? 'Bugchase Triage' : event.role === 'Admin' ? 'Platform Admin' : event.role;
   const authorHandle = (event.author || '').replace(/^@/, '').trim();
+  // Treat the dedicated AI user (recognised by username) as a first-class
+  // BugChase AI persona regardless of which role the backend persisted.
+  const isAiTriage =
+    event.type === 'ai_triage' || authorHandle.toLowerCase() === AI_TRIAGE_USERNAME;
+
+  const roleBadgeLabel = isAiTriage
+    ? 'BugChase AI'
+    : event.role === 'Triager'
+      ? 'Bugchase Triage'
+      : event.role === 'Admin'
+        ? 'Platform Admin'
+        : event.role;
 
   const Avatar = () => {
     if (isConsecutive) {
@@ -51,6 +88,16 @@ export function ReportTimelineNode({
         <div
           className="absolute left-[11px] top-[18px] h-2.5 w-2.5 shrink-0 rounded-full border-2 border-zinc-400 bg-white dark:border-zinc-500 dark:bg-zinc-950 z-10"
           aria-hidden
+        />
+      );
+    }
+
+    if (isAiTriage) {
+      return (
+        <img
+          src={event.authorAvatar && event.authorAvatar !== 'default.jpg' ? event.authorAvatar : AI_TRIAGE_AVATAR}
+          alt="BugChase AI"
+          className="h-8 w-8 rounded-xl object-contain border border-zinc-200 dark:border-zinc-800 z-10 bg-white p-0.5"
         />
       );
     }
@@ -134,16 +181,22 @@ export function ReportTimelineNode({
             ) : (
               <div className="flex items-center gap-2">
                 <span className="text-sm font-bold text-zinc-900 dark:text-zinc-100">
-                  {isSystem
-                    ? event.author
-                    : event.role === 'Admin'
-                      ? `Platform Admin @${authorHandle || 'admin'}`
-                      : `@${authorHandle || 'unknown'}`}
+                  {isAiTriage
+                    ? `${AI_TRIAGE_DISPLAY} @${AI_TRIAGE_USERNAME}`
+                    : isSystem
+                      ? event.author
+                      : event.role === 'Admin'
+                        ? `Platform Admin @${authorHandle || 'admin'}`
+                        : `@${authorHandle || 'unknown'}`}
                 </span>
-                {!isSystem && (
+                {(!isSystem || isAiTriage) && (
                   <Badge
                     variant="outline"
-                    className="text-[10px] px-1 py-0 border-zinc-200 dark:border-zinc-800 text-zinc-500 font-normal"
+                    className={
+                      isAiTriage
+                        ? 'text-[10px] px-1 py-0 border-cyan-300 dark:border-cyan-800/60 text-cyan-700 dark:text-cyan-300 font-medium bg-cyan-50 dark:bg-cyan-950/40'
+                        : 'text-[10px] px-1 py-0 border-zinc-200 dark:border-zinc-800 text-zinc-500 font-normal'
+                    }
                   >
                     {roleBadgeLabel}
                   </Badge>
@@ -213,6 +266,32 @@ export function ReportTimelineNode({
           <div className="flex items-center gap-1 mt-1 text-sm text-zinc-500 dark:text-zinc-400">
             <span>updated severity —</span>
             <span className="font-bold" dangerouslySetInnerHTML={{ __html: event.content }} />
+          </div>
+        ) : event.type === 'ai_triage' ? (
+          <div className="mt-1 flex flex-col items-start w-full gap-2">
+            <div className="mt-1 bg-gradient-to-br from-cyan-50/80 to-white dark:from-cyan-950/30 dark:to-zinc-900/60 rounded-lg p-3 px-4 text-sm text-zinc-800 dark:text-zinc-200 border border-cyan-200/70 dark:border-cyan-900/40 w-full max-w-[90%] font-inter leading-relaxed">
+              {event.metadata?.oldSeverity && event.metadata?.newSeverity && (
+                <div className="mb-2 flex items-center flex-wrap gap-2 text-[12px] text-zinc-600 dark:text-zinc-300">
+                  <span className="font-medium">Severity changed:</span>
+                  <span className="px-1.5 py-0.5 rounded bg-zinc-100 dark:bg-zinc-800 font-mono">{event.metadata.oldSeverity}</span>
+                  <span>→</span>
+                  <span className="px-1.5 py-0.5 rounded bg-cyan-100 dark:bg-cyan-900/40 font-mono">{event.metadata.newSeverity}</span>
+                  {typeof event.metadata.cvssScore === 'number' && (
+                    <span className="ml-2 text-zinc-500">CVSS {event.metadata.cvssScore.toFixed(1)}</span>
+                  )}
+                </div>
+              )}
+              <div className="prose prose-sm prose-zinc dark:prose-invert max-w-none [&>*:first-child]:mt-0 [&>*:last-child]:mb-0">
+                <ReactMarkdown rehypePlugins={[rehypeRaw]} remarkPlugins={[remarkGfm]}>
+                  {stripModelLabelFromAiContent(event.content) || '_The AI did not return a reasoning breakdown._'}
+                </ReactMarkdown>
+              </div>
+              {event.metadata?.cvssVector && (
+                <div className="mt-2 pt-2 border-t border-cyan-200/50 dark:border-cyan-900/40 text-[11px] font-mono text-zinc-500 dark:text-zinc-400 break-all">
+                  {event.metadata.cvssVector}
+                </div>
+              )}
+            </div>
           </div>
         ) : event.type === 'comment' || event.type === 'assignment' ? (
           (() => {

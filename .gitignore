@@ -129,3 +129,54 @@ server/build/
 .vscode/
 .idea/
 *.swp
+
+# ---------------------------------------------------------------------------
+# Python (ai-service, Asset-Discovery, cvss_engine, duplicate_engine, kyc_engine)
+# ---------------------------------------------------------------------------
+# Virtual environments
+.venv/
+venv/
+env/
+ENV/
+**/.venv/
+**/venv/
+
+# Byte-compiled / optimized / cache files
+__pycache__/
+**/__pycache__/
+*.py[cod]
+*$py.class
+*.pyc
+*.pyo
+*.pyd
+
+# Packaging / build artifacts
+*.egg
+*.egg-info/
+.eggs/
+build/
+develop-eggs/
+downloads/
+sdist/
+wheels/
+*.whl
+
+# Test / type-checker / linter caches
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.dmypy.json
+.tox/
+.coverage
+.coverage.*
+htmlcov/
+
+# Jupyter
+.ipynb_checkpoints/
+
+# Local model / data caches
+*.pt
+*.pth
+*.gguf
+*.bin
+.cache/

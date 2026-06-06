@@ -22,6 +22,7 @@ export default function LoginPage() {
     'researcher': '/researcher',
     'company': '/company',
     'triager': '/triager',
+    'support': '/support',
     'admin': '/admin'
   };
 

@@ -85,6 +85,8 @@ interface ReportState {
     final: number;
     vector: string;
     researcherVector: string; // Added field
+    researcherLevel?: string;
+    triagerVector?: string;
     level?: string;
   };
   timeline: ReportTimelineEvent[];
@@ -262,6 +264,8 @@ export default function TriagerReportDetails() {
             final: 0, 
             vector: '',
             researcherVector: '',
+            researcherLevel: 'Info',
+            triagerVector: '',
             level: 'Info'
         },
         timeline: [],
@@ -288,6 +292,7 @@ export default function TriagerReportDetails() {
         score: number;
         similarityPercent: number;
         confidence: 'HIGH_CONFIDENCE' | 'POTENTIAL' | 'LOW';
+        isPrimary?: boolean;
         metadata?: Record<string, any>;
     }>>([]);
     const [selectedDuplicate, setSelectedDuplicate] = useState<{
@@ -295,6 +300,7 @@ export default function TriagerReportDetails() {
         score: number;
         similarityPercent: number;
         confidence: 'HIGH_CONFIDENCE' | 'POTENTIAL' | 'LOW';
+        isPrimary?: boolean;
         metadata?: Record<string, any>;
     } | null>(null);
     const [duplicateModalOpen, setDuplicateModalOpen] = useState(false);
@@ -360,13 +366,22 @@ export default function TriagerReportDetails() {
                 
                 const finalTimeline = [submissionEvent, ...comments];
 
+                const lastTriagerSeverityUpdate = [...(r.comments || [])]
+                    .reverse()
+                    .find((c: any) => c.type === 'severity_update' && c.metadata?.cvssVector);
+
                 setState({
                     status: r.status,
                     severity: {
                         initial: 0, // Could be prior severity
                         final: r.cvssScore || 0,
                         vector: r.cvssVector || '',
-                        researcherVector: r.cvssVector || '', // Assuming we start with this
+                        // If the researcher only selected "High/Medium/etc." and did not
+                        // submit a CVSS vector, keep this blank so the calculator shows
+                        // their selected severity label instead of copying the AI/current vector.
+                        researcherVector: r.researcherCvssVector || '',
+                        researcherLevel: r.researcherSeverity || 'Info',
+                        triagerVector: lastTriagerSeverityUpdate?.metadata?.cvssVector || '',
                         level: r.severity || 'Info'
                     },
                     timeline: finalTimeline, // For now only showing comments in timeline. Ideally would fetch audit logs too.
@@ -379,20 +394,54 @@ export default function TriagerReportDetails() {
 
                 if (r.title) setSummaryForm(p => ({ ...p, title: r.title }));
 
-                const fromDb = (r.duplicateCandidates || []).map((c: any) => ({
-                    reportMongoId: String(c.reportMongoId?._id ?? c.reportMongoId),
-                    score: Number(c.similarityScore),
-                    similarityPercent: Math.round(Number(c.similarityScore) * 100),
-                    confidence:
-                        Number(c.similarityScore) > 0.85
-                            ? ('HIGH_CONFIDENCE' as const)
-                            : ('POTENTIAL' as const),
-                    metadata: {
-                        title: c.candidateTitle,
-                        reportId: c.candidateReportId,
-                        submittedAt: c.candidateSubmittedAt,
-                    },
-                }));
+                // The Atlas Search `similarityScore` is a raw Lucene relevance
+                // score (any positive number) — not a 0-1 probability — so we
+                // never use it as a percentage. The authoritative "match %" is
+                // the LLM's `aiDuplicateAnalysis.confidenceScore`, which IS
+                // bounded 0-1. The primary candidate is always shown first;
+                // others are kept as context only.
+                const ai = r.aiDuplicateAnalysis || {};
+                const aiConfidence = Math.max(
+                    0,
+                    Math.min(1, Number(ai.confidenceScore ?? 0))
+                );
+                const aiConfidencePercent = Math.round(aiConfidence * 100);
+                const primaryId = ai.primaryDuplicateId
+                    ? String(ai.primaryDuplicateId)
+                    : '';
+
+                const fromDb = (r.duplicateCandidates || []).map((c: any) => {
+                    const id = String(c.reportMongoId?._id ?? c.reportMongoId);
+                    const isPrimary = primaryId === id;
+                    // Show the LLM confidence only for the candidate the LLM
+                    // actually picked as the primary duplicate. Other
+                    // candidates carry no per-candidate score from the LLM,
+                    // so we leave them at 0% to avoid misleading numbers.
+                    const percent = isPrimary ? aiConfidencePercent : 0;
+                    return {
+                        reportMongoId: id,
+                        score: Number(c.similarityScore),
+                        similarityPercent: percent,
+                        confidence:
+                            isPrimary && aiConfidence >= 0.85
+                                ? ('HIGH_CONFIDENCE' as const)
+                                : isPrimary && aiConfidence >= 0.6
+                                ? ('POTENTIAL' as const)
+                                : ('LOW' as const),
+                        isPrimary,
+                        metadata: {
+                            title: c.candidateTitle,
+                            reportId: c.candidateReportId,
+                            submittedAt: c.candidateSubmittedAt,
+                        },
+                    };
+                });
+                // Surface the LLM-picked primary candidate first.
+                fromDb.sort((a: any, b: any) => {
+                    if (a.isPrimary && !b.isPrimary) return -1;
+                    if (!a.isPrimary && b.isPrimary) return 1;
+                    return 0;
+                });
                 setDuplicateMatches(fromDb);
                 setSelectedDuplicate(fromDb[0] || null);
             }
@@ -630,7 +679,7 @@ export default function TriagerReportDetails() {
 
                 setState(p => ({
                     ...p, 
-                    severity: { ...p.severity, final: score, vector: vector },
+                    severity: { ...p.severity, final: score, vector: vector, triagerVector: vector },
                     timeline: [...p.timeline, newSystemEvent]
                 }));
                 toast({ title: "Updated", description: "Severity score updated." });
@@ -704,8 +753,26 @@ export default function TriagerReportDetails() {
 
     if (loading || !report) return <div className="p-10 text-center">Loading Report Details...</div>;
 
+    // Authoritative AI-side state surfaced to the triager.
+    const aiAnalysis = (report as any).aiDuplicateAnalysis || {};
+    const aiStatus: string = String(aiAnalysis.status || 'pending');
+    const aiConfidence = Math.max(0, Math.min(1, Number(aiAnalysis.confidenceScore ?? 0)));
+    const aiConfidencePercent = Math.round(aiConfidence * 100);
+    const aiSaysDuplicate = !!aiAnalysis.isDuplicate;
+    const aiReasoning = String(aiAnalysis.reasoning || '').trim();
+    const aiResearcherCommunication = String(aiAnalysis.researcherCommunication || '').trim();
+    const aiProcessing = aiStatus === 'pending' || aiStatus === 'processing';
+
+    // The threshold the spec requires: only flag a "duplicate review required"
+    // workflow when the LLM is confident enough (>= 60%). Below that, the
+    // candidates are just informational and shouldn't block promote/resolve.
+    const DUPLICATE_CONFIDENCE_THRESHOLD = 0.6;
+    const aiBlocking =
+        aiSaysDuplicate && aiConfidence >= DUPLICATE_CONFIDENCE_THRESHOLD;
     const duplicateBlocking =
-        report.duplicateReviewStatus === 'pending' && (report.duplicateCandidates?.length ?? 0) > 0;
+        report.duplicateReviewStatus === 'pending' &&
+        (report.duplicateCandidates?.length ?? 0) > 0 &&
+        aiBlocking;
 
     const canChangeReportStatus = STATUSES_ALLOW_STATUS_CHANGE.includes(state.status);
     /** CVSS, validation toggles, duplicate resolution actions — locked whenever status cannot be changed from the dropdown. */
@@ -747,9 +814,15 @@ export default function TriagerReportDetails() {
 
     return (
         <div className="h-[calc(100vh-4rem)] overflow-hidden flex flex-col pt-4">
+             {aiProcessing && (
+                 <div className="mx-6 mb-2 rounded-lg border border-blue-200 dark:border-blue-900/50 bg-blue-50 dark:bg-blue-950/30 px-4 py-3 text-sm text-blue-900 dark:text-blue-100 shrink-0 flex items-center gap-2">
+                     <div className="animate-spin rounded-full h-3 w-3 border-2 border-blue-500/30 border-t-blue-500" />
+                     <span><span className="font-semibold">AI duplicate scan in progress.</span> The system is comparing this submission against prior reports — please check back in a moment.</span>
+                 </div>
+             )}
              {duplicateBlocking && (
                  <div className="mx-6 mb-2 rounded-lg border border-amber-200 dark:border-amber-900/50 bg-amber-50 dark:bg-amber-950/30 px-4 py-3 text-sm text-amber-900 dark:text-amber-100 shrink-0">
-                     <span className="font-semibold">Duplicate review required.</span>{' '}
+                     <span className="font-semibold">Duplicate review required ({aiConfidencePercent}% AI confidence).</span>{' '}
                      Similar reports were found when this submission was filed. Open the comparison, inspect candidates in a new tab, then mark as duplicate or confirm it is not a duplicate before promoting or resolving.
                  </div>
              )}
@@ -1235,19 +1308,28 @@ export default function TriagerReportDetails() {
                                 </div>
                              </div>
 
-                             {duplicateMatches.length > 0 && (
+                             {aiProcessing && (
+                                 <div className="mt-2 p-3 bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-900/50 rounded-lg text-xs flex items-center gap-2">
+                                     <div className="animate-spin rounded-full h-3 w-3 border-2 border-blue-500/30 border-t-blue-500 shrink-0" />
+                                     <span className="text-blue-900 dark:text-blue-100">AI duplicate scan running…</span>
+                                 </div>
+                             )}
+
+                             {!aiProcessing && duplicateMatches.length > 0 && aiBlocking && (
                                  <div className="mt-2 p-3 bg-zinc-50 dark:bg-zinc-900/50 border border-orange-200 dark:border-orange-900/50 rounded-lg animate-in slide-in-from-top-2">
                                      <div className="flex items-start gap-3">
                                          <AlertTriangle className="h-4 w-4 text-orange-500 mt-0.5 shrink-0" />
                                          <div className="space-y-2 w-full">
                                              <div className="text-xs">
-                                                 <p className="font-bold text-zinc-900 dark:text-zinc-100">Potential duplicate</p>
+                                                 <p className="font-bold text-zinc-900 dark:text-zinc-100">
+                                                     Likely duplicate · {aiConfidencePercent}% AI confidence
+                                                 </p>
                                                  <p className="text-zinc-500">
-                                                    {duplicateMatches.length} similar report(s) in this program (best match {duplicateMatches[0].similarityPercent}%). Sorted by original submission time.
+                                                    {duplicateMatches.length} candidate(s) found. The AI flagged the primary one.
                                                  </p>
                                              </div>
-                                             <Button 
-                                                size="sm" 
+                                             <Button
+                                                size="sm"
                                                 className="w-full h-7 text-xs bg-orange-500 hover:bg-orange-600 text-white border-0"
                                                 onClick={() => setDuplicateModalOpen(true)}
                                              >
@@ -1255,6 +1337,23 @@ export default function TriagerReportDetails() {
                                              </Button>
                                          </div>
                                      </div>
+                                 </div>
+                             )}
+
+                             {!aiProcessing && duplicateMatches.length > 0 && !aiBlocking && (
+                                 <div className="mt-2 p-3 bg-zinc-50 dark:bg-zinc-900/50 border border-zinc-200 dark:border-zinc-800 rounded-lg text-xs">
+                                     <p className="font-semibold text-zinc-700 dark:text-zinc-300">No high-confidence duplicate</p>
+                                     <p className="text-zinc-500 mt-0.5">
+                                        {duplicateMatches.length} similar report(s) surfaced, but AI confidence is {aiConfidencePercent}% (below 60% threshold). You may still inspect them.
+                                     </p>
+                                     <Button
+                                        size="sm"
+                                        variant="outline"
+                                        className="mt-2 h-7 text-xs"
+                                        onClick={() => setDuplicateModalOpen(true)}
+                                     >
+                                        View candidates
+                                     </Button>
                                  </div>
                              )}
 
@@ -1303,13 +1402,14 @@ export default function TriagerReportDetails() {
              </div>
 
              {/* Interactives: CVSS Modal, Reason Modal, Summary Modal */}
-             <CvssInteractiveModal 
+             <CvssInteractiveModal
                 isOpen={cvssModalOpen}
                 onClose={() => setCvssModalOpen(false)}
-                aiVector="CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H" 
+                aiVector={report?.aiTriage?.cvssVector || ''}
                 researcherVector={state.severity.researcherVector || ""}
-                researcherSeverity={state.severity.level}
-                currentVector={state.severity.vector || "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:N/I:N/A:N"}
+                researcherSeverity={state.severity.researcherLevel}
+                triagerVector={state.severity.triagerVector || ''}
+                currentVector={state.severity.triagerVector || ""}
                 onSave={handleSeverityUpdate}
             />
 
@@ -1384,6 +1484,69 @@ export default function TriagerReportDetails() {
                                 : ' Select the canonical report this submission duplicates, or confirm it is not a duplicate.'}
                         </DialogDescription>
                     </DialogHeader>
+
+                    {/* AI verdict panel */}
+                    <div className={cn(
+                        "rounded-lg border p-4 my-2",
+                        aiProcessing
+                            ? "border-blue-200 bg-blue-50 dark:border-blue-900/50 dark:bg-blue-950/30"
+                            : aiBlocking
+                                ? "border-amber-200 bg-amber-50 dark:border-amber-900/50 dark:bg-amber-950/30"
+                                : "border-zinc-200 bg-zinc-50 dark:border-zinc-800 dark:bg-zinc-900/50"
+                    )}>
+                        <div className="flex items-start gap-3">
+                            <Brain className={cn(
+                                "h-5 w-5 mt-0.5 shrink-0",
+                                aiProcessing ? "text-blue-500 animate-pulse" : aiBlocking ? "text-amber-500" : "text-zinc-500"
+                            )} />
+                            <div className="flex-1 min-w-0">
+                                <div className="flex items-center gap-2 flex-wrap">
+                                    <span className="text-sm font-semibold">
+                                        BugChase AI · {aiProcessing ? 'Scanning…' : aiSaysDuplicate ? 'Likely duplicate' : 'Not a duplicate'}
+                                    </span>
+                                    {!aiProcessing && (
+                                        <Badge variant="outline" className="font-mono text-[10px]">
+                                            {aiConfidencePercent}% confidence
+                                        </Badge>
+                                    )}
+                                    {!aiProcessing && aiConfidence < DUPLICATE_CONFIDENCE_THRESHOLD && (
+                                        <Badge variant="outline" className="font-mono text-[10px] bg-zinc-100 dark:bg-zinc-900">
+                                            below 60% threshold
+                                        </Badge>
+                                    )}
+                                </div>
+                                {aiProcessing && (
+                                    <p className="text-xs text-blue-900/80 dark:text-blue-100/80 mt-1">
+                                        Atlas Search + local LLM are still analysing this report. Refresh in a moment to see the verdict.
+                                    </p>
+                                )}
+                                {!aiProcessing && aiReasoning && (
+                                    <div className="mt-3 space-y-1">
+                                        <div className="text-[10px] uppercase font-mono text-zinc-500 tracking-wider">AI Reasoning (internal)</div>
+                                        <p className="text-sm text-zinc-800 dark:text-zinc-200 whitespace-pre-line">
+                                            {aiReasoning}
+                                        </p>
+                                    </div>
+                                )}
+                                {!aiProcessing && aiResearcherCommunication && (
+                                    <div className="mt-3 space-y-1">
+                                        <div className="text-[10px] uppercase font-mono text-zinc-500 tracking-wider">
+                                            Discrepancy report (sent to researcher when you confirm)
+                                        </div>
+                                        <div className="text-sm text-zinc-800 dark:text-zinc-200 whitespace-pre-line rounded border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 p-3 max-h-48 overflow-y-auto">
+                                            {aiResearcherCommunication}
+                                        </div>
+                                    </div>
+                                )}
+                                {!aiProcessing && !aiReasoning && !aiResearcherCommunication && (
+                                    <p className="text-xs text-zinc-500 mt-1">
+                                        AI did not return a detailed analysis for this report (status: {aiStatus}{aiAnalysis?.error ? ` — ${aiAnalysis.error}` : ''}).
+                                    </p>
+                                )}
+                            </div>
+                        </div>
+                    </div>
+
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4 py-2">
                         <div className="rounded-lg border border-zinc-200 dark:border-zinc-800 p-3">
                             <div className="text-xs uppercase text-zinc-500 font-mono mb-2">This report</div>
@@ -1397,13 +1560,24 @@ export default function TriagerReportDetails() {
                             <div className="text-xs uppercase text-zinc-500 font-mono mb-2">Selected candidate</div>
                             {selectedDuplicate ? (
                                 <>
-                                    <div className="text-sm font-semibold">{selectedDuplicate.metadata?.title || 'Untitled'}</div>
+                                    <div className="flex items-center gap-2 flex-wrap">
+                                        <div className="text-sm font-semibold">{selectedDuplicate.metadata?.title || 'Untitled'}</div>
+                                        {selectedDuplicate.isPrimary && (
+                                            <Badge className="bg-amber-500 text-white text-[10px]">AI-flagged primary</Badge>
+                                        )}
+                                    </div>
                                     <div className="text-xs text-zinc-500 mt-1">
                                         {selectedDuplicate.metadata?.reportId || selectedDuplicate.reportMongoId}
                                     </div>
-                                    <div className="mt-2 text-sm">
-                                        Similarity: <span className="font-bold">{selectedDuplicate.similarityPercent}%</span>
-                                    </div>
+                                    {selectedDuplicate.isPrimary ? (
+                                        <div className="mt-2 text-sm">
+                                            AI confidence: <span className="font-bold">{aiConfidencePercent}%</span>
+                                        </div>
+                                    ) : (
+                                        <div className="mt-2 text-xs text-zinc-500">
+                                            Surfaced as a related candidate (no per-candidate AI score).
+                                        </div>
+                                    )}
                                     {selectedDuplicate.metadata?.submittedAt && (
                                         <div className="text-xs text-zinc-400 mt-1">
                                             Submitted:{' '}
@@ -1444,12 +1618,18 @@ export default function TriagerReportDetails() {
                                         onClick={() => setSelectedDuplicate(m)}
                                         className="flex-1 text-left min-w-0"
                                     >
-                                        <div className="text-sm font-medium truncate">{m.metadata?.title || 'Untitled Report'}</div>
+                                        <div className="text-sm font-medium truncate flex items-center gap-2">
+                                            <span className="truncate">{m.metadata?.title || 'Untitled Report'}</span>
+                                            {m.isPrimary && (
+                                                <Badge className="bg-amber-500 text-white text-[10px] shrink-0">AI primary</Badge>
+                                            )}
+                                        </div>
                                         <div className="text-xs text-zinc-500 mt-0.5 truncate">
-                                            {m.metadata?.reportId || m.reportMongoId} · {m.similarityPercent}% ·{' '}
-                                            {m.metadata?.submittedAt
-                                                ? new Date(m.metadata.submittedAt).toLocaleDateString()
-                                                : ''}
+                                            {m.metadata?.reportId || m.reportMongoId}
+                                            {m.isPrimary && (<> · {m.similarityPercent}% AI confidence</>)}
+                                            {m.metadata?.submittedAt && (
+                                                <> · {new Date(m.metadata.submittedAt).toLocaleDateString()}</>
+                                            )}
                                         </div>
                                     </button>
                                     <Button

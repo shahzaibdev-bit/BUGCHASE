@@ -3,7 +3,7 @@ import catchAsync from '../utils/catchAsync';
 import AppError from '../utils/AppError';
 import Notification from '../models/Notification';
 import User from '../models/User';
-import { sendEmail, broadcastTemplate, inviteMemberTemplate, programSuspendedTemplate, programBannedTemplate, userStatusChangedTemplate, adminProfileUpdateTemplate, reportEmailTemplate, adminDirectMessageTemplate } from '../services/emailService';
+import { sendEmail, broadcastTemplate, inviteMemberTemplate, inviteSupportTemplate, programSuspendedTemplate, programBannedTemplate, userStatusChangedTemplate, adminProfileUpdateTemplate, reportEmailTemplate, adminDirectMessageTemplate } from '../services/emailService';
 import { releaseExpiredProgramBans } from '../services/programModerationService';
 import Program from '../models/Program';
 import Transaction from '../models/Transaction';
@@ -97,6 +97,75 @@ export const getTriagers = catchAsync(async (req: Request, res: Response, next: 
         data: {
             triagers
         }
+    });
+});
+
+export const createSupport = catchAsync(async (req: Request, res: Response, next: NextFunction) => {
+    const { name, email, tempPassword, expertise, trainingCompleted, identityVerified } = req.body;
+
+    // 1. Basic validation
+    if (!name || !email || !tempPassword) {
+        return next(new AppError('Please provide name, email and temporary password', 400));
+    }
+
+    if (!trainingCompleted || !identityVerified) {
+        return next(new AppError('Support member must complete onboarding training and identity verification', 400));
+    }
+
+    // 2. Check if user exists
+    const existingUser = await User.findOne({ email });
+    if (existingUser) {
+        return next(new AppError('Email already in use', 400));
+    }
+
+    // 3. Create User with 'support' role. We reuse the existing `expertise`
+    // field to store the member's support specialization areas.
+    const newSupport = await User.create({
+        name,
+        email,
+        password: tempPassword,
+        role: 'support',
+        username: email.split('@')[0] + Math.floor(Math.random() * 1000), // temp username
+        expertise: expertise || [],
+        isVerified: identityVerified,
+        isEmailVerified: true,
+    });
+
+    // 4. Send Invitation Email with login credentials
+    const loginUrl = `${process.env.CLIENT_URL || 'http://localhost:3000'}/login`;
+    const emailHtml = inviteSupportTemplate(
+        newSupport.name,
+        newSupport.email,
+        newSupport.username,
+        tempPassword,
+        loginUrl,
+        newSupport.expertise || [],
+    );
+
+    try {
+        await sendEmail(newSupport.email, 'Welcome to the BugChase Support Team', emailHtml);
+    } catch (error) {
+        console.error('Failed to send support invite email', error);
+        // Don't fail the request; admin can resend or share credentials manually.
+    }
+
+    res.status(201).json({
+        status: 'success',
+        data: {
+            user: newSupport,
+        },
+    });
+});
+
+export const getSupport = catchAsync(async (req: Request, res: Response, next: NextFunction) => {
+    const support = await User.find({ role: 'support' }).select('name email expertise status lastActive avatar role _id');
+
+    res.status(200).json({
+        status: 'success',
+        results: support.length,
+        data: {
+            support,
+        },
     });
 });
 
