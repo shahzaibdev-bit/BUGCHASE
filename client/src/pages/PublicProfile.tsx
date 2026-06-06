@@ -571,10 +571,11 @@ export default function PublicProfile() {
                   <TabsList className="relative grid h-11 w-full max-w-md grid-cols-3 items-center gap-0 rounded-full border border-zinc-200 bg-zinc-100 p-1 dark:border-zinc-700 dark:bg-zinc-800">
                     <div
                       aria-hidden
-                      className="pointer-events-none absolute bottom-1 left-1 top-1 z-0 rounded-full bg-white shadow-sm ring-1 ring-black/[0.04] transition-[transform] duration-300 ease-[cubic-bezier(0.32,0.72,0,1)] will-change-transform motion-reduce:transition-none dark:bg-zinc-900 dark:ring-white/[0.06]"
+                      className="pointer-events-none absolute bottom-1 left-1 top-1 z-0 rounded-full bg-white shadow-sm ring-1 ring-black/[0.04] transition-[transform] duration-300 will-change-transform motion-reduce:transition-none dark:bg-zinc-900 dark:ring-white/[0.06]"
                       style={{
                         width: 'calc((100% - 0.5rem) / 3)',
                         transform: `translateX(calc(${mainTab === 'overview' ? 0 : mainTab === 'achievements' ? 1 : 2} * 100%))`,
+                        transitionTimingFunction: 'cubic-bezier(0.32,0.72,0,1)',
                       }}
                     />
                     <TabsTrigger
