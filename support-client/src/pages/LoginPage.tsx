@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { toast } from 'sonner';
+import { toast } from '@/hooks/use-toast';
 import { Fingerprint, Lock } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
@@ -25,17 +25,17 @@ export function LoginPage() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!email || !password) {
-      toast.error('Please enter your email and password.');
+      toast({ title: 'Error', description: 'Please enter your email and password.', variant: 'destructive' });
       return;
     }
     setIsLoading(true);
     const result = await login(email, password);
     setIsLoading(false);
     if (result.success) {
-      toast.success('Access granted. Welcome back!');
+      toast({ title: 'ACCESS GRANTED', description: 'Welcome back!' });
       navigate('/', { replace: true });
     } else {
-      toast.error(result.error || 'Login failed.');
+      toast({ title: 'Login Failed', description: result.error || 'Login failed.', variant: 'destructive' });
     }
   };
 

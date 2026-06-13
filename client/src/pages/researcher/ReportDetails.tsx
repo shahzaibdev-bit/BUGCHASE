@@ -10,6 +10,7 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { HoverCard, HoverCardContent, HoverCardTrigger } from "@/components/ui/hover-card";
 import { GlassCard } from '@/components/ui/glass-card';
 import CyberpunkEditor from '@/components/ui/CyberpunkEditor';
+import ContactSupportButton from '@/components/support/ContactSupportButton';
 import { format } from 'date-fns';
 import { toast } from '@/hooks/use-toast';
 import { API_URL } from '@/config';
@@ -271,6 +272,10 @@ export default function ReportDetails() {
             <div className="flex items-center gap-4 flex-wrap">
                  <h1 className="text-3xl font-bold text-zinc-900 dark:text-white tracking-tight">{report.title}</h1>
                  <Badge variant="outline" className="font-mono">{report.status}</Badge>
+                 <ContactSupportButton
+                    className="ml-auto"
+                    report={{ id: id!, label: `${report.reportId || id} — ${report.title}` }}
+                 />
                  {(() => {
                     const aiDup = report?.aiDuplicateAnalysis?.status;
                     const aiTri = report?.aiTriage?.status;
@@ -940,9 +945,13 @@ export default function ReportDetails() {
             {/* Card 3: Need Help */}
             <div className="bg-emerald-50 dark:bg-emerald-950/10 border border-emerald-200 dark:border-emerald-900/30 rounded-lg p-4 text-center">
                 <p className="text-xs text-emerald-700 dark:text-emerald-200/70 mb-2">Need help with this report?</p>
-                <a href="#" className="text-sm font-bold text-emerald-600 dark:text-emerald-500 hover:text-emerald-500 hover:underline">
-                    Contact Support
-                </a>
+                <ContactSupportButton
+                    variant="ghost"
+                    size="sm"
+                    className="h-auto px-2 py-1 text-sm font-bold text-emerald-600 dark:text-emerald-500 hover:text-emerald-500 hover:bg-transparent hover:underline"
+                    report={{ id: id!, label: `${report.reportId || id} — ${report.title}` }}
+                    hideIcon
+                />
             </div>
 
         </div>

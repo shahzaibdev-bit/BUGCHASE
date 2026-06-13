@@ -5,7 +5,7 @@ import path from "path";
 export default defineConfig({
   server: {
     host: true,
-    port: 3100,
+    port: 3101,
     proxy: {
       // Support portal talks to the MAIN BugChase backend.
       "/api": {

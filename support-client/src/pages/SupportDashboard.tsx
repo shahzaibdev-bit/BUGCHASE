@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { toast } from 'sonner';
+import { toast } from '@/hooks/use-toast';
 import {
   Search,
   Inbox,
@@ -46,7 +46,7 @@ export function SupportDashboard() {
       setDisputes(listRes.data.disputes);
       setStats(statsRes.data);
     } catch (err: any) {
-      toast.error(err.message || 'Failed to load disputes.');
+      toast({ title: 'Error', description: err.message || 'Failed to load disputes.', variant: 'destructive' });
     } finally {
       setLoading(false);
     }

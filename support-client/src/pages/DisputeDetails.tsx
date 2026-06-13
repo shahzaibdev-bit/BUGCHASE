@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { toast } from 'sonner';
+import { toast } from '@/hooks/use-toast';
 import {
   ArrowLeft,
   Send,
@@ -37,7 +37,7 @@ export function DisputeDetails() {
       const res = await apiFetch<{ data: { dispute: Dispute } }>(`/disputes/${id}`);
       setDispute(res.data.dispute);
     } catch (err: any) {
-      toast.error(err.message || 'Failed to load dispute.');
+      toast({ title: 'Error', description: err.message || 'Failed to load dispute.', variant: 'destructive' });
     } finally {
       setLoading(false);
     }
@@ -57,9 +57,9 @@ export function DisputeDetails() {
         body: JSON.stringify(body),
       });
       setDispute(res.data.dispute);
-      toast.success(successMsg);
+      toast({ title: 'Success', description: successMsg });
     } catch (err: any) {
-      toast.error(err.message || 'Update failed.');
+      toast({ title: 'Update Failed', description: err.message || 'Update failed.', variant: 'destructive' });
     } finally {
       setBusy(false);
     }
@@ -76,7 +76,7 @@ export function DisputeDetails() {
       setDispute(res.data.dispute);
       setReply('');
     } catch (err: any) {
-      toast.error(err.message || 'Failed to send reply.');
+      toast({ title: 'Error', description: err.message || 'Failed to send reply.', variant: 'destructive' });
     } finally {
       setSending(false);
     }

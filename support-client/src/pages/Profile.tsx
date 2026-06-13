@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { toast } from 'sonner';
+import { toast } from '@/hooks/use-toast';
 import {
   Shield,
   History,
@@ -115,7 +115,7 @@ export function Profile() {
     const file = e.target.files?.[0];
     if (!file) return;
     if (file.size > 5 * 1024 * 1024) {
-      toast.error('File size must be less than 5MB');
+      toast({ title: 'Error', description: 'File size must be less than 5MB', variant: 'destructive' });
       return;
     }
     const formData = new FormData();
@@ -130,13 +130,13 @@ export function Profile() {
       });
       const data = await res.json();
       if (res.ok) {
-        toast.success('Avatar updated.');
+        toast({ title: 'Success', description: 'Avatar updated.' });
         await refreshUser();
       } else {
-        toast.error(data.message || 'Failed to upload avatar');
+        toast({ title: 'Error', description: data.message || 'Failed to upload avatar', variant: 'destructive' });
       }
     } catch {
-      toast.error('Something went wrong');
+      toast({ title: 'Error', description: 'Something went wrong', variant: 'destructive' });
     } finally {
       setIsUploading(false);
       e.target.value = '';
@@ -164,29 +164,29 @@ export function Profile() {
       });
       const data = await res.json();
       if (res.ok) {
-        toast.success('Profile updated.');
+        toast({ title: 'Success', description: 'Profile updated.' });
         if (section === 'general') setEditGeneral(false);
         else setEditSocials(false);
         await refreshUser();
       } else {
-        toast.error(data.message || 'Failed to update profile');
+        toast({ title: 'Error', description: data.message || 'Failed to update profile', variant: 'destructive' });
       }
     } catch {
-      toast.error('Something went wrong');
+      toast({ title: 'Error', description: 'Something went wrong', variant: 'destructive' });
     }
   };
 
   const updatePassword = async () => {
     if (!currentPassword || !newPassword || !confirmPassword) {
-      toast.error('Please fill in all password fields.');
+      toast({ title: 'Error', description: 'Please fill in all password fields.', variant: 'destructive' });
       return;
     }
     if (newPassword !== confirmPassword) {
-      toast.error('New passwords do not match.');
+      toast({ title: 'Error', description: 'New passwords do not match.', variant: 'destructive' });
       return;
     }
     if (currentPassword === newPassword) {
-      toast.error('New password must differ from the current one.');
+      toast({ title: 'Error', description: 'New password must differ from the current one.', variant: 'destructive' });
       return;
     }
     setSavingPw(true);
@@ -199,16 +199,16 @@ export function Profile() {
       });
       const data = await res.json();
       if (res.ok) {
-        toast.success('Password updated.');
+        toast({ title: 'Success', description: 'Password updated.' });
         setCurrentPassword('');
         setNewPassword('');
         setConfirmPassword('');
         setShowPwSection(false);
       } else {
-        toast.error(data.message || 'Failed to update password');
+        toast({ title: 'Error', description: data.message || 'Failed to update password', variant: 'destructive' });
       }
     } catch {
-      toast.error('Something went wrong');
+      toast({ title: 'Error', description: 'Something went wrong', variant: 'destructive' });
     } finally {
       setSavingPw(false);
     }

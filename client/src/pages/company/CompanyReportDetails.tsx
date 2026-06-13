@@ -35,6 +35,7 @@ import { HoverCard, HoverCardContent, HoverCardTrigger } from "@/components/ui/h
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { GlassCard } from '@/components/ui/glass-card';
+import ContactSupportButton from '@/components/support/ContactSupportButton';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { ScrollArea } from '@/components/ui/scroll-area';
@@ -822,6 +823,10 @@ export default function CompanyReportDetails() {
                                 <h1 className="text-[20px] md:text-2xl font-bold tracking-tight text-foreground break-words leading-tight">{report.title}</h1>
                             </div>
                             <div className="flex gap-2 shrink-0 flex-wrap justify-start lg:justify-end max-w-sm">
+                                <ContactSupportButton
+                                    className="border-zinc-300 dark:border-zinc-700 text-zinc-900 dark:text-zinc-100 hover:bg-zinc-100 dark:hover:bg-zinc-800"
+                                    report={{ id: id!, label: `${report.reportId || id} — ${report.title}` }}
+                                />
                                 <Button 
                                     variant="outline" 
                                     size="sm"

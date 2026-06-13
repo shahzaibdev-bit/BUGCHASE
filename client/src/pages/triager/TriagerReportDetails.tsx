@@ -36,6 +36,7 @@ import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Switch } from '@/components/ui/switch';
 import { ScrollArea } from '@/components/ui/scroll-area';
+import ContactSupportButton from '@/components/support/ContactSupportButton';
 import { Separator } from '@/components/ui/separator';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import CyberpunkEditor from '@/components/ui/CyberpunkEditor';
@@ -831,9 +832,14 @@ export default function TriagerReportDetails() {
                   <Button variant="ghost" className="pl-0 text-zinc-500 hover:text-black dark:hover:text-white" onClick={() => navigate('/triager')}>
                     <ArrowLeft className="h-4 w-4 mr-2" /> BACK TO QUEUE
                  </Button>
-                 <div className="flex items-center gap-2">
-                     <span className="text-sm font-mono text-zinc-400">REPORT ID:</span>
-                     <span className="font-mono font-bold text-lg text-black dark:text-white">{report.reportId || report.id || id}</span>
+                 <div className="flex items-center gap-3">
+                     <ContactSupportButton
+                        report={{ id: id!, label: `${report.reportId || report.id || id} — ${report.title}` }}
+                     />
+                     <div className="flex items-center gap-2">
+                         <span className="text-sm font-mono text-zinc-400">REPORT ID:</span>
+                         <span className="font-mono font-bold text-lg text-black dark:text-white">{report.reportId || report.id || id}</span>
+                     </div>
                  </div>
              </div>
 

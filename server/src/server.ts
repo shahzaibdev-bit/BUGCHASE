@@ -48,6 +48,8 @@ app.use(helmet());
 const allowedOrigins = new Set([
   'http://localhost:3000',
   'http://localhost:3100',
+  'http://localhost:3101',
+  'http://127.0.0.1:3101',
   'http://localhost:5173',
   'https://bugchase-client.vercel.app',
   'https://bugchase.imkasim.xyz',

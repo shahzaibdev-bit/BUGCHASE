@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { toast } from 'sonner';
+import { toast } from '@/hooks/use-toast';
 import { useAuth } from '@/contexts/AuthContext';
 
 declare global {
@@ -46,15 +46,15 @@ export function GoogleLoginButton({ onSuccess }: GoogleLoginButtonProps) {
         client_id: import.meta.env.VITE_GOOGLE_CLIENT_ID,
         callback: async (response) => {
           if (!response.credential) {
-            toast.error('Google did not return a credential.');
+            toast({ title: 'Login Failed', description: 'Google did not return a credential.', variant: 'destructive' });
             return;
           }
           const result = await googleLogin(response.credential);
           if (result.success) {
-            toast.success('Google sign-in successful.');
+            toast({ title: 'ACCESS GRANTED', description: 'Google sign-in successful.' });
             onSuccess();
           } else {
-            toast.error(result.error || 'Google login failed.');
+            toast({ title: 'Login Failed', description: result.error || 'Google login failed.', variant: 'destructive' });
           }
         },
       });

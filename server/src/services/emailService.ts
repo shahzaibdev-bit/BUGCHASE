@@ -659,6 +659,97 @@ body { margin: 0; padding: 0; background-color: #000000; font-family: 'Courier N
   return juice(html);
 };
 
+export const disputeReceivedTemplate = (opts: {
+  recipientName: string;
+  disputeId: string;
+  subject: string;
+  category: string;
+  descriptionHtml?: string;
+  reportLabel?: string;
+  link: string;
+}) => {
+  const safeName = escapeHtml(opts.recipientName || 'there');
+  const safeSubject = escapeHtml(opts.subject);
+  const safeCategory = escapeHtml(opts.category || 'other');
+  // descriptionHtml is the researcher/company/triager's own rich-text input.
+  const descriptionBlock = opts.descriptionHtml
+    ? `<div class="message-box"><div class="section-label">Your Description</div><div class="message-text">${opts.descriptionHtml}</div></div>`
+    : '';
+  const reportRow = opts.reportLabel
+    ? `<tr><td class="detail-label">Related Report</td><td class="detail-value">${escapeHtml(opts.reportLabel)}</td></tr>`
+    : '';
+
+  const html = `
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Support request received</title>
+<style>
+body { margin: 0; padding: 0; background-color: #000000; font-family: 'Courier New', Courier, monospace; }
+.wrapper { width: 100%; table-layout: fixed; background-color: #000000; padding: 40px 0; }
+.container { background-color: #09090b; margin: 0 auto; width: 100%; max-width: 620px; border: 1px solid #27272a; border-radius: 10px; overflow: hidden; }
+.header { background-color: #09090b; padding: 24px 32px; border-bottom: 1px solid #27272a; }
+.logo { color: #ffffff; font-weight: bold; font-size: 18px; letter-spacing: 2px; text-transform: uppercase; text-decoration: none; }
+.logo-dot { color: #71717a; }
+.hero { background: linear-gradient(135deg, #18181b 0%, #09090b 100%); padding: 40px 32px; border-bottom: 1px solid #27272a; }
+.hero-label { font-size: 11px; color: #22c55e; letter-spacing: 2px; text-transform: uppercase; margin-bottom: 12px; font-weight: bold; }
+.hero-title { font-size: 22px; font-weight: bold; color: #ffffff; line-height: 1.4; margin: 0; }
+.content { padding: 32px; }
+.greeting { font-size: 14px; color: #a1a1aa; line-height: 1.7; margin-bottom: 24px; }
+.greeting strong { color: #ffffff; }
+.details-table { width: 100%; border-collapse: collapse; background: #18181b; border: 1px solid #27272a; border-radius: 8px; overflow: hidden; margin-bottom: 24px; }
+.detail-label { padding: 12px 16px; font-size: 11px; color: #71717a; text-transform: uppercase; letter-spacing: 1px; width: 40%; border-bottom: 1px solid #27272a; }
+.detail-value { padding: 12px 16px; font-size: 13px; color: #e4e4e7; font-weight: 600; border-bottom: 1px solid #27272a; }
+.message-box { background: #18181b; border: 1px solid #27272a; border-left: 3px solid #ffffff; border-radius: 6px; padding: 16px 20px; margin-bottom: 24px; }
+.message-text { font-size: 14px; color: #d4d4d8; line-height: 1.7; margin-top: 8px; }
+.message-text p { margin: 8px 0; }
+.section-label { font-size: 10px; color: #71717a; text-transform: uppercase; letter-spacing: 1.5px; font-weight: bold; }
+.cta-wrap { text-align: center; margin: 8px 0; }
+.cta-btn { display: inline-block; background: #ffffff; color: #000000; padding: 14px 32px; border-radius: 6px; text-decoration: none; font-weight: bold; font-size: 13px; letter-spacing: 1px; text-transform: uppercase; }
+.footer { padding: 24px 32px; text-align: center; color: #52525b; font-size: 11px; border-top: 1px solid #27272a; background: #09090b; line-height: 1.7; }
+@media (max-width: 640px) { .hero { padding: 28px 20px; } .content { padding: 24px 20px; } .hero-title { font-size: 18px; } }
+</style>
+</head>
+<body>
+<div class="wrapper">
+  <div class="container">
+    <div class="header">
+      <a href="#" class="logo">BugChase<span class="logo-dot">.</span>Security</a>
+    </div>
+    <div class="hero">
+      <div class="hero-label">Support Request Received</div>
+      <h1 class="hero-title">We've recorded your issue</h1>
+    </div>
+    <div class="content">
+      <p class="greeting">
+        Hi <strong>${safeName}</strong>,<br/><br/>
+        Thank you for reaching out. Your support request has been recorded and our support team will review it and follow up with you. You can reply to the report thread or wait for an update from our team.
+      </p>
+      <table class="details-table">
+        <tr><td class="detail-label">Reference</td><td class="detail-value" style="font-family: monospace;">${escapeHtml(opts.disputeId)}</td></tr>
+        <tr><td class="detail-label">Issue</td><td class="detail-value">${safeSubject}</td></tr>
+        <tr><td class="detail-label">Category</td><td class="detail-value" style="text-transform: capitalize;">${safeCategory}</td></tr>
+        ${reportRow}
+      </table>
+      ${descriptionBlock}
+      <div class="cta-wrap">
+        <a href="${opts.link}" class="cta-btn">View in BugChase &rarr;</a>
+      </div>
+    </div>
+    <div class="footer">
+      &copy; ${new Date().getFullYear()} BugChase Security Platform. All rights reserved.<br/>
+      This is an automated confirmation of a support request you submitted.
+    </div>
+  </div>
+</div>
+</body>
+</html>
+  `;
+  return juice(html);
+};
+
 export type EmailActionType = 'comment' | 'status_change' | 'claimed' | 'submitted' | 'promoted' | 'bounty_awarded';
 export type EmailRole = 'researcher' | 'triager' | 'company' | 'admin';
 
