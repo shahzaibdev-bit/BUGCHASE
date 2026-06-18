@@ -1,10 +1,17 @@
 import { Request, Response, NextFunction } from 'express';
 import Dispute from '../models/Dispute';
 import Report from '../models/Report';
+import User from '../models/User';
 import AppError from '../utils/AppError';
 import catchAsync from '../utils/catchAsync';
-import { sendEmail, disputeReceivedTemplate } from '../services/emailService';
+import { sendEmail, disputeReceivedTemplate, disputeMessageTemplate, generateEmailMessageId } from '../services/emailService';
 import { getIO } from '../services/socketService';
+import {
+  markLinkedReportInDispute,
+  restoreLinkedReportAfterDispute,
+  resolveReportByRef,
+  REPORT_IN_DISPUTE_STATUS,
+} from '../services/disputeReportLinkService';
 
 const generateDisputeId = () => {
   const rand = Math.random().toString(36).slice(2, 8).toUpperCase();
@@ -35,6 +42,279 @@ const stripHtml = (value: string): string =>
 
 const VALID_STATUS = ['open', 'in_review', 'resolved', 'rejected'];
 const VALID_PRIORITY = ['low', 'medium', 'high', 'critical'];
+
+const isClosed = (status: string) => status === 'resolved' || status === 'rejected';
+
+const isSupportRole = (role?: string) => role === 'support' || role === 'admin';
+
+const raiserTicketLink = (dispute: { _id: any; raisedByRole?: string }) => {
+  const clientUrl = process.env.CLIENT_URL || 'http://localhost:3000';
+  const role = dispute.raisedByRole || 'researcher';
+  return `${clientUrl}/${role}/support/${dispute._id}`;
+};
+
+const supportTicketLink = (dispute: { _id: any }) => {
+  const base = process.env.SUPPORT_CLIENT_URL || 'http://localhost:3101';
+  return `${base}/disputes/${dispute._id}`;
+};
+
+const disputeThreadSubject = (disputeId: string, subject: string) => `[${disputeId}] ${subject}`;
+
+type ThreadAudience = 'raiser' | 'support';
+
+/** Send a dispute email in the same Gmail/Outlook thread as prior messages to that recipient. */
+const sendThreadedDisputeEmail = async (opts: {
+  disputeId: string;
+  disputeSubject: string;
+  disputeMongoId: any;
+  to: string;
+  html: string;
+  audience: ThreadAudience;
+  emailThread?: {
+    raiser?: { subject: string; rootMessageId: string; lastMessageId: string };
+    support?: {
+      subject: string;
+      rootMessageId: string;
+      lastMessageId: string;
+      recipientEmail?: string;
+    };
+  };
+}) => {
+  const baseSubject = disputeThreadSubject(opts.disputeId, opts.disputeSubject);
+
+  const threadRoot = opts.emailThread || {};
+  let side = threadRoot[opts.audience];
+
+  // New support assignee → start a fresh thread for that agent.
+  if (opts.audience === 'support') {
+    const supportSide = side as { recipientEmail?: string } | undefined;
+    if (
+      supportSide?.recipientEmail &&
+      supportSide.recipientEmail.toLowerCase() !== opts.to.toLowerCase()
+    ) {
+      side = undefined;
+    }
+  }
+
+  const messageId = generateEmailMessageId(`dispute.${opts.disputeId}.${opts.audience}`);
+
+  let subject = baseSubject;
+  let inReplyTo: string | undefined;
+  let references: string[] | undefined;
+
+  if (side?.lastMessageId) {
+    subject = `Re: ${baseSubject}`;
+    inReplyTo = side.lastMessageId;
+    references = [side.rootMessageId, side.lastMessageId].filter(Boolean);
+  }
+
+  await sendEmail(opts.to, subject, opts.html, {
+    messageId,
+    inReplyTo,
+    references,
+  });
+
+  const updatedSide = {
+    subject: baseSubject,
+    rootMessageId: side?.rootMessageId || messageId,
+    lastMessageId: messageId,
+    ...(opts.audience === 'support' ? { recipientEmail: opts.to.toLowerCase() } : {}),
+  };
+
+  await Dispute.findByIdAndUpdate(opts.disputeMongoId, {
+    emailThread: {
+      ...threadRoot,
+      [opts.audience]: updatedSide,
+    },
+  });
+};
+
+const buildClaimAnnouncement = (agentName: string, disputeId: string) =>
+  `${agentName} from the BugChase support team has claimed ticket ${disputeId} and will handle further processing. ` +
+  `You will be notified here and by email when we need additional information from you.`;
+
+/** Best-effort email when a new dispute thread message is posted (same email thread per recipient). */
+const notifyDisputeMessage = async (
+  dispute: any,
+  content: string,
+  sender: { name?: string; role?: string },
+  options?: { actionLabel?: string },
+) => {
+  const senderRole = sender.role || 'support';
+  const plainPreview = stripHtml(content).slice(0, 500);
+  const messageHtml = plainPreview.replace(/\n/g, '<br/>');
+  const emailThread = dispute.emailThread || {};
+
+  try {
+    if (isSupportRole(senderRole)) {
+      if (!dispute.raisedByEmail) return;
+      await sendThreadedDisputeEmail({
+        disputeId: dispute.disputeId,
+        disputeSubject: dispute.subject,
+        disputeMongoId: dispute._id,
+        to: dispute.raisedByEmail,
+        audience: 'raiser',
+        emailThread,
+        html: disputeMessageTemplate({
+          recipientName: dispute.raisedByName || 'there',
+          disputeId: dispute.disputeId,
+          subject: dispute.subject,
+          senderName: sender.name || 'Support',
+          senderRole: 'Support',
+          messageHtml,
+          link: raiserTicketLink(dispute),
+          actionLabel: options?.actionLabel || 'New message from support',
+        }),
+      });
+      return;
+    }
+
+    if (dispute.assignedTo) {
+      const agent = await User.findById(dispute.assignedTo).select('email name');
+      if (agent?.email) {
+        await sendThreadedDisputeEmail({
+          disputeId: dispute.disputeId,
+          disputeSubject: dispute.subject,
+          disputeMongoId: dispute._id,
+          to: agent.email,
+          audience: 'support',
+          emailThread,
+          html: disputeMessageTemplate({
+            recipientName: agent.name || dispute.assignedToName || 'Support',
+            disputeId: dispute.disputeId,
+            subject: dispute.subject,
+            senderName: sender.name || dispute.raisedByName || 'User',
+            senderRole: dispute.raisedByRole || 'user',
+            messageHtml,
+            link: supportTicketLink(dispute),
+            actionLabel: 'New reply from ticket creator',
+          }),
+        });
+      } else {
+        console.warn(
+          `Dispute ${dispute.disputeId}: assigned agent has no email (assignedTo=${dispute.assignedTo})`,
+        );
+      }
+    } else if (!isSupportRole(senderRole)) {
+      console.warn(`Dispute ${dispute.disputeId}: user replied but no support agent is assigned`);
+    }
+  } catch (err) {
+    console.error('Failed to send dispute message email:', err);
+  }
+};
+
+const serializeDisputeForRaiser = (dispute: any) => {
+  const doc = dispute.toJSON ? dispute.toJSON() : dispute;
+  const awaiting = doc.awaitingReplyFrom || 'support';
+  const canReply = !isClosed(doc.status) && awaiting === 'raiser';
+  return { ...doc, awaitingReplyFrom: awaiting, canReply };
+};
+
+/** GET /api/disputes/mine — tickets raised by the current user. */
+export const listMyDisputes = catchAsync(async (req: Request, res: Response) => {
+  const disputes = await Dispute.find({ raisedBy: req.user._id })
+    .sort({ updatedAt: -1 })
+    .lean();
+
+  res.status(200).json({
+    status: 'success',
+    results: disputes.length,
+    data: {
+      disputes: disputes.map((d) => ({
+        ...d,
+        awaitingReplyFrom: d.awaitingReplyFrom || 'support',
+        canReply: !isClosed(d.status) && (d.awaitingReplyFrom || 'support') === 'raiser',
+      })),
+    },
+  });
+});
+
+/** GET /api/disputes/mine/:id — single ticket for the raiser. */
+export const getMyDispute = catchAsync(async (req: Request, res: Response, next: NextFunction) => {
+  const dispute = await Dispute.findOne({
+    _id: req.params.id,
+    raisedBy: req.user._id,
+  }).lean();
+
+  if (!dispute) return next(new AppError('Support ticket not found', 404));
+
+  res.status(200).json({
+    status: 'success',
+    data: {
+      dispute: {
+        ...dispute,
+        awaitingReplyFrom: dispute.awaitingReplyFrom || 'support',
+        canReply:
+          !isClosed(dispute.status) && (dispute.awaitingReplyFrom || 'support') === 'raiser',
+      },
+    },
+  });
+});
+
+/** POST /api/disputes/mine/:id/messages — raiser reply (only when chat is open). */
+export const replyToMyDispute = catchAsync(
+  async (req: Request, res: Response, next: NextFunction) => {
+    const { content } = req.body;
+    if (!content || !String(content).trim()) {
+      return next(new AppError('Message content is required', 400));
+    }
+
+    const dispute = await Dispute.findOne({
+      _id: req.params.id,
+      raisedBy: req.user._id,
+    });
+
+    if (!dispute) return next(new AppError('Support ticket not found', 404));
+    if (isClosed(dispute.status)) {
+      return next(new AppError('This ticket is closed', 400));
+    }
+    if ((dispute.awaitingReplyFrom || 'support') !== 'raiser') {
+      return next(
+        new AppError(
+          'You can reply after the support team sends you a message. Please wait for their response.',
+          403,
+        ),
+      );
+    }
+
+    if (!dispute.assignedTo) {
+      return next(
+        new AppError(
+          'A support agent must claim this ticket before you can reply. Please wait for support to pick it up.',
+          403,
+        ),
+      );
+    }
+
+    dispute.messages.push({
+      senderId: req.user._id,
+      senderName: req.user.name || req.user.username || 'User',
+      senderRole: req.user.role,
+      content: String(content).trim(),
+      createdAt: new Date(),
+    });
+
+    // User replied — lock the chat for them until support responds again.
+    dispute.awaitingReplyFrom = 'support';
+    if (dispute.status === 'open') dispute.status = 'in_review';
+
+    await dispute.save();
+
+    res.status(201).json({
+      status: 'success',
+      data: { dispute: serializeDisputeForRaiser(dispute) },
+    });
+
+    // Notify the support agent who claimed this ticket (same threaded email).
+    const fresh = await Dispute.findById(dispute._id);
+    if (fresh?.assignedTo) {
+      await notifyDisputeMessage(fresh, String(content).trim(), {
+        name: req.user.name || req.user.username,
+        role: req.user.role,
+      });
+    }
+  },
+);
 
 /** GET /api/disputes — list with optional filters (support view). */
 export const listDisputes = catchAsync(async (req: Request, res: Response) => {
@@ -80,6 +360,32 @@ export const getDispute = catchAsync(async (req: Request, res: Response, next: N
   res.status(200).json({ status: 'success', data: { dispute } });
 });
 
+/** GET /api/disputes/reports/:reportId — read-only report context for support staff. */
+export const getLinkedReportForSupport = catchAsync(
+  async (req: Request, res: Response, next: NextFunction) => {
+    const report = await Report.findById(req.params.reportId)
+      .populate('researcherId', 'name username email avatar role')
+      .populate('triagerId', 'name username email avatar role')
+      .populate({
+        path: 'programId',
+        model: 'Program',
+        select:
+          'title companyId companyName type bountyRange description rewards rulesOfEngagement safeHarbor submissionGuidelines scope',
+        populate: {
+          path: 'companyId',
+          model: 'User',
+          select: 'avatar name',
+        },
+      })
+      .populate('comments.sender', 'name username role avatar')
+      .lean();
+
+    if (!report) return next(new AppError('Report not found', 404));
+
+    res.status(200).json({ status: 'success', data: { report } });
+  },
+);
+
 /** POST /api/disputes/:id/messages — support reply on the dispute thread. */
 export const addDisputeMessage = catchAsync(
   async (req: Request, res: Response, next: NextFunction) => {
@@ -90,6 +396,25 @@ export const addDisputeMessage = catchAsync(
 
     const dispute = await Dispute.findById(req.params.id);
     if (!dispute) return next(new AppError('Dispute not found', 404));
+    if (isClosed(dispute.status)) {
+      return next(new AppError('This ticket is closed', 400));
+    }
+
+    const assignedToId = dispute.assignedTo ? dispute.assignedTo.toString() : null;
+    const isAdmin = req.user.role === 'admin';
+
+    // Must be the claimed agent (or admin) before replying — no auto-claim.
+    if (!assignedToId && !isAdmin) {
+      return next(new AppError('You must claim this dispute before replying.', 403));
+    }
+    if (assignedToId && assignedToId !== req.user._id.toString() && !isAdmin) {
+      return next(
+        new AppError(
+          `This dispute is being handled by ${dispute.assignedToName || 'another support member'}.`,
+          403,
+        ),
+      );
+    }
 
     dispute.messages.push({
       senderId: req.user._id,
@@ -99,20 +424,129 @@ export const addDisputeMessage = catchAsync(
       createdAt: new Date(),
     });
 
+    // Support replied — open the chat so the ticket creator can respond.
+    dispute.awaitingReplyFrom = 'raiser';
+
     // First support touch moves an open dispute into review.
     if (dispute.status === 'open') dispute.status = 'in_review';
 
     await dispute.save();
     res.status(201).json({ status: 'success', data: { dispute } });
-  }
+
+    await notifyDisputeMessage(dispute, String(content).trim(), {
+      name: req.user.name || 'Support',
+      role: req.user.role || 'support',
+    });
+  },
 );
 
 /** PATCH /api/disputes/:id — update status / priority / assignment / resolution. */
 export const updateDispute = catchAsync(async (req: Request, res: Response, next: NextFunction) => {
-  const { status, priority, claim, resolutionOutcome, resolutionNote } = req.body;
+  const { status, priority, claim, release, resolutionOutcome, resolutionNote } = req.body;
+  const isAdmin = req.user.role === 'admin';
 
   const dispute = await Dispute.findById(req.params.id);
   if (!dispute) return next(new AppError('Dispute not found', 404));
+
+  const assignedToId = dispute.assignedTo ? dispute.assignedTo.toString() : null;
+  const isOwner = !!assignedToId && assignedToId === req.user._id.toString();
+  const claimedByOther = !!assignedToId && !isOwner;
+
+  // --- CLAIM (lock) ---
+  // A dispute can only be claimed when it is unassigned or already owned by the
+  // requester. Admins may take over. The actual claim is an atomic
+  // compare-and-set so two support members cannot claim the same dispute.
+  if (claim) {
+    const beforeAssignee = assignedToId;
+    const agentName = req.user.name || req.user.username || 'Support';
+
+    if (claimedByOther && !isAdmin) {
+      return next(
+        new AppError(`Dispute already claimed by ${dispute.assignedToName || 'another support member'}`, 409),
+      );
+    }
+
+    const filter: any = { _id: req.params.id };
+    if (!isAdmin) {
+      filter.$or = [
+        { assignedTo: { $exists: false } },
+        { assignedTo: null },
+        { assignedTo: req.user._id },
+      ];
+    }
+
+    const claimed = await Dispute.findOneAndUpdate(
+      filter,
+      { $set: { assignedTo: req.user._id, assignedToName: agentName } },
+      { new: true },
+    );
+
+    if (!claimed) {
+      const existing = await Dispute.findById(req.params.id).select('assignedToName').lean();
+      if (!existing) return next(new AppError('Dispute not found', 404));
+      return next(
+        new AppError(`Dispute already claimed by ${existing.assignedToName || 'another support member'}`, 409),
+      );
+    }
+
+    const afterAssignee = claimed.assignedTo?.toString() || null;
+    const assignmentChanged = beforeAssignee !== afterAssignee;
+    let claimText: string | null = null;
+
+    if (assignmentChanged) {
+      claimText = buildClaimAnnouncement(agentName, claimed.disputeId);
+      claimed.messages.push({
+        senderId: req.user._id,
+        senderName: agentName,
+        senderRole: req.user.role || 'support',
+        content: claimText,
+        createdAt: new Date(),
+      } as any);
+    }
+
+    if (claimed.status === 'open') {
+      claimed.status = 'in_review';
+    }
+
+    await claimed.save();
+
+    if (claimText) {
+      await notifyDisputeMessage(
+        claimed,
+        claimText,
+        { name: agentName, role: req.user.role || 'support' },
+        { actionLabel: 'A support agent has claimed your ticket' },
+      );
+    }
+
+    return res.status(200).json({ status: 'success', data: { dispute: claimed } });
+  }
+
+  // --- RELEASE (unclaim) ---
+  if (release) {
+    if (claimedByOther && !isAdmin) {
+      return next(new AppError('You can only release a dispute assigned to you', 403));
+    }
+    dispute.assignedTo = undefined;
+    dispute.assignedToName = undefined;
+    await dispute.save();
+    return res.status(200).json({ status: 'success', data: { dispute } });
+  }
+
+  // --- LOCK: must claim before any other action (admins exempt) ---
+  if (!claim && !release && !isAdmin) {
+    if (!assignedToId) {
+      return next(new AppError('You must claim this dispute before taking action.', 403));
+    }
+    if (claimedByOther) {
+      return next(
+        new AppError(
+          `This dispute is being handled by ${dispute.assignedToName || 'another support member'}.`,
+          403,
+        ),
+      );
+    }
+  }
 
   if (status) {
     if (!VALID_STATUS.includes(status)) return next(new AppError('Invalid status', 400));
@@ -121,11 +555,6 @@ export const updateDispute = catchAsync(async (req: Request, res: Response, next
   if (priority) {
     if (!VALID_PRIORITY.includes(priority)) return next(new AppError('Invalid priority', 400));
     dispute.priority = priority;
-  }
-  if (claim) {
-    dispute.assignedTo = req.user._id;
-    dispute.assignedToName = req.user.name || 'Support';
-    if (dispute.status === 'open') dispute.status = 'in_review';
   }
 
   if (status === 'resolved' || status === 'rejected') {
@@ -139,6 +568,18 @@ export const updateDispute = catchAsync(async (req: Request, res: Response, next
   }
 
   await dispute.save();
+
+  if (status === 'in_review' && dispute.reportRef) {
+    const linked = await Report.findById(dispute.reportRef);
+    if (linked && linked.status !== REPORT_IN_DISPUTE_STATUS) {
+      await markLinkedReportInDispute(linked, req.user, dispute.disputeId);
+    }
+  }
+
+  if ((status === 'resolved' || status === 'rejected') && dispute.reportRef) {
+    await restoreLinkedReportAfterDispute(dispute.reportRef, req.user, dispute.disputeId);
+  }
+
   res.status(200).json({ status: 'success', data: { dispute } });
 });
 
@@ -157,6 +598,8 @@ export const createDispute = catchAsync(async (req: Request, res: Response, next
   const subjectClean = String(subject).trim();
   const descriptionClean = String(description).trim();
 
+  const linkedReport = reportRef ? await resolveReportByRef(String(reportRef)) : null;
+
   const dispute = await Dispute.create({
     disputeId: generateDisputeId(),
     subject: subjectClean,
@@ -168,8 +611,9 @@ export const createDispute = catchAsync(async (req: Request, res: Response, next
     raisedByName: req.user.name || 'Unknown',
     raisedByEmail: req.user.email,
     raisedByRole: req.user.role,
-    reportRef: reportRef || undefined,
+    reportRef: linkedReport?._id || undefined,
     reportLabel: reportLabel || undefined,
+    awaitingReplyFrom: 'support',
     messages: [
       {
         senderId: req.user._id,
@@ -185,12 +629,13 @@ export const createDispute = catchAsync(async (req: Request, res: Response, next
   // so every participant (researcher / triager / company) can see it. Best-effort:
   // a thread failure must never block the dispute from being created.
   let resolvedReportId: string | undefined;
-  if (reportRef) {
+  if (linkedReport) {
     try {
-      const report = await Report.findById(reportRef);
-      if (report) {
-        resolvedReportId = String(report._id);
-        const plain = stripHtml(descriptionClean);
+      const report = linkedReport;
+      resolvedReportId = String(report._id);
+      await markLinkedReportInDispute(report, req.user, dispute.disputeId);
+
+      const plain = stripHtml(descriptionClean);
         const header = `Support issue raised by ${req.user.name || req.user.username || 'a user'} (${req.user.role}) — ${subjectClean}`;
         const commentContent = `${header}\n\n${plain}\n\n[Support reference: ${dispute.disputeId}]`;
 
@@ -241,7 +686,6 @@ export const createDispute = catchAsync(async (req: Request, res: Response, next
         } catch (socketError) {
           console.error('Dispute thread socket emit failed:', socketError);
         }
-      }
     } catch (threadErr) {
       console.error('Failed to post dispute into report thread:', threadErr);
     }
@@ -249,18 +693,20 @@ export const createDispute = catchAsync(async (req: Request, res: Response, next
 
   res.status(201).json({ status: 'success', data: { dispute } });
 
-  // Confirmation email to the user who raised the issue (background, best-effort).
+  // Confirmation email — starts the raiser email thread (all later updates use Re: same subject).
   (async () => {
     try {
       if (req.user.email) {
         const clientUrl = process.env.CLIENT_URL || '';
-        const link = resolvedReportId
-          ? `${clientUrl}/${req.user.role}/reports/${resolvedReportId}`
-          : clientUrl;
-        await sendEmail(
-          req.user.email,
-          `We've received your support request [${dispute.disputeId}]`,
-          disputeReceivedTemplate({
+        const link = `${clientUrl}/${req.user.role}/support/${dispute._id}`;
+        await sendThreadedDisputeEmail({
+          disputeId: dispute.disputeId,
+          disputeSubject: subjectClean,
+          disputeMongoId: dispute._id,
+          to: req.user.email,
+          audience: 'raiser',
+          emailThread: {},
+          html: disputeReceivedTemplate({
             recipientName: req.user.name || req.user.username || 'there',
             disputeId: dispute.disputeId,
             subject: subjectClean,
@@ -269,7 +715,7 @@ export const createDispute = catchAsync(async (req: Request, res: Response, next
             reportLabel: reportLabel || undefined,
             link,
           }),
-        );
+        });
       }
     } catch (mailErr) {
       console.error('Failed to send dispute confirmation email:', mailErr);

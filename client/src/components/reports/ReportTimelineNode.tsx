@@ -6,6 +6,8 @@ import { Activity } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Avatar as UIAvatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { HoverCard, HoverCardContent, HoverCardTrigger } from '@/components/ui/hover-card';
+import { BugChaseSystemActor, ThreadStatusChangeLine } from '@/components/reports/ThreadSystemUI';
+import { isSystemDisputeStatusEvent } from '@/lib/reportThread';
 
 export interface ReportTimelineEvent {
   id: string;
@@ -58,6 +60,7 @@ export function ReportTimelineNode({
   researcherProfileLinks?: boolean;
 }) {
   const isSystem = event.role === 'System';
+  const isBugChaseSystem = isSystem || isSystemDisputeStatusEvent(event.metadata);
 
   const getInitials = (name: string) => {
     if (!name) return '??';
@@ -102,6 +105,13 @@ export function ReportTimelineNode({
       );
     }
 
+    if (isBugChaseSystem)
+      return (
+        <div className="h-8 w-8 rounded-full bg-amber-50 dark:bg-amber-950/40 flex items-center justify-center border border-amber-200 dark:border-amber-800/50 shadow-sm z-10">
+          <Activity className="h-4 w-4 text-amber-600 dark:text-amber-400" />
+        </div>
+      );
+
     if (isSystem)
       return (
         <div className="h-8 w-8 rounded-full bg-zinc-100 dark:bg-zinc-800 flex items-center justify-center border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-900 shadow-sm z-10">
@@ -135,7 +145,9 @@ export function ReportTimelineNode({
       <div className="flex-1 pb-6 relative group">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2 flex-wrap">
-            {event.role === 'Researcher' && researcherProfileLinks ? (
+            {isBugChaseSystem ? (
+              <BugChaseSystemActor />
+            ) : event.role === 'Researcher' && researcherProfileLinks ? (
               <div className="flex items-center gap-2">
                 <HoverCard>
                   <HoverCardTrigger asChild>
@@ -204,15 +216,7 @@ export function ReportTimelineNode({
               </div>
             )}
             {event.type === 'status_change' && (
-              <span className="text-zinc-800 dark:text-zinc-200 text-[14px] flex flex-wrap items-center gap-1 font-medium tracking-tight">
-                changed the status to{' '}
-                {event.metadata?.newStatus?.toLowerCase() ||
-                  event.content
-                    .replace('Changed status to ', '')
-                    .replace('System changed status to ', '')
-                    .split('.')[0]
-                    .toLowerCase()}
-              </span>
+              <ThreadStatusChangeLine newStatus={event.metadata?.newStatus} content={event.content} />
             )}
             {event.type === 'bounty_awarded' && (
               <span className="text-zinc-800 dark:text-zinc-200 text-[14px] flex flex-wrap items-center gap-1 font-medium tracking-tight">
@@ -240,7 +244,10 @@ export function ReportTimelineNode({
 
         {event.type === 'status_change' ? (
           <div className="mt-1 flex flex-col items-start w-full gap-2">
-            {event.metadata?.reason && (
+            {event.metadata?.reason &&
+              !event.metadata?.systemAction &&
+              event.metadata?.kind !== 'dispute_opened' &&
+              event.metadata?.kind !== 'dispute_closed' && (
               <div className="mt-1 bg-white dark:bg-zinc-900/50 rounded-lg p-3 px-4 text-sm text-zinc-800 dark:text-zinc-200 border border-zinc-300 dark:border-zinc-700 w-full max-w-[85%] font-inter leading-relaxed relative text-left">
                 <div className="relative z-10 prose prose-sm prose-zinc dark:prose-invert max-w-none">
                   <ReactMarkdown rehypePlugins={[rehypeRaw]} remarkPlugins={[remarkGfm]}>

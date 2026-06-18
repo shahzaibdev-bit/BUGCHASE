@@ -9,6 +9,8 @@ import {
   XCircle,
   ChevronRight,
   RefreshCw,
+  UserCheck,
+  Lock,
 } from 'lucide-react';
 import { apiFetch } from '@/lib/api';
 import { Dispute, DisputeStats, DisputeStatus } from '@/types';
@@ -175,6 +177,16 @@ export function SupportDashboard() {
                       <Badge className="bg-zinc-100 dark:bg-white/5 text-zinc-500 border-zinc-200 dark:border-white/10">
                         {d.category}
                       </Badge>
+                      {d.assignedTo &&
+                        (d.assignedTo === user?._id ? (
+                          <Badge className="gap-1 bg-emerald-100 dark:bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border-emerald-200 dark:border-emerald-500/20">
+                            <UserCheck className="w-3 h-3" /> Claimed by you
+                          </Badge>
+                        ) : (
+                          <Badge className="gap-1 bg-amber-100 dark:bg-amber-500/10 text-amber-700 dark:text-amber-300 border-amber-200 dark:border-amber-500/20">
+                            <Lock className="w-3 h-3" /> {d.assignedToName}
+                          </Badge>
+                        ))}
                     </div>
                     <p className="font-bold text-sm md:text-base mt-1.5 truncate">{d.subject}</p>
                     <p className="text-xs text-zinc-500 dark:text-zinc-400 mt-0.5 truncate">

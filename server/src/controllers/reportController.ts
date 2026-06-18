@@ -13,6 +13,7 @@ import {
   formatDuplicateClosureMarkdown,
   duplicateClosureTimelineSummary,
 } from '../utils/duplicateClosureNotice';
+import { syncReportDisputeStatus, syncReportsDisputeStatus, isReportThreadLocked, REPORT_THREAD_LOCKED_MESSAGE } from '../services/disputeReportLinkService';
 import { applyResearcherReputationOnStatusTransition } from '../services/researcherReputationService';
 import { enqueueReportProcessing, getQueueSnapshot } from '../services/reportProcessingQueue';
 
@@ -201,6 +202,8 @@ export const getMyReports = catchAsync(async (req: Request, res: Response, next:
     })
     .sort({ createdAt: -1 });
 
+  await syncReportsDisputeStatus(reports);
+
   res.status(200).json({
     status: 'success',
     results: reports.length,
@@ -227,6 +230,8 @@ export const getReport = catchAsync(async (req: Request, res: Response, next: Ne
   if (!report) {
     return next(new AppError('Report not found', 404));
   }
+
+  await syncReportDisputeStatus(report);
 
   // Authorization check: Only Author or Triager/Admin can view
   if (
@@ -265,6 +270,10 @@ export const addComment = catchAsync(async (req: Request, res: Response, next: N
 
   if (!report) {
     return next(new AppError('Report not found', 404));
+  }
+
+  if (isReportThreadLocked(report.status)) {
+    return next(new AppError(REPORT_THREAD_LOCKED_MESSAGE, 403));
   }
   
   // Auth check

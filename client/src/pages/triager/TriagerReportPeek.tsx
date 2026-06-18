@@ -3,11 +3,11 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { ArrowLeft, Eye } from 'lucide-react';
 import { API_URL } from '@/config';
 import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Separator } from '@/components/ui/separator';
 import { ReportTimelineNode } from '@/components/reports/ReportTimelineNode';
 import type { ReportTimelineEvent } from '@/components/reports/ReportTimelineNode';
+import { ReportReadOnlyBody } from '@/components/reports/ReportReadOnlyBody';
 import { toast } from '@/hooks/use-toast';
 
 /**
@@ -105,95 +105,7 @@ export default function TriagerReportPeek() {
 
       <ScrollArea className="h-[calc(100vh-3.5rem)]">
         <div className="max-w-4xl mx-auto p-8 space-y-8">
-          <div className="flex flex-wrap gap-2 items-center">
-            <Badge variant="outline" className="font-mono text-xs">
-              {report.reportId || report._id}
-            </Badge>
-            <Badge variant="secondary">{report.status}</Badge>
-            {report.triagerId && (
-              <span className="text-xs text-zinc-500 font-mono">Claimed to triager queue</span>
-            )}
-          </div>
-
-          <h1 className="text-3xl font-bold text-zinc-900 dark:text-white">{report.title}</h1>
-
-          {report.vulnerableEndpoint && (
-            <div>
-              <h2 className="text-xs font-bold uppercase text-zinc-500 mb-1">Vulnerable endpoint</h2>
-              <p className="font-mono text-sm text-zinc-800 dark:text-zinc-200 break-all">
-                {report.vulnerableEndpoint}
-              </p>
-            </div>
-          )}
-
-          <div>
-            <h2 className="text-xl font-bold text-zinc-900 dark:text-white mb-3">Description</h2>
-            <div
-              className="prose prose-zinc dark:prose-invert max-w-none text-zinc-800 dark:text-zinc-300"
-              dangerouslySetInnerHTML={{ __html: report.description }}
-            />
-          </div>
-
-          {report.impact && (
-            <div>
-              <h2 className="text-xl font-bold text-zinc-900 dark:text-white mb-3">Impact</h2>
-              <div
-                className="prose prose-zinc dark:prose-invert max-w-none text-zinc-800 dark:text-zinc-300"
-                dangerouslySetInnerHTML={{ __html: report.impact }}
-              />
-            </div>
-          )}
-
-          {report.pocSteps && (
-            <div>
-              <h2 className="text-xl font-bold text-zinc-900 dark:text-white mb-3">Proof of concept</h2>
-              <div
-                className="font-mono text-sm p-4 bg-zinc-100 dark:bg-zinc-900 rounded-lg border border-zinc-200 dark:border-zinc-800 overflow-x-auto text-zinc-800 dark:text-zinc-300"
-                dangerouslySetInnerHTML={{ __html: report.pocSteps }}
-              />
-            </div>
-          )}
-
-          {report.attachments?.length > 0 && (
-            <div>
-              <h2 className="text-xl font-bold text-zinc-900 dark:text-white mb-3">Attachments</h2>
-              <ul className="space-y-2">
-                {report.attachments.map((a: any, i: number) => (
-                  <li key={i}>
-                    <a
-                      href={a.url}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="text-blue-600 dark:text-blue-400 text-sm underline break-all"
-                    >
-                      {a.name || a.url}
-                    </a>
-                  </li>
-                ))}
-              </ul>
-            </div>
-          )}
-
-          {report.assets?.filter((u: string) => u?.includes?.('cloudinary.com'))?.length > 0 && (
-            <div>
-              <h2 className="text-xl font-bold text-zinc-900 dark:text-white mb-3">Media (assets)</h2>
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                {report.assets
-                  .filter((u: string) => u.includes('cloudinary.com'))
-                  .map((url: string, index: number) => (
-                    <a
-                      key={index}
-                      href={url}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="block aspect-square rounded-lg border border-zinc-200 dark:border-zinc-800 overflow-hidden bg-zinc-100 dark:bg-zinc-900"
-                    >
-                      <img src={url} alt="" className="w-full h-full object-cover" />
-                    </a>
-                  ))}
-              </div>
-            </div>
-          )}
+          <ReportReadOnlyBody report={report} />
 
           <Separator />
 

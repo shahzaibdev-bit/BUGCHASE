@@ -61,9 +61,11 @@ const reportSchema = new mongoose.Schema({
   
   status: {
     type: String,
-    enum: ['Submitted', 'Triaging', 'Triaged', 'Pending_Fix', 'Resolved', 'Paid', 'Spam', 'Duplicate', 'NA', 'Needs Info', 'Out-of-Scope', 'Under Review', 'Closed'],
+    enum: ['Submitted', 'Triaging', 'Triaged', 'Pending_Fix', 'Resolved', 'Paid', 'Spam', 'Duplicate', 'NA', 'Needs Info', 'Out-of-Scope', 'Under Review', 'Closed', 'In Dispute'],
     default: 'Submitted',
   },
+  /** Snapshot of status before a linked support dispute moved the report to In Dispute. */
+  statusBeforeDispute: { type: String },
   bounty: {
     type: Number,
     default: 0
@@ -163,6 +165,12 @@ const reportSchema = new mongoose.Schema({
     type: mongoose.Schema.Types.ObjectId,
     ref: 'User',
   },
+  /** Previous / collaborating triagers who retain read access after reassignment. */
+  triagerParticipants: [{
+    triagerId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
+    role: { type: String, enum: ['primary', 'collaborator'], default: 'collaborator' },
+    addedAt: { type: Date, default: Date.now },
+  }],
   triagerNote: String,
   isReproduced: { type: Boolean, default: false },
   isValidAsset: { type: Boolean, default: false },

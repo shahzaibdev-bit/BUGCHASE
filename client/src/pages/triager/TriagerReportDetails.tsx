@@ -37,6 +37,8 @@ import { Textarea } from '@/components/ui/textarea';
 import { Switch } from '@/components/ui/switch';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import ContactSupportButton from '@/components/support/ContactSupportButton';
+import { isReportThreadLocked, REPORT_THREAD_LOCKED_MESSAGE } from '@/lib/reportThread';
+import { BUGCHASE_SYSTEM_LABEL } from '@/components/reports/ThreadSystemUI';
 import { Separator } from '@/components/ui/separator';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import CyberpunkEditor from '@/components/ui/CyberpunkEditor';
@@ -332,14 +334,22 @@ export default function TriagerReportDetails() {
                     id: c._id,
                     type: c.type || 'comment',
                     author:
-                      c.sender?.role === 'admin'
+                      c.metadata?.systemAction ||
+                      c.metadata?.kind === 'dispute_opened' ||
+                      c.metadata?.kind === 'dispute_closed'
+                        ? BUGCHASE_SYSTEM_LABEL
+                        : c.sender?.role === 'admin'
                         ? (c.sender?.username || c.sender?.name || 'admin')
                         : c.sender?.role !== 'company'
                           ? (c.sender?.username || c.sender?.name || 'Unknown User')
                           : (c.sender?.name || 'Unknown Company'),
                     authorAvatar: c.sender?.avatar,
                     role:
-                      c.sender?.role === 'researcher'
+                      c.metadata?.systemAction ||
+                      c.metadata?.kind === 'dispute_opened' ||
+                      c.metadata?.kind === 'dispute_closed'
+                        ? BUGCHASE_SYSTEM_LABEL
+                        : c.sender?.role === 'researcher'
                         ? 'Researcher'
                         : c.sender?.role === 'triager'
                           ? 'Triager'
@@ -778,6 +788,7 @@ export default function TriagerReportDetails() {
     const canChangeReportStatus = STATUSES_ALLOW_STATUS_CHANGE.includes(state.status);
     /** CVSS, validation toggles, duplicate resolution actions — locked whenever status cannot be changed from the dropdown. */
     const triageFieldsLocked = !canChangeReportStatus;
+    const threadLocked = isReportThreadLocked(state.status);
 
     const submitTriagerNoticeToResearcher = async () => {
         const text = issueReportDetails.trim();
@@ -832,14 +843,9 @@ export default function TriagerReportDetails() {
                   <Button variant="ghost" className="pl-0 text-zinc-500 hover:text-black dark:hover:text-white" onClick={() => navigate('/triager')}>
                     <ArrowLeft className="h-4 w-4 mr-2" /> BACK TO QUEUE
                  </Button>
-                 <div className="flex items-center gap-3">
-                     <ContactSupportButton
-                        report={{ id: id!, label: `${report.reportId || report.id || id} — ${report.title}` }}
-                     />
-                     <div className="flex items-center gap-2">
-                         <span className="text-sm font-mono text-zinc-400">REPORT ID:</span>
-                         <span className="font-mono font-bold text-lg text-black dark:text-white">{report.reportId || report.id || id}</span>
-                     </div>
+                 <div className="flex items-center gap-2">
+                     <span className="text-sm font-mono text-zinc-400">REPORT ID:</span>
+                     <span className="font-mono font-bold text-lg text-black dark:text-white">{report.reportId || report.id || id}</span>
                  </div>
              </div>
 
@@ -971,6 +977,13 @@ export default function TriagerReportDetails() {
 
                                  {/* Reply + Change Status (disabled with tooltip when report is outside active triage) */}
                                  <div className="mt-8 flex gap-4 pl-2" ref={editorRef} id="reply-editor">
+                                     {threadLocked ? (
+                                       <div className="flex items-start gap-3 rounded-lg border border-amber-200 dark:border-amber-500/30 bg-amber-50 dark:bg-amber-500/10 px-4 py-3 w-full">
+                                         <Lock className="w-4 h-4 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
+                                         <p className="text-sm text-amber-800 dark:text-amber-200">{REPORT_THREAD_LOCKED_MESSAGE}</p>
+                                       </div>
+                                     ) : (
+                                     <>
                                      <div className="h-8 w-8 rounded-full bg-black dark:bg-white text-white dark:text-black flex items-center justify-center font-bold text-xs shrink-0 mt-2">ME</div>
                                      <div className="flex-1 space-y-3">
                                         <div className="rounded-lg bg-white dark:bg-zinc-950 shadow-sm border border-zinc-200 dark:border-zinc-800 focus-within:ring-1 focus-within:ring-black dark:focus-within:ring-white transition-all overflow-hidden">
@@ -1064,6 +1077,8 @@ export default function TriagerReportDetails() {
                                              </div>
                                         </div>
                                      </div>
+                                     </>
+                                     )}
                                  </div>
                              </div>
                         </div>
@@ -1071,7 +1086,7 @@ export default function TriagerReportDetails() {
 
                     {/* RIGHT COLUMN: Sidebar (30%) */}
                     <div className={`lg:col-span-4 h-full overflow-y-auto bg-zinc-50/50 dark:bg-zinc-900/20 p-6 space-y-6 ${mobileTab !== 'tools' ? 'hidden lg:block' : ''}`}>
-                        
+
                         {/* Status Card */}
                         <div className="space-y-4">
                             <div className="flex items-center justify-between">
@@ -1402,6 +1417,18 @@ export default function TriagerReportDetails() {
                                 </Button>
                              ) : null}
                          </div>
+
+                        {/* Need Help Card */}
+                        <div className="bg-emerald-50 dark:bg-emerald-950/10 border border-emerald-200 dark:border-emerald-900/30 rounded-lg p-4 text-center">
+                            <p className="text-xs text-emerald-700 dark:text-emerald-200/70 mb-2">Need help with this report?</p>
+                            <ContactSupportButton
+                                variant="ghost"
+                                size="sm"
+                                className="h-auto px-2 py-1 text-sm font-bold text-emerald-600 dark:text-emerald-500 hover:text-emerald-500 hover:bg-transparent hover:underline"
+                                report={{ id: id!, label: `${report.reportId || report.id || id} — ${report.title}` }}
+                                hideIcon
+                            />
+                        </div>
 
                     </div>
                 </div>

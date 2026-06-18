@@ -18,6 +18,11 @@ import {
     reopenReport,
     generateSummary
 } from '../controllers/triagerController';
+import {
+    acceptTriagerReassignmentInvite,
+    declineTriagerReassignmentInvite,
+    listMyTriagerReassignmentInvites,
+} from '../controllers/triagerInviteController';
 import multer from 'multer';
 
 const router = express.Router();
@@ -43,5 +48,8 @@ router.patch('/reports/:id/validation', updateReportValidation);
 router.post('/reports/:id/decision', submitDecision);
 router.post('/reports/:id/reopen', reopenReport);
 router.post('/reports/:id/generate-summary', generateSummary);
+router.get('/reassignment-invites', listMyTriagerReassignmentInvites);
+router.post('/reassignment-invites/:token/accept', acceptTriagerReassignmentInvite);
+router.post('/reassignment-invites/:token/decline', declineTriagerReassignmentInvite);
 
 export default router;

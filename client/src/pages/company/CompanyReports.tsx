@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Search, AlertTriangle, CheckCircle, Clock, XCircle, Eye, Sparkles } from 'lucide-react';
+import { Search, AlertTriangle, CheckCircle, Clock, XCircle, Eye, Sparkles, ShieldAlert } from 'lucide-react';
 import { GlassCard } from '@/components/ui/glass-card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -39,6 +39,7 @@ const statusIcons: Record<string, React.ReactNode> = {
   na: <XCircle className="h-4 w-4 text-zinc-500" />,
   'out-of-scope': <XCircle className="h-4 w-4 text-zinc-500" />,
   'needs info': <AlertTriangle className="h-4 w-4 text-yellow-500" />,
+  'in dispute': <ShieldAlert className="h-4 w-4 text-amber-500" />,
   closed: <XCircle className="h-4 w-4 text-zinc-500" />,
 };
 

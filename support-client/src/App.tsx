@@ -3,6 +3,7 @@ import { LoginPage } from '@/pages/LoginPage';
 import { SupportLayout } from '@/layouts/SupportLayout';
 import { SupportDashboard } from '@/pages/SupportDashboard';
 import { DisputeDetails } from '@/pages/DisputeDetails';
+import { SupportReportDetails } from '@/pages/SupportReportDetails';
 import { Profile } from '@/pages/Profile';
 import { ProtectedRoute } from '@/components/ProtectedRoute';
 
@@ -10,6 +11,15 @@ export default function App() {
   return (
     <Routes>
       <Route path="/login" element={<LoginPage />} />
+
+      <Route
+        path="/reports/:reportId"
+        element={
+          <ProtectedRoute>
+            <SupportReportDetails />
+          </ProtectedRoute>
+        }
+      />
 
       <Route
         element={

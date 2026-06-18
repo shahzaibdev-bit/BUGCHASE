@@ -413,6 +413,8 @@ export default function ResearcherReports() {
                             "text-xs font-medium px-2 py-1 rounded border uppercase tracking-wider",
                             report.status === 'Submitted' && "text-blue-600 bg-blue-50 border-blue-200 dark:bg-blue-900/20 dark:border-blue-800 dark:text-blue-400",
                             report.status === 'Triaged' && "text-emerald-600 bg-emerald-50 border-emerald-200 dark:bg-emerald-900/20 dark:border-emerald-800 dark:text-emerald-400",
+                            report.status === 'Triaging' && "text-purple-600 bg-purple-50 border-purple-200 dark:bg-purple-900/20 dark:border-purple-800 dark:text-purple-400",
+                            report.status === 'In Dispute' && "text-amber-600 bg-amber-50 border-amber-200 dark:bg-amber-900/20 dark:border-amber-800 dark:text-amber-400",
                             report.status === 'Resolved' && "text-purple-600 bg-purple-50 border-purple-200 dark:bg-purple-900/20 dark:border-purple-800 dark:text-purple-400",
                             ['Out-of-Scope', 'Spam', 'Duplicate'].includes(report.status) && "text-zinc-500 bg-zinc-100 border-zinc-200 dark:bg-zinc-800 dark:border-zinc-700 dark:text-zinc-400"
                         )}>

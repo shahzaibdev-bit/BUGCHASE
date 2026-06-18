@@ -124,9 +124,7 @@ app.use('/api/admin', adminRoutes);
 app.use('/api/triager', triagerRoutes);
 app.use('/api/programs', programRoutes);
 app.use('/api/disputes', disputeRoutes);
-
-const strictLimiter = rateLimiter(10, 15 * 60); // 10 requests per 15 minutes
-app.use('/api/public', strictLimiter, publicRoutes);
+app.use('/api/public', publicRoutes);
 
 // Handle Unhandled Routes
 app.all(/(.*)/, (req, res, next) => {

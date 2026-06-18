@@ -1,5 +1,6 @@
 import nodemailer from 'nodemailer';
 import juice from 'juice';
+import crypto from 'crypto';
 import User from '../models/User';
 import Notification from '../models/Notification';
 
@@ -11,12 +12,36 @@ const transporter = nodemailer.createTransport({
   },
 });
 
-export const sendEmail = async (to: string, subject: string, html: string) => {
-  const mailOptions = {
+export type EmailThreadHeaders = {
+  messageId?: string;
+  inReplyTo?: string;
+  references?: string[];
+};
+
+export const generateEmailMessageId = (tag: string) => {
+  const domain = process.env.EMAIL_MESSAGE_DOMAIN || 'mail.bugchase.local';
+  const token = crypto.randomBytes(12).toString('hex');
+  return `<${tag}.${token}@${domain}>`;
+};
+
+export const sendEmail = async (
+  to: string,
+  subject: string,
+  html: string,
+  thread?: EmailThreadHeaders,
+): Promise<{ messageId: string }> => {
+  const messageId = thread?.messageId || generateEmailMessageId('msg');
+  const references =
+    thread?.references?.filter(Boolean).join(' ') || thread?.inReplyTo || undefined;
+
+  const mailOptions: nodemailer.SendMailOptions = {
     from: `"BugChase Security" <${process.env.EMAIL_USER}>`,
     to,
     subject,
     html,
+    messageId,
+    ...(thread?.inReplyTo ? { inReplyTo: thread.inReplyTo } : {}),
+    ...(references ? { references } : {}),
   };
 
   await transporter.sendMail(mailOptions);
@@ -54,6 +79,8 @@ export const sendEmail = async (to: string, subject: string, html: string) => {
     // Never fail a successfully-sent email due to notification persistence issues.
     console.error('Failed to persist email notification:', persistErr);
   }
+
+  return { messageId };
 };
 
 const htmlToPlainText = (value: string): string =>
@@ -750,6 +777,74 @@ body { margin: 0; padding: 0; background-color: #000000; font-family: 'Courier N
   return juice(html);
 };
 
+export const disputeMessageTemplate = (opts: {
+  recipientName: string;
+  disputeId: string;
+  subject: string;
+  senderName: string;
+  senderRole: string;
+  messageHtml: string;
+  link: string;
+  actionLabel: string;
+}) => {
+  const safeName = escapeHtml(opts.recipientName || 'there');
+  const safeSubject = escapeHtml(opts.subject);
+  const safeSender = escapeHtml(opts.senderName || 'Support');
+  const safeRole = escapeHtml(opts.senderRole || 'support');
+
+  const html = `
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>New support message</title>
+<style>
+body { margin: 0; padding: 0; background-color: #000000; font-family: 'Courier New', Courier, monospace; }
+.wrapper { width: 100%; table-layout: fixed; background-color: #000000; padding: 40px 0; }
+.container { background-color: #09090b; margin: 0 auto; width: 100%; max-width: 620px; border: 1px solid #27272a; border-radius: 10px; overflow: hidden; }
+.header { background-color: #09090b; padding: 24px 32px; border-bottom: 1px solid #27272a; }
+.logo { color: #ffffff; font-weight: bold; font-size: 18px; letter-spacing: 2px; text-transform: uppercase; text-decoration: none; }
+.hero { background: linear-gradient(135deg, #18181b 0%, #09090b 100%); padding: 40px 32px; border-bottom: 1px solid #27272a; }
+.hero-label { font-size: 11px; color: #22c55e; letter-spacing: 2px; text-transform: uppercase; margin-bottom: 12px; font-weight: bold; }
+.hero-title { font-size: 22px; font-weight: bold; color: #ffffff; line-height: 1.4; margin: 0; }
+.content { padding: 32px; }
+.greeting { font-size: 14px; color: #a1a1aa; line-height: 1.7; margin-bottom: 24px; }
+.greeting strong { color: #ffffff; }
+.message-box { background: #18181b; border: 1px solid #27272a; border-left: 3px solid #ffffff; border-radius: 6px; padding: 16px 20px; margin-bottom: 24px; }
+.message-text { font-size: 14px; color: #d4d4d8; line-height: 1.7; margin-top: 8px; }
+.message-text p { margin: 8px 0; }
+.section-label { font-size: 10px; color: #71717a; text-transform: uppercase; letter-spacing: 1.5px; font-weight: bold; }
+.cta-wrap { text-align: center; margin: 8px 0; }
+.cta-btn { display: inline-block; background: #ffffff; color: #000000; padding: 14px 32px; border-radius: 6px; text-decoration: none; font-weight: bold; font-size: 13px; letter-spacing: 1px; text-transform: uppercase; }
+.footer { padding: 24px 32px; text-align: center; color: #52525b; font-size: 11px; border-top: 1px solid #27272a; background: #09090b; line-height: 1.7; }
+</style>
+</head>
+<body>
+<div class="wrapper">
+  <div class="container">
+    <div class="header"><span class="logo">BugChase<span style="color:#71717a">.</span>Security</span></div>
+    <div class="hero">
+      <div class="hero-label">Support Ticket Update</div>
+      <h1 class="hero-title">${escapeHtml(opts.actionLabel)}</h1>
+    </div>
+    <div class="content">
+      <p class="greeting">Hi <strong>${safeName}</strong>,<br/><br/>
+      You have a new message on support ticket <strong>${escapeHtml(opts.disputeId)}</strong> (${safeSubject}).</p>
+      <div class="message-box">
+        <div class="section-label">From ${safeSender} (${safeRole})</div>
+        <div class="message-text">${opts.messageHtml}</div>
+      </div>
+      <div class="cta-wrap"><a href="${opts.link}" class="cta-btn">Open conversation &rarr;</a></div>
+    </div>
+    <div class="footer">&copy; ${new Date().getFullYear()} BugChase Security Platform.</div>
+  </div>
+</div>
+</body>
+</html>`;
+  return juice(html);
+};
+
 export type EmailActionType = 'comment' | 'status_change' | 'claimed' | 'submitted' | 'promoted' | 'bounty_awarded';
 export type EmailRole = 'researcher' | 'triager' | 'company' | 'admin';
 
@@ -1318,4 +1413,120 @@ export const newLoginAlertTemplate = (opts: {
 </body>
 </html>`;
   return juice(html);
+};
+
+const triagerInviteEmailShell = (
+  title: string,
+  bodyHtml: string,
+  ctaLabel: string,
+  ctaUrl: string,
+  footerNote?: string,
+) => {
+  const footer = footerNote
+    ? `<p style="color:#71717a;font-size:11px;margin:16px 0 0;text-align:center;">${footerNote}</p>`
+    : `<p style="color:#71717a;font-size:11px;margin:16px 0 0;text-align:center;">This invite expires in 48 hours.</p>`;
+  const html = `<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"/><title>${title}</title></head>
+<body style="margin:0;background:#000;font-family:'Courier New',monospace;">
+<div style="padding:32px 16px;background:#000;">
+  <div style="max-width:680px;margin:0 auto;border:1px solid #27272a;border-radius:10px;background:#09090b;overflow:hidden;">
+    <div style="padding:18px;border-bottom:1px solid #27272a;background:#18181b;text-align:center;color:#fff;font-weight:bold;">BugChase Support</div>
+    <div style="padding:24px;color:#d4d4d8;">${bodyHtml}
+      <p style="margin:24px 0 0;text-align:center;"><a href="${ctaUrl}" style="display:inline-block;background:#fff;color:#000;padding:12px 24px;border-radius:6px;text-decoration:none;font-weight:bold;text-transform:uppercase;font-size:12px;">${ctaLabel}</a></p>
+      ${footer}
+    </div>
+    <div style="padding:16px;text-align:center;color:#52525b;font-size:11px;border-top:1px solid #27272a;">&copy; ${new Date().getFullYear()} BugChase</div>
+  </div>
+</div></body></html>`;
+  return juice(html);
+};
+
+export const triagerReassignmentInviteTemplate = (opts: {
+  triagerName: string;
+  reportId: string;
+  reportTitle: string;
+  disputeId: string;
+  disputeSubject: string;
+  matchSummary: string;
+  expiresAt: Date;
+  inviteUrl: string;
+  previousTriagerName?: string;
+}) => {
+  const body = `
+    <h1 style="color:#fff;font-size:20px;margin:0 0 12px;">Triager reassignment invite</h1>
+    <p style="color:#a1a1aa;font-size:14px;line-height:1.6;">Hi ${opts.triagerName}, BugChase Support matched you for a report reassignment.</p>
+    <table style="width:100%;border-collapse:collapse;background:#18181b;border:1px solid #27272a;border-radius:8px;margin:16px 0;">
+      <tr><td style="padding:10px 12px;font-size:11px;color:#a1a1aa;text-transform:uppercase;">Report</td><td style="padding:10px 12px;font-size:13px;color:#fff;">${opts.reportId} — ${opts.reportTitle}</td></tr>
+      <tr><td style="padding:10px 12px;font-size:11px;color:#a1a1aa;text-transform:uppercase;border-top:1px solid #27272a;">Dispute</td><td style="padding:10px 12px;font-size:13px;color:#fff;border-top:1px solid #27272a;">${opts.disputeId} — ${opts.disputeSubject}</td></tr>
+      <tr><td style="padding:10px 12px;font-size:11px;color:#a1a1aa;text-transform:uppercase;border-top:1px solid #27272a;">Match</td><td style="padding:10px 12px;font-size:13px;color:#fbbf24;border-top:1px solid #27272a;">${opts.matchSummary}</td></tr>
+      ${opts.previousTriagerName ? `<tr><td style="padding:10px 12px;font-size:11px;color:#a1a1aa;text-transform:uppercase;border-top:1px solid #27272a;">Current triager</td><td style="padding:10px 12px;font-size:13px;color:#fff;border-top:1px solid #27272a;">${opts.previousTriagerName} (stays as collaborator)</td></tr>` : ''}
+      <tr><td style="padding:10px 12px;font-size:11px;color:#a1a1aa;text-transform:uppercase;border-top:1px solid #27272a;">Expires</td><td style="padding:10px 12px;font-size:13px;color:#fff;border-top:1px solid #27272a;">${opts.expiresAt.toUTCString()}</td></tr>
+    </table>
+    <p style="color:#a1a1aa;font-size:13px;">Review the report and dispute details, then accept or decline within 48 hours.</p>`;
+  return triagerInviteEmailShell('Triager reassignment invite', body, 'Review invite', opts.inviteUrl);
+};
+
+export const triagerReassignmentAcceptedResearcherTemplate = (opts: {
+  researcherName: string;
+  reportId: string;
+  reportTitle: string;
+  reportSeverity?: string;
+  assetType?: string;
+  triagerName: string;
+  previousTriagerName?: string;
+  disputeId: string;
+  disputeSubject: string;
+  reportUrl: string;
+}) => {
+  const body = `
+    <h1 style="color:#fff;font-size:20px;margin:0 0 12px;">New triager assigned to your report</h1>
+    <p style="color:#a1a1aa;font-size:14px;line-height:1.6;">Hi ${opts.researcherName}, your support dispute has been resolved and a new triager is now reviewing your submission.</p>
+    <table style="width:100%;border-collapse:collapse;background:#18181b;border:1px solid #27272a;border-radius:8px;margin:16px 0;">
+      <tr><td style="padding:10px 12px;font-size:11px;color:#a1a1aa;text-transform:uppercase;">Report</td><td style="padding:10px 12px;font-size:13px;color:#fff;">${opts.reportId} — ${opts.reportTitle}</td></tr>
+      <tr><td style="padding:10px 12px;font-size:11px;color:#a1a1aa;text-transform:uppercase;border-top:1px solid #27272a;">Severity</td><td style="padding:10px 12px;font-size:13px;color:#fbbf24;border-top:1px solid #27272a;">${opts.reportSeverity || '—'}</td></tr>
+      ${opts.assetType ? `<tr><td style="padding:10px 12px;font-size:11px;color:#a1a1aa;text-transform:uppercase;border-top:1px solid #27272a;">Asset</td><td style="padding:10px 12px;font-size:13px;color:#fff;border-top:1px solid #27272a;">${opts.assetType}</td></tr>` : ''}
+      <tr><td style="padding:10px 12px;font-size:11px;color:#a1a1aa;text-transform:uppercase;border-top:1px solid #27272a;">New triager</td><td style="padding:10px 12px;font-size:13px;color:#4ade80;border-top:1px solid #27272a;">${opts.triagerName}</td></tr>
+      ${opts.previousTriagerName ? `<tr><td style="padding:10px 12px;font-size:11px;color:#a1a1aa;text-transform:uppercase;border-top:1px solid #27272a;">Previous triager</td><td style="padding:10px 12px;font-size:13px;color:#fff;border-top:1px solid #27272a;">${opts.previousTriagerName} (read-only access retained)</td></tr>` : ''}
+      <tr><td style="padding:10px 12px;font-size:11px;color:#a1a1aa;text-transform:uppercase;border-top:1px solid #27272a;">Dispute resolved</td><td style="padding:10px 12px;font-size:13px;color:#fff;border-top:1px solid #27272a;">${opts.disputeId} — ${opts.disputeSubject}</td></tr>
+      <tr><td style="padding:10px 12px;font-size:11px;color:#a1a1aa;text-transform:uppercase;border-top:1px solid #27272a;">Report status</td><td style="padding:10px 12px;font-size:13px;color:#60a5fa;border-top:1px solid #27272a;">Triaging</td></tr>
+    </table>
+    <p style="color:#a1a1aa;font-size:13px;line-height:1.6;">Your new triager will continue the review and may reply in the report thread. You can follow progress on your report page.</p>`;
+  return triagerInviteEmailShell(
+    'New triager assigned',
+    body,
+    'View your report',
+    opts.reportUrl,
+    'You will receive further updates in the report thread.',
+  );
+};
+
+export const triagerReassignmentAcceptedSupportTemplate = (opts: {
+  agentName: string;
+  triagerName: string;
+  previousTriagerName?: string;
+  disputeId: string;
+  disputeSubject: string;
+  reportId: string;
+  reportTitle: string;
+  reportUrl: string;
+  disputeUrl: string;
+}) => {
+  const body = `
+    <h1 style="color:#fff;font-size:20px;margin:0 0 12px;">Triager accepted reassignment</h1>
+    <p style="color:#a1a1aa;font-size:14px;line-height:1.6;">Hi ${opts.agentName}, the reassignment invite was accepted. This dispute ticket is now resolved.</p>
+    <table style="width:100%;border-collapse:collapse;background:#18181b;border:1px solid #27272a;border-radius:8px;margin:16px 0;">
+      <tr><td style="padding:10px 12px;font-size:11px;color:#a1a1aa;text-transform:uppercase;">Dispute</td><td style="padding:10px 12px;font-size:13px;color:#fff;">${opts.disputeId} — ${opts.disputeSubject}</td></tr>
+      <tr><td style="padding:10px 12px;font-size:11px;color:#a1a1aa;text-transform:uppercase;border-top:1px solid #27272a;">Report</td><td style="padding:10px 12px;font-size:13px;color:#fff;border-top:1px solid #27272a;">${opts.reportId} — ${opts.reportTitle}</td></tr>
+      <tr><td style="padding:10px 12px;font-size:11px;color:#a1a1aa;text-transform:uppercase;border-top:1px solid #27272a;">New primary triager</td><td style="padding:10px 12px;font-size:13px;color:#4ade80;border-top:1px solid #27272a;">${opts.triagerName}</td></tr>
+      ${opts.previousTriagerName ? `<tr><td style="padding:10px 12px;font-size:11px;color:#a1a1aa;text-transform:uppercase;border-top:1px solid #27272a;">Collaborator</td><td style="padding:10px 12px;font-size:13px;color:#fff;border-top:1px solid #27272a;">${opts.previousTriagerName}</td></tr>` : ''}
+      <tr><td style="padding:10px 12px;font-size:11px;color:#a1a1aa;text-transform:uppercase;border-top:1px solid #27272a;">Report status</td><td style="padding:10px 12px;font-size:13px;color:#60a5fa;border-top:1px solid #27272a;">Triaging</td></tr>
+      <tr><td style="padding:10px 12px;font-size:11px;color:#a1a1aa;text-transform:uppercase;border-top:1px solid #27272a;">Ticket status</td><td style="padding:10px 12px;font-size:13px;color:#4ade80;border-top:1px solid #27272a;">Resolved</td></tr>
+    </table>
+    <p style="color:#a1a1aa;font-size:13px;line-height:1.6;">A detailed assignment notice was posted on the report thread. No further action is required unless the researcher opens a new ticket.</p>`;
+  return triagerInviteEmailShell(
+    'Reassignment complete',
+    body,
+    'Open dispute ticket',
+    opts.disputeUrl,
+    'The linked report is now under active triage.',
+  );
 };

@@ -9,6 +9,7 @@ const navItems = [
   { label: 'Analytics', path: '/company/analytics' },
   { label: 'Escrow', path: '/company/escrow' },
   { label: 'Settings', path: '/company/settings' },
+  { label: 'Support', path: '/company/support' },
 ];
 
 export default function CompanyLayout() {

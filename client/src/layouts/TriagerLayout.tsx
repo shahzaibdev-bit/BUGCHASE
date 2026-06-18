@@ -5,6 +5,7 @@ const navItems = [
   { label: 'Triage Queue', path: '/triager' },
   { label: 'Assigned Reports', path: '/triager/assigned' },
   { label: 'Expertise Settings', path: '/triager/settings' },
+  { label: 'Support', path: '/triager/support' },
 ];
 
 export default function TriagerLayout() {

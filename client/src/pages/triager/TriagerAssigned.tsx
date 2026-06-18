@@ -158,6 +158,7 @@ export default function TriagerAssigned() {
                     <span className={`text-sm font-medium ${
                         ['Triaged', 'Resolved', 'Paid'].includes(report.status) ? 'text-green-500' :
                         ['Duplicate', 'Spam', 'NA', 'Out-of-Scope', 'Closed'].includes(report.status) ? 'text-zinc-500' :
+                        report.status === 'In Dispute' ? 'text-amber-500' :
                         report.status === 'Needs Info' ? 'text-yellow-500' :
                         'text-blue-500'
                     }`}>

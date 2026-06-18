@@ -11,7 +11,8 @@ import {
   Lock,
   Unlock,
   AlertTriangle,
-  ArrowRight
+  ArrowRight,
+  Scale
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -32,7 +33,7 @@ import {
   TooltipTrigger,
 } from '@/components/ui/tooltip';
 import { toast } from '@/hooks/use-toast';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { InvertedTiltCard } from '@/components/InvertedTiltCard';
 import { InverseSpotlightCard } from '@/components/InverseSpotlightCard';
 import { API_URL } from '@/config';
@@ -64,14 +65,43 @@ const isInAiTriage = (report: TriageReport): boolean => {
   return status === 'pending' || status === 'processing';
 };
 
+type DisputedInvite = {
+  _id: string;
+  token: string;
+  status: string;
+  expiresAt: string;
+  matchSummary?: string;
+  previousTriagerName?: string;
+  invitedByName?: string;
+  disputePublicId: string;
+  reportPublicId?: string;
+  report?: {
+    _id: string;
+    reportId?: string;
+    title: string;
+    severity: string;
+    status: string;
+    assetType?: string;
+    description?: string;
+  } | null;
+  dispute?: {
+    _id: string;
+    disputeId: string;
+    subject: string;
+    status: string;
+  } | null;
+};
+
 // Removed Mock Data
 
 export default function TriagerQueue() {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const [myQueue, setMyQueue] = useState<TriageReport[]>([]);
   const [unassignedPool, setUnassignedPool] = useState<TriageReport[]>([]);
+  const [disputedInvites, setDisputedInvites] = useState<DisputedInvite[]>([]);
   const [expertiseFilter, setExpertiseFilter] = useState<string>('all');
-  const [activeTab, setActiveTab] = useState('active');
+  const [activeTab, setActiveTab] = useState(() => searchParams.get('tab') || 'active');
   const [loading, setLoading] = useState(true);
   const [userExpertise, setUserExpertise] = useState<string[]>([]);
 
@@ -81,18 +111,21 @@ export default function TriagerQueue() {
     try {
         const token = localStorage.getItem('token');
         const headers = { 'Authorization': `Bearer ${token}` };
-        const [queueRes, poolRes, profileRes] = await Promise.all([
+        const [queueRes, poolRes, profileRes, invitesRes] = await Promise.all([
             fetch(`${API_URL}/triager/queue`, { headers }),
             fetch(`${API_URL}/triager/pool`, { headers }),
-            fetch(`${API_URL}/triager/profile`, { headers })
+            fetch(`${API_URL}/triager/profile`, { headers }),
+            fetch(`${API_URL}/triager/reassignment-invites`, { headers }),
         ]);
         
         const queueData = await queueRes.json();
         const poolData = await poolRes.json();
         const profileData = await profileRes.json();
+        const invitesData = invitesRes.ok ? await invitesRes.json() : { data: { invites: [] } };
 
         if (queueRes.ok) setMyQueue(queueData.data.reports);
         if (poolRes.ok) setUnassignedPool(poolData.data.reports);
+        if (invitesRes.ok) setDisputedInvites(invitesData.data?.invites || []);
         if (profileRes.ok && profileData.data?.preferences?.expertise) {
             setUserExpertise(profileData.data.preferences.expertise);
             setExpertiseFilter('matched'); // Set default format to matched
@@ -109,6 +142,17 @@ export default function TriagerQueue() {
   React.useEffect(() => {
     fetchData();
   }, []);
+
+  React.useEffect(() => {
+    const tab = searchParams.get('tab');
+    if (tab === 'disputed' || tab === 'pool' || tab === 'active') {
+      setActiveTab(tab);
+    }
+  }, [searchParams]);
+
+  const handleOpenDisputedInvite = (token: string) => {
+    navigate(`/triager/reassignment-invite/${token}`);
+  };
 
   const getDisplayReportId = (report: any) => report.reportId || report.id || report._id?.slice(-6) || 'N/A';
 
@@ -226,10 +270,10 @@ export default function TriagerQueue() {
              <InvertedTiltCard>
                  <InverseSpotlightCard className="p-6 border border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-900/50 rounded-lg group hover:border-black dark:hover:border-white transition-colors relative overflow-hidden h-full">
                     <div className="relative z-10">
-                        <span className="text-[10px] font-mono text-zinc-500 uppercase tracking-widest">AVG RESOLUTION</span>
-                        <p className="text-4xl font-bold text-zinc-400 dark:text-zinc-500 mt-2 tracking-tight">4h 12m</p>
+                        <span className="text-[10px] font-mono text-zinc-500 uppercase tracking-widest">DISPUTED INVITES</span>
+                        <p className="text-4xl font-bold text-black dark:text-white mt-2 tracking-tight">{disputedInvites.length}</p>
                     </div>
-                    <Clock className="absolute right-[-10px] top-[-10px] h-24 w-24 text-zinc-100 dark:text-zinc-900 group-hover:text-zinc-200 dark:group-hover:text-zinc-800 transition-colors" />
+                    <Scale className="absolute right-[-10px] top-[-10px] h-24 w-24 text-zinc-200 dark:text-zinc-800/50 group-hover:text-zinc-300 dark:group-hover:text-zinc-700 transition-colors" />
                 </InverseSpotlightCard>
             </InvertedTiltCard>
         </div>
@@ -248,6 +292,17 @@ export default function TriagerQueue() {
             className="rounded-none border-b-2 border-transparent data-[state=active]:border-black dark:data-[state=active]:border-white data-[state=active]:bg-transparent pb-4 px-0 font-mono text-sm font-bold uppercase text-zinc-400 data-[state=active]:text-black dark:data-[state=active]:text-white transition-all"
           >
             Global Unassigned Pool
+          </TabsTrigger>
+          <TabsTrigger 
+            value="disputed" 
+            className="rounded-none border-b-2 border-transparent data-[state=active]:border-black dark:data-[state=active]:border-white data-[state=active]:bg-transparent pb-4 px-0 font-mono text-sm font-bold uppercase text-zinc-400 data-[state=active]:text-black dark:data-[state=active]:text-white transition-all flex items-center gap-2"
+          >
+            Disputed Reports
+            {disputedInvites.length > 0 && (
+              <Badge variant="outline" className="text-[10px] px-1.5 py-0 border-amber-500/40 text-amber-700 dark:text-amber-300">
+                {disputedInvites.length}
+              </Badge>
+            )}
           </TabsTrigger>
         </TabsList>
 
@@ -314,6 +369,73 @@ export default function TriagerQueue() {
                                     onClick={(e) => { e.stopPropagation(); handleOpenReport(report._id || report.id); navigate(`/triager/reports/${report._id || report.id}#reply`); }}
                                 >
                                     REPLY
+                                </Button>
+                            </div>
+                        </div>
+                    </div>
+                ))
+            )}
+        </TabsContent>
+
+        {/* Disputed reassignment invites */}
+        <TabsContent value="disputed" className="space-y-4">
+            {disputedInvites.length === 0 ? (
+                <div className="text-center py-20 border border-dashed border-zinc-200 dark:border-zinc-800 rounded-lg bg-zinc-50/50 dark:bg-zinc-900/20">
+                    <Scale className="h-10 w-10 text-zinc-300 dark:text-zinc-700 mx-auto mb-4" />
+                    <p className="text-zinc-500 font-mono text-sm">No pending dispute reassignment invites.</p>
+                </div>
+            ) : (
+                disputedInvites.map((invite) => (
+                    <div
+                        key={invite._id}
+                        className="group border border-amber-200/60 dark:border-amber-500/20 bg-amber-50/30 dark:bg-amber-500/5 p-4 rounded-lg hover:border-amber-500/50 dark:hover:border-amber-400/40 transition-colors cursor-pointer"
+                        onClick={() => handleOpenDisputedInvite(invite.token)}
+                    >
+                        <div className="flex flex-col lg:flex-row gap-6">
+                            <div className="flex-1 space-y-2">
+                                <div className="flex items-center gap-3 flex-wrap">
+                                    <span className="font-mono text-xs font-bold text-zinc-500 dark:text-zinc-400">
+                                        {invite.report?.reportId || invite.reportPublicId || 'REPORT'}
+                                    </span>
+                                    {invite.report?.severity && <SeverityBadge severity={invite.report.severity} />}
+                                    <Badge variant="outline" className="uppercase font-mono text-[10px] border-amber-500/30 text-amber-700 dark:text-amber-300">
+                                        Dispute invite
+                                    </Badge>
+                                    <Badge variant="outline" className="font-mono text-[10px] text-zinc-500">
+                                        {invite.dispute?.disputeId || invite.disputePublicId}
+                                    </Badge>
+                                </div>
+
+                                <div>
+                                    <h3 className="text-lg font-bold font-mono text-zinc-900 dark:text-white group-hover:underline decoration-1 underline-offset-4 tracking-tight">
+                                        {invite.report?.title || invite.dispute?.subject || 'Reassignment invite'}
+                                    </h3>
+                                    {invite.dispute?.subject && (
+                                        <p className="text-zinc-500 text-sm mt-1 font-sans line-clamp-1">
+                                            Dispute: {invite.dispute.subject}
+                                        </p>
+                                    )}
+                                    {invite.matchSummary && (
+                                        <p className="text-[10px] font-mono text-zinc-400 mt-1">{invite.matchSummary}</p>
+                                    )}
+                                </div>
+
+                                <div className="flex items-center gap-6 text-xs font-mono text-zinc-400 pt-2 flex-wrap">
+                                    {invite.previousTriagerName && (
+                                        <span>From: {invite.previousTriagerName}</span>
+                                    )}
+                                    <span className="flex items-center gap-1.5 text-amber-700 dark:text-amber-300">
+                                        <Clock className="h-3 w-3" /> Expires {new Date(invite.expiresAt).toLocaleString()}
+                                    </span>
+                                </div>
+                            </div>
+
+                            <div className="flex flex-col justify-center items-end gap-2 lg:border-l lg:border-amber-200/50 dark:lg:border-amber-500/20 lg:pl-6">
+                                <Button
+                                    className="w-full lg:w-36 bg-black dark:bg-white text-white dark:text-black hover:bg-zinc-800 dark:hover:bg-zinc-200 font-mono text-xs font-bold gap-2"
+                                    onClick={(e) => { e.stopPropagation(); handleOpenDisputedInvite(invite.token); }}
+                                >
+                                    REVIEW <ArrowRight className="h-3 w-3" />
                                 </Button>
                             </div>
                         </div>

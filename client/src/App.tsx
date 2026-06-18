@@ -67,6 +67,9 @@ const TriagerExpertise = lazy(() => import("./pages/triager/TriagerExpertise"));
 const TriagerReportDetails = lazy(() => import("./pages/triager/TriagerReportDetails"));
 const TriagerReportPeek = lazy(() => import("./pages/triager/TriagerReportPeek"));
 const TriagerProfile = lazy(() => import("./pages/triager/TriagerProfile"));
+const TriagerReassignmentInvite = lazy(() => import("./pages/triager/TriagerReassignmentInvite"));
+const MySupportTickets = lazy(() => import("./pages/support-tickets/MySupportTickets"));
+const MySupportTicketDetails = lazy(() => import("./pages/support-tickets/MySupportTicketDetails"));
 
 // Support Pages
 const SupportDashboard = lazy(() => import("./pages/support/SupportDashboard"));
@@ -152,6 +155,8 @@ const App = () => (
                     <Route path="/h/:username" element={<PublicProfile />} />
                 </Route>
 
+                <Route path="/triager/reassignment-invite/:token" element={<TriagerReassignmentInvite />} />
+
                 {/* Researcher Routes */}
                 <Route element={<ProtectedRoute allowedRoles={['researcher']} />}>
                   <Route path="/researcher" element={<ResearcherLayout />}>
@@ -164,6 +169,8 @@ const App = () => (
                       <Route path="leaderboard" element={<ResearcherLeaderboard />} />
                       <Route path="profile" element={<ResearcherProfile />} />
                       <Route path="verify" element={<ResearcherVerification />} />
+                      <Route path="support" element={<MySupportTickets />} />
+                      <Route path="support/:id" element={<MySupportTicketDetails />} />
                   </Route>
               </Route>
 
@@ -179,6 +186,8 @@ const App = () => (
                       <Route path="analytics" element={<CompanyAnalytics />} />
                       <Route path="escrow" element={<CompanyEscrow />} />
                       <Route path="settings" element={<CompanySettings />} />
+                      <Route path="support" element={<MySupportTickets />} />
+                      <Route path="support/:id" element={<MySupportTicketDetails />} />
                   </Route>
                 </Route>
 
@@ -191,6 +200,8 @@ const App = () => (
                       <Route path="reports/:id" element={<TriagerReportDetails />} />
                       <Route path="peek/:id" element={<TriagerReportPeek />} />
                       <Route path="profile" element={<TriagerProfile />} />
+                      <Route path="support" element={<MySupportTickets />} />
+                      <Route path="support/:id" element={<MySupportTicketDetails />} />
                     </Route>
                 </Route>
 

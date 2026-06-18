@@ -2,6 +2,8 @@ import mongoose, { Document, Model } from 'mongoose';
 
 export type DisputeStatus = 'open' | 'in_review' | 'resolved' | 'rejected';
 export type DisputePriority = 'low' | 'medium' | 'high' | 'critical';
+/** Who may send the next message in the dispute thread. */
+export type DisputeAwaitingReply = 'raiser' | 'support';
 export type DisputeCategory =
   | 'severity'
   | 'payout'
@@ -18,6 +20,18 @@ export interface IDisputeMessage {
   createdAt: Date;
 }
 
+export interface IDisputeEmailThreadSide {
+  subject: string;
+  rootMessageId: string;
+  lastMessageId: string;
+  recipientEmail?: string;
+}
+
+export interface IDisputeEmailThread {
+  raiser?: IDisputeEmailThreadSide;
+  support?: IDisputeEmailThreadSide;
+}
+
 export interface IDispute extends Document {
   disputeId: string;
   subject: string;
@@ -25,6 +39,8 @@ export interface IDispute extends Document {
   category: DisputeCategory;
   status: DisputeStatus;
   priority: DisputePriority;
+  /** When 'raiser', the ticket creator may reply; otherwise only support may post. */
+  awaitingReplyFrom: DisputeAwaitingReply;
 
   // Who raised it (a company or researcher on the platform).
   raisedBy?: mongoose.Types.ObjectId;
@@ -39,6 +55,9 @@ export interface IDispute extends Document {
   // Support staff handling it.
   assignedTo?: mongoose.Types.ObjectId;
   assignedToName?: string;
+
+  /** Tracks Message-IDs so Gmail/Outlook keep dispute emails in one thread. */
+  emailThread?: IDisputeEmailThread;
 
   messages: IDisputeMessage[];
 
@@ -86,6 +105,11 @@ const disputeSchema = new mongoose.Schema<IDispute>(
       enum: ['low', 'medium', 'high', 'critical'],
       default: 'medium',
     },
+    awaitingReplyFrom: {
+      type: String,
+      enum: ['raiser', 'support'],
+      default: 'support',
+    },
 
     raisedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
     raisedByName: { type: String, required: true },
@@ -97,6 +121,20 @@ const disputeSchema = new mongoose.Schema<IDispute>(
 
     assignedTo: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
     assignedToName: String,
+
+    emailThread: {
+      raiser: {
+        subject: String,
+        rootMessageId: String,
+        lastMessageId: String,
+      },
+      support: {
+        subject: String,
+        rootMessageId: String,
+        lastMessageId: String,
+        recipientEmail: String,
+      },
+    },
 
     messages: [messageSchema],
 

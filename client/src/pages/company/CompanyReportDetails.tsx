@@ -36,6 +36,8 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { GlassCard } from '@/components/ui/glass-card';
 import ContactSupportButton from '@/components/support/ContactSupportButton';
+import { isReportThreadLocked, isSystemDisputeStatusEvent, REPORT_THREAD_LOCKED_MESSAGE } from '@/lib/reportThread';
+import { BugChaseSystemActor, ThreadStatusChangeLine, BUGCHASE_SYSTEM_LABEL } from '@/components/reports/ThreadSystemUI';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { ScrollArea } from '@/components/ui/scroll-area';
@@ -123,7 +125,7 @@ interface TimelineEvent {
   type: 'comment' | 'status_change' | 'action' | 'severity_update' | 'bounty_awarded';
   author: string;
   authorAvatar?: string;
-  role: 'Triager' | 'Researcher' | 'Company' | 'Admin';
+  role: 'Triager' | 'Researcher' | 'Company' | 'Admin' | 'System';
   content: string;
   attachments?: string[];
   timestamp: string;
@@ -156,11 +158,20 @@ const mapSeverityLevel = (sev: string): ReportState['severity']['level'] => {
 // Map a backend comment/timeline entry to our TimelineEvent shape
 const mapComment = (c: any): TimelineEvent => {
   const sender = c.sender;
-  const role: TimelineEvent['role'] =
-    sender?.role === 'company' ? 'Company' :
-    sender?.role === 'triager' ? 'Triager' :
-    sender?.role === 'admin' ? 'Admin' :
-    'Researcher';
+  const isSystemEvent =
+    c.metadata?.systemAction ||
+    c.metadata?.kind === 'dispute_opened' ||
+    c.metadata?.kind === 'dispute_closed';
+
+  const role: TimelineEvent['role'] = isSystemEvent
+    ? 'System'
+    : sender?.role === 'company'
+      ? 'Company'
+      : sender?.role === 'triager'
+        ? 'Triager'
+        : sender?.role === 'admin'
+          ? 'Admin'
+          : 'Researcher';
 
   return {
     id: c._id?.toString() || Date.now().toString(),
@@ -168,7 +179,9 @@ const mapComment = (c: any): TimelineEvent => {
         : c.type === 'bounty_awarded' ? 'bounty_awarded'
         : c.type === 'severity_update' ? 'severity_update'
         : 'comment',
-    author: role === 'Researcher' || role === 'Admin'
+    author: isSystemEvent
+      ? BUGCHASE_SYSTEM_LABEL
+      : role === 'Researcher' || role === 'Admin'
       ? (sender?.username || sender?.name || (role === 'Admin' ? 'admin' : 'Researcher'))
       : (sender?.name || sender?.username || 'User'),
     authorAvatar: sender?.avatar,
@@ -823,10 +836,6 @@ export default function CompanyReportDetails() {
                                 <h1 className="text-[20px] md:text-2xl font-bold tracking-tight text-foreground break-words leading-tight">{report.title}</h1>
                             </div>
                             <div className="flex gap-2 shrink-0 flex-wrap justify-start lg:justify-end max-w-sm">
-                                <ContactSupportButton
-                                    className="border-zinc-300 dark:border-zinc-700 text-zinc-900 dark:text-zinc-100 hover:bg-zinc-100 dark:hover:bg-zinc-800"
-                                    report={{ id: id!, label: `${report.reportId || id} — ${report.title}` }}
-                                />
                                 <Button 
                                     variant="outline" 
                                     size="sm"
@@ -1018,7 +1027,9 @@ export default function CompanyReportDetails() {
                                     
                                     <div className="space-y-1 w-full">
                                         <div className="flex items-center gap-2 flex-wrap">
-                                            {event.role === 'Researcher' ? (
+                                            {event.role === 'System' ? (
+                                                <BugChaseSystemActor />
+                                            ) : event.role === 'Researcher' ? (
                                                 <div className="flex items-center gap-2">
                                                     <HoverCard>
                                                         <HoverCardTrigger asChild>
@@ -1060,9 +1071,10 @@ export default function CompanyReportDetails() {
                                                 </div>
                                             )}
                                             {event.type === 'status_change' && (
-                                                <span className="text-zinc-800 dark:text-zinc-200 text-[14px] flex flex-wrap items-center gap-1 font-medium tracking-tight">
-                                                     changed the status to {event.metadata?.newStatus?.toLowerCase() || event.content.replace('Changed status to ', '').replace('System changed status to ', '').split('.')[0].toLowerCase()}
-                                                </span>
+                                                <ThreadStatusChangeLine
+                                                  newStatus={event.metadata?.newStatus}
+                                                  content={event.content}
+                                                />
                                             )}
                                             {event.type === 'bounty_awarded' && (
                                                 <span className="text-zinc-800 dark:text-zinc-200 text-[14px] flex flex-wrap items-center gap-1 font-medium tracking-tight">
@@ -1079,7 +1091,7 @@ export default function CompanyReportDetails() {
 
                                         {event.type === 'status_change' ? (
                                             <div className="mt-1 flex flex-col items-start w-full gap-2">
-                                                {event.metadata?.reason && (
+                                                {event.metadata?.reason && !isSystemDisputeStatusEvent(event.metadata) && (
                                                     <div className="mt-1 bg-white dark:bg-zinc-900/50 rounded-lg p-3 px-4 text-sm text-zinc-800 dark:text-zinc-200 border border-zinc-300 dark:border-zinc-700 w-full max-w-[85%] font-inter leading-relaxed relative text-left">
                                                         <div className="relative z-10 prose prose-sm prose-zinc dark:prose-invert max-w-none">
                                                             <ReactMarkdown rehypePlugins={[rehypeRaw]} remarkPlugins={[remarkGfm]}>{event.metadata.reason}</ReactMarkdown>
@@ -1157,6 +1169,12 @@ export default function CompanyReportDetails() {
                         </div>
 
                         {/* Editor Area */}
+                        {isReportThreadLocked(reportState.status) ? (
+                          <div className="flex items-start gap-3 rounded-lg border border-amber-200 dark:border-amber-500/30 bg-amber-50 dark:bg-amber-500/10 px-4 py-3 mt-4">
+                            <Lock className="w-4 h-4 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
+                            <p className="text-sm text-amber-800 dark:text-amber-200">{REPORT_THREAD_LOCKED_MESSAGE}</p>
+                          </div>
+                        ) : (
                         <div className="flex gap-4 pt-4">
                             <div className="h-8 w-8 rounded-full bg-emerald-500 text-black flex items-center justify-center font-bold text-xs shrink-0 mt-2">CO</div>
                             <div className="flex-1">
@@ -1184,16 +1202,17 @@ export default function CompanyReportDetails() {
                                 </div>
                             </div>
                         </div>
+                        )}
                     </div>
                 </div>
             </div>
 
-            {/* RIGHT COLUMN: Sidebar (Sticky) */}
+            {/* RIGHT COLUMN: Sidebar */}
             <div className={cn(
-                "lg:col-span-4 h-full relative",
+                "lg:col-span-4 relative",
                 (mobileTab !== 'tools') && "hidden lg:block"
             )}>
-                <div className="sticky top-24 flex flex-col gap-6">
+                <div className="flex flex-col gap-6">
                     {/* Severity & Status */}
                     <GlassCard className="p-5 space-y-6">
                         <div>
@@ -1283,6 +1302,18 @@ export default function CompanyReportDetails() {
                             </>
                         )}
                     </GlassCard>
+
+                    {/* Need Help Card */}
+                    <div className="bg-emerald-50 dark:bg-emerald-950/10 border border-emerald-200 dark:border-emerald-900/30 rounded-lg p-4 text-center">
+                        <p className="text-xs text-emerald-700 dark:text-emerald-200/70 mb-2">Need help with this report?</p>
+                        <ContactSupportButton
+                            variant="ghost"
+                            size="sm"
+                            className="h-auto px-2 py-1 text-sm font-bold text-emerald-600 dark:text-emerald-500 hover:text-emerald-500 hover:bg-transparent hover:underline"
+                            report={{ id: id!, label: `${report.reportId || id} — ${report.title}` }}
+                            hideIcon
+                        />
+                    </div>
                 </div>
             </div>
 

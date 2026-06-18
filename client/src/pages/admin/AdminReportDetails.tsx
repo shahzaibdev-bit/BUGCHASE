@@ -28,6 +28,7 @@ const STATUS_OPTIONS = [
   'Triaging',
   'Under Review',
   'Needs Info',
+  'In Dispute',
   'Triaged',
   'Resolved',
   'Paid',

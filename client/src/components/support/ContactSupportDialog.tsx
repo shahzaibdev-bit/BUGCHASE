@@ -148,8 +148,8 @@ export default function ContactSupportDialog({ open, onOpenChange, report }: Con
             toast({
                 title: 'Support request sent',
                 description: report
-                    ? "We've recorded your issue and posted it to the report thread. A confirmation email is on its way."
-                    : "We've recorded your issue. A confirmation email is on its way.",
+                    ? "We've recorded your issue and posted it to the report thread. Track it under Support in the navbar."
+                    : "We've recorded your issue. Track it under Support in the navbar. A confirmation email is on its way.",
             });
             onOpenChange(false);
         } catch (e: any) {

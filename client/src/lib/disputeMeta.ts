@@ -1,4 +1,4 @@
-import { DisputePriority, DisputeStatus, DisputeCategory } from '@/types';
+import { DisputeCategory, DisputePriority, DisputeStatus } from '@/types/dispute';
 
 export const STATUS_META: Record<DisputeStatus, { label: string; className: string }> = {
   open: {
@@ -45,34 +45,16 @@ export const PRIORITY_META: Record<DisputePriority, { label: string; className: 
   },
 };
 
-export const CATEGORY_META: Record<DisputeCategory, { label: string; className: string }> = {
-  severity: {
-    label: 'Severity',
-    className: 'bg-purple-50 dark:bg-purple-500/10 text-purple-700 dark:text-purple-300 border-purple-200 dark:border-purple-500/30',
-  },
-  payout: {
-    label: 'Payout / Billing',
-    className: 'bg-emerald-50 dark:bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border-emerald-200 dark:border-emerald-500/30',
-  },
-  duplicate: {
-    label: 'Duplicate',
-    className: 'bg-orange-50 dark:bg-orange-500/10 text-orange-700 dark:text-orange-300 border-orange-200 dark:border-orange-500/30',
-  },
-  scope: {
-    label: 'Scope',
-    className: 'bg-blue-50 dark:bg-blue-500/10 text-blue-700 dark:text-blue-300 border-blue-200 dark:border-blue-500/30',
-  },
-  conduct: {
-    label: 'Conduct',
-    className: 'bg-red-50 dark:bg-red-500/10 text-red-700 dark:text-red-300 border-red-200 dark:border-red-500/30',
-  },
-  other: {
-    label: 'General',
-    className: 'bg-zinc-100 dark:bg-white/5 text-zinc-500 border-zinc-200 dark:border-white/10',
-  },
+export const CATEGORY_META: Record<DisputeCategory, { label: string }> = {
+  severity: { label: 'Severity' },
+  payout: { label: 'Payout / Billing' },
+  duplicate: { label: 'Duplicate' },
+  scope: { label: 'Scope' },
+  conduct: { label: 'Conduct' },
+  other: { label: 'General' },
 };
 
-export function formatDate(value?: string) {
+export function formatDisputeDate(value?: string) {
   if (!value) return '—';
   try {
     return new Date(value).toLocaleString(undefined, {

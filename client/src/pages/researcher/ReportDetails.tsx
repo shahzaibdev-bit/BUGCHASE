@@ -25,31 +25,52 @@ import {
   DialogTitle,
   DialogTrigger
 } from "@/components/ui/dialog";
-const Timeline = ({ currentStep }: { currentStep: number }) => {
-  const steps = ['Submitted', 'Triaging', 'Triaged', 'Paid', 'Resolved']; // Updated to match backend roughly
+import { getReportTimelineConfig } from '@/lib/reportTimeline';
+import {
+  isReportThreadLocked,
+  isSystemDisputeStatusEvent,
+  REPORT_THREAD_LOCKED_MESSAGE,
+} from '@/lib/reportThread';
+import { BugChaseSystemActor, ThreadStatusChangeLine } from '@/components/reports/ThreadSystemUI';
+import { Lock } from 'lucide-react';
+
+const Timeline = ({
+  status,
+  statusBeforeDispute,
+}: {
+  status: string;
+  statusBeforeDispute?: string | null;
+}) => {
+  const { steps, activeIndex, variant } = getReportTimelineConfig(status, statusBeforeDispute);
 
   return (
     <div className="flex items-center w-full mb-12 relative px-2">
       {steps.map((step, index) => {
-        const isCompleted = index < currentStep;
-        const isActive = index === currentStep;
+        const isCompleted = index < activeIndex;
+        const isActive = index === activeIndex;
+        const isDisputeStep = variant === 'dispute' && step === 'In Dispute' && isActive;
+        const isTerminalStep = variant === 'terminal' && isActive;
         
         return (
-          <React.Fragment key={step}>
+          <React.Fragment key={`${step}-${index}`}>
             <div className="flex flex-col items-center relative z-10 group cursor-default">
               
               {/* Dot */}
               <div 
                 className={cn(
                   "w-4 h-4 rounded-full transition-all duration-300 border-2",
-                  isCompleted 
-                    ? "bg-zinc-900 dark:bg-white border-zinc-900 dark:border-white shadow-[0_0_10px_rgba(0,0,0,0.2)] dark:shadow-[0_0_10px_rgba(255,255,255,0.2)] scale-100" 
-                    : isActive 
-                        ? "bg-white dark:bg-black border-zinc-900 dark:border-white shadow-[0_0_15px_rgba(0,0,0,0.1)] dark:shadow-[0_0_15px_rgba(255,255,255,0.1)] scale-125" 
-                        : "bg-zinc-100 dark:bg-zinc-800 border-zinc-300 dark:border-zinc-700"
+                  isDisputeStep
+                    ? "bg-amber-500 border-amber-500 shadow-[0_0_15px_rgba(245,158,11,0.45)] scale-125"
+                    : isTerminalStep
+                      ? "bg-zinc-500 border-zinc-500 dark:bg-zinc-400 dark:border-zinc-400 scale-110"
+                      : isCompleted 
+                        ? "bg-zinc-900 dark:bg-white border-zinc-900 dark:border-white shadow-[0_0_10px_rgba(0,0,0,0.2)] dark:shadow-[0_0_10px_rgba(255,255,255,0.2)] scale-100" 
+                        : isActive 
+                            ? "bg-white dark:bg-black border-zinc-900 dark:border-white shadow-[0_0_15px_rgba(0,0,0,0.1)] dark:shadow-[0_0_15px_rgba(255,255,255,0.1)] scale-125" 
+                            : "bg-zinc-100 dark:bg-zinc-800 border-zinc-300 dark:border-zinc-700"
                 )} 
               >
-                  {isCompleted && (
+                  {isCompleted && !isDisputeStep && (
                       <div className="w-full h-full flex items-center justify-center">
                           <div className="w-1.5 h-1.5 bg-white dark:bg-black rounded-full opacity-50" />
                       </div>
@@ -60,12 +81,16 @@ const Timeline = ({ currentStep }: { currentStep: number }) => {
               <span 
                 className={cn(
                   "absolute top-8 text-xs font-mono uppercase tracking-wider whitespace-nowrap transition-colors",
-                  isCompleted ? "text-zinc-600 dark:text-zinc-400 font-medium" :
-                  isActive ? "text-zinc-900 dark:text-white font-bold scale-110 origin-top" :
-                  "text-zinc-400 dark:text-zinc-600"
+                  isDisputeStep
+                    ? "text-amber-600 dark:text-amber-400 font-bold scale-110 origin-top"
+                    : isTerminalStep
+                      ? "text-zinc-600 dark:text-zinc-400 font-bold scale-110 origin-top"
+                      : isCompleted ? "text-zinc-600 dark:text-zinc-400 font-medium" :
+                      isActive ? "text-zinc-900 dark:text-white font-bold scale-110 origin-top" :
+                      "text-zinc-400 dark:text-zinc-600"
                 )}
               >
-                {step}
+                {step.replace('_', ' ')}
               </span>
             </div>
             
@@ -74,8 +99,12 @@ const Timeline = ({ currentStep }: { currentStep: number }) => {
               <div className="flex-1 mx-2 h-[2px] rounded-full overflow-hidden bg-zinc-200 dark:bg-zinc-800 relative">
                   <div 
                     className={cn(
-                        "absolute inset-0 bg-zinc-900 dark:bg-white transition-transform duration-700 ease-out origin-left",
-                        index < currentStep ? "scale-x-100" : "scale-x-0"
+                        "absolute inset-0 transition-transform duration-700 ease-out origin-left",
+                        index < activeIndex
+                          ? variant === 'dispute' && index === steps.length - 2
+                            ? "bg-amber-500 scale-x-100"
+                            : "bg-zinc-900 dark:bg-white scale-x-100"
+                          : "scale-x-0"
                     )} 
                   />
               </div>
@@ -173,7 +202,17 @@ export default function ReportDetails() {
     });
 
     socket.on('status_updated', (data: any) => {
-      if (data.status) setReport((prev: any) => prev ? { ...prev, status: data.status } : prev);
+      if (!data.status) return;
+      setReport((prev: any) => {
+        if (!prev) return prev;
+        if (data.status === 'In Dispute' && prev.status !== 'In Dispute') {
+          return { ...prev, statusBeforeDispute: prev.status, status: data.status };
+        }
+        if (prev.status === 'In Dispute' && data.status !== 'In Dispute') {
+          return { ...prev, status: data.status, statusBeforeDispute: undefined };
+        }
+        return { ...prev, status: data.status };
+      });
     });
 
     return () => {
@@ -245,9 +284,10 @@ export default function ReportDetails() {
       );
   }
 
-  // Calculate status step
-  const statusMap: Record<string, number> = { 'Submitted': 0, 'Triaging': 1, 'Triaged': 2, 'Pending_Fix': 2, 'Resolved': 4, 'Paid': 3 };
-  const currentStep = statusMap[report.status] || 0;
+  // Calculate status step for timeline
+  const timelineStatus = report.status;
+  const timelineBeforeDispute = report.statusBeforeDispute;
+  const threadLocked = isReportThreadLocked(report.status);
 
   // Participants logic
   const participants = [
@@ -271,7 +311,10 @@ export default function ReportDetails() {
             </span>
             <div className="flex items-center gap-4 flex-wrap">
                  <h1 className="text-3xl font-bold text-zinc-900 dark:text-white tracking-tight">{report.title}</h1>
-                 <Badge variant="outline" className="font-mono">{report.status}</Badge>
+                 <Badge variant="outline" className={cn(
+                   "font-mono",
+                   report.status === 'In Dispute' && "border-amber-400 text-amber-700 dark:text-amber-300"
+                 )}>{report.status}</Badge>
                  <ContactSupportButton
                     className="ml-auto"
                     report={{ id: id!, label: `${report.reportId || id} — ${report.title}` }}
@@ -294,7 +337,7 @@ export default function ReportDetails() {
                  })()}
             </div>
         </div>
-        <Timeline currentStep={currentStep} />
+        <Timeline status={timelineStatus} statusBeforeDispute={timelineBeforeDispute} />
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 mt-16">
@@ -476,6 +519,7 @@ export default function ReportDetails() {
 
                     const senderUsername = String(comment.sender?.username || '').toLowerCase();
                     const isAiTriage = comment.type === 'ai_triage' || senderUsername === 'bugchase_ai_triage';
+                    const isSystemEvent = isSystemDisputeStatusEvent(comment.metadata);
 
                     return (
                     <div key={idx} className="relative group pl-12 -ml-12 mt-4 pt-2">
@@ -490,6 +534,10 @@ export default function ReportDetails() {
                                         alt="BugChase AI"
                                         className="w-full h-full rounded-lg object-contain p-0.5"
                                     />
+                                </div>
+                            ) : isSystemEvent ? (
+                                <div className="absolute left-[4px] top-2 w-10 h-10 rounded-full flex items-center justify-center border-4 border-white dark:border-zinc-950 z-10 bg-amber-50 dark:bg-amber-950/40">
+                                    <Activity className="w-4 h-4 text-amber-600 dark:text-amber-400" />
                                 </div>
                             ) : (
                                 <div className={cn(
@@ -522,6 +570,8 @@ export default function ReportDetails() {
                                            BugChase AI
                                        </Badge>
                                    </div>
+                               ) : isSystemEvent ? (
+                                   <BugChaseSystemActor />
                                ) : comment.sender?.role === 'researcher' ? (
                                     <div className="flex items-center gap-2">
                                         <HoverCard>
@@ -576,9 +626,10 @@ export default function ReportDetails() {
                                      </div>
                                  )}
                                  {comment.type === 'status_change' && (
-                                     <span className="text-zinc-800 dark:text-zinc-200 text-[14px] flex flex-wrap items-center gap-1 font-medium tracking-tight">
-                                          changed the status to {comment.metadata?.newStatus?.toLowerCase() || comment.content.replace('Changed status to ', '').replace('System changed status to ', '').split('.')[0].toLowerCase()}
-                                     </span>
+                                     <ThreadStatusChangeLine
+                                       newStatus={comment.metadata?.newStatus}
+                                       content={comment.content}
+                                     />
                                  )}
                                  {comment.type === 'bounty_awarded' && (
                                      <span className="text-zinc-800 dark:text-zinc-200 text-[14px] flex flex-wrap items-center gap-1 font-medium tracking-tight">
@@ -594,7 +645,7 @@ export default function ReportDetails() {
                              </div>
                              {comment.type === 'status_change' ? (
                                 <div className="mt-1 flex flex-col items-start w-full gap-2">
-                                    {comment.metadata?.reason && (
+                                    {comment.metadata?.reason && !isSystemDisputeStatusEvent(comment.metadata) && (
                                         <div className="mt-1 bg-white dark:bg-zinc-900/50 rounded-lg p-3 px-4 text-sm text-zinc-800 dark:text-zinc-200 border border-zinc-300 dark:border-zinc-700 w-full max-w-[85%] font-inter leading-relaxed relative text-left">
                                             <div className="relative z-10 prose prose-sm prose-zinc dark:prose-invert max-w-none">
                                                 <ReactMarkdown rehypePlugins={[rehypeRaw]} remarkPlugins={[remarkGfm]}>{comment.metadata.reason}</ReactMarkdown>
@@ -691,6 +742,13 @@ export default function ReportDetails() {
                  {/* Editor (Fixed Activity Item) */}
                  <div className="relative">
                     {/* NO Line Segment for Editor (Last Item) */}
+                    {threadLocked ? (
+                      <div className="flex items-start gap-3 rounded-lg border border-amber-200 dark:border-amber-500/30 bg-amber-50 dark:bg-amber-500/10 px-4 py-3">
+                        <Lock className="w-4 h-4 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
+                        <p className="text-sm text-amber-800 dark:text-amber-200">{REPORT_THREAD_LOCKED_MESSAGE}</p>
+                      </div>
+                    ) : (
+                    <>
                     <div className="absolute -left-[44px] top-0 w-10 h-10 rounded-full bg-black text-white dark:bg-zinc-800 dark:text-white flex items-center justify-center border-4 border-white dark:border-zinc-950 z-10 overflow-hidden">
                          {report.researcherId?.avatar ? (
                              <img src={report.researcherId.avatar} alt="My Avatar" className="w-full h-full object-cover" />
@@ -787,6 +845,8 @@ export default function ReportDetails() {
                             </Button>
                         </div>
                     </div>
+                    </>
+                    )}
                  </div>
 
             </div>

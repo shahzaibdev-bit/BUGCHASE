@@ -75,3 +75,19 @@ const BugSvg = ({ strokeWidth = 1.5, ...props }: React.SVGProps<SVGSVGElement>) 
     <line x1="12" y1="13" x2="12" y2="15" />
   </svg>
 );
+
+/** Icon-only mark matching the dashboard navbar logo. */
+export function CyberLogoMark({ className }: { className?: string }) {
+  return (
+    <div
+      className={cn(
+        'relative bg-zinc-900 dark:bg-black rounded-lg flex items-center justify-center shrink-0',
+        'border border-black/15 dark:border-white/20',
+        'shadow-[0_0_10px_rgba(0,0,0,0.1)] dark:shadow-[0_0_10px_rgba(255,255,255,0.05)]',
+        className,
+      )}
+    >
+      <BugSvg className="w-[55%] h-[55%] text-white" strokeWidth={2} />
+    </div>
+  );
+}

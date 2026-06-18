@@ -12,15 +12,29 @@ import {
   Menu,
   X,
   Ban,
-  Shield,
-  LifeBuoy
+  Shield
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import AnimatedBackground from '@/components/effects/AnimatedBackground';
 import { useAuth } from '@/contexts/AuthContext';
 import NavDropdown from '@/components/dashboard/NavDropdown';
-import ContactSupportDialog from '@/components/support/ContactSupportDialog';
+import DashboardFooter from '@/components/DashboardFooter';
+
+// Exact paths (per role) where the dashboard footer should appear.
+const FOOTER_PATHS: Record<string, string[]> = {
+    researcher: ['/researcher', '/researcher/wallet', '/researcher/reports'],
+    triager: ['/triager', '/triager/assigned', '/triager/settings'],
+    company: [
+        '/company',
+        '/company/programs',
+        '/company/assets',
+        '/company/reports',
+        '/company/analytics',
+        '/company/escrow',
+        '/company/settings',
+    ],
+};
 
 interface NavItem {
     label: string;
@@ -40,7 +54,6 @@ export const DashboardLayout = ({ navItems, userRole }: DashboardLayoutProps) =>
     const { theme, setTheme } = useTheme();
     const { user, logout, isLoading } = useAuth();
     const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
-    const [supportOpen, setSupportOpen] = useState(false);
     const [isProfileOpen, setIsProfileOpen] = useState(false);
     const [isScrolled, setIsScrolled] = useState(false);
 
@@ -61,6 +74,12 @@ export const DashboardLayout = ({ navItems, userRole }: DashboardLayoutProps) =>
     const toggleTheme = () => {
         setTheme(theme === 'dark' ? 'light' : 'dark');
     };
+
+    // Normalize the current path (strip trailing slash, keep root) and decide
+    // whether the footer should render on this exact page for this role.
+    const normalizedPath =
+        location.pathname.length > 1 ? location.pathname.replace(/\/+$/, '') : location.pathname;
+    const showFooter = (FOOTER_PATHS[userRole] || []).includes(normalizedPath);
 
     if (isLoading) {
         return <div className="min-h-screen bg-zinc-50 dark:bg-black" />; // Prevent flicker
@@ -168,19 +187,7 @@ export const DashboardLayout = ({ navItems, userRole }: DashboardLayoutProps) =>
 
                     {/* 3. Right Side: Theme + Profile */}
                     <div className="flex items-center gap-4">
-
-                        {/* Contact Support */}
-                        <Button
-                            variant="ghost"
-                            size="icon"
-                            title="Contact Support"
-                            aria-label="Contact Support"
-                            onClick={() => setSupportOpen(true)}
-                            className="rounded-full text-zinc-900 dark:text-white hover:bg-zinc-200 dark:hover:bg-white/20 transition-colors focus-visible:ring-0 focus-visible:ring-offset-0"
-                        >
-                            <LifeBuoy className="w-4 h-4" />
-                        </Button>
-
+                        
                         {/* Theme Toggle */}
                         <Button variant="ghost" size="icon" onClick={(e) => {
                             if (!document.startViewTransition) {
@@ -371,16 +378,6 @@ export const DashboardLayout = ({ navItems, userRole }: DashboardLayoutProps) =>
                                         Profile Settings
                                     </Link>
                                 )}
-                                <button
-                                    className="flex items-center gap-3 w-full px-4 py-3 text-sm text-zinc-600 dark:text-zinc-300 hover:bg-zinc-50 dark:hover:bg-white/5 rounded-lg transition-colors font-medium border border-transparent hover:border-zinc-200 dark:hover:border-white/10"
-                                    onClick={() => {
-                                        setMobileMenuOpen(false);
-                                        setSupportOpen(true);
-                                    }}
-                                >
-                                    <LifeBuoy className="w-4 h-4" />
-                                    Contact Support
-                                </button>
                                 <button 
                                     className="flex items-center gap-3 w-full px-4 py-3 text-sm text-red-500 hover:bg-red-50 dark:hover:bg-red-950/20 rounded-lg transition-colors font-medium border border-transparent hover:border-red-200 dark:hover:border-red-900/30"
                                     onClick={() => {
@@ -401,8 +398,8 @@ export const DashboardLayout = ({ navItems, userRole }: DashboardLayoutProps) =>
                 <Outlet />
             </main>
 
-            {/* Global Contact Support dialog (dashboard-level, no report linked) */}
-            <ContactSupportDialog open={supportOpen} onOpenChange={setSupportOpen} />
+            {/* 4. Footer (only on whitelisted pages per role) */}
+            {showFooter && <DashboardFooter userRole={userRole} />}
 
         </div>
     );

@@ -7,7 +7,8 @@ import {
     Wallet, 
     Trophy, 
     User,
-    Shield
+    Shield,
+    LifeBuoy
 } from 'lucide-react';
 
 const navItems = [
@@ -15,6 +16,7 @@ const navItems = [
   { label: 'My Reports', path: '/researcher/reports', icon: FileText },
   { label: 'Wallet', path: '/researcher/wallet', icon: Wallet },
   { label: 'Leaderboard', path: '/researcher/leaderboard', icon: Trophy },
+  { label: 'Support', path: '/researcher/support', icon: LifeBuoy },
 ];
 
 export default function ResearcherLayout() {

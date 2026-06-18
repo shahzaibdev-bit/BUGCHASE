@@ -11,6 +11,7 @@ import Notification from '../models/Notification';
 import { sendEmail, reportEmailTemplate } from '../services/emailService';
 import { generateReportSummary } from '../services/geminiService';
 import { getIO } from '../services/socketService';
+import { isReportThreadLocked, REPORT_THREAD_LOCKED_MESSAGE } from '../services/disputeReportLinkService';
 import {
   runInitialDuplicateScanForNewReport,
   pruneDuplicateCandidatesNotOlderThanSelf,
@@ -166,7 +167,10 @@ export const getAssignedReports = catchAsync(async (req: Request, res: Response,
 
     // Fetch reports assigned to me
     const reports = await Report.find({
-        triagerId: triagerId
+        $or: [
+            { triagerId: triagerId },
+            { 'triagerParticipants.triagerId': triagerId },
+        ],
     })
     .populate('researcherId', 'username name avatar') // Get researcher details
     .sort('-updatedAt'); // Sort by recent activity
@@ -444,6 +448,10 @@ export const postComment = catchAsync(async (req: Request, res: Response, next: 
     
     const report = await Report.findById(id);
     if (!report) return next(new AppError('Report not found', 404));
+
+    if (isReportThreadLocked(report.status)) {
+        return next(new AppError(REPORT_THREAD_LOCKED_MESSAGE, 403));
+    }
 
     // Process uploaded files if any
     const uploadedUrls: string[] = [];

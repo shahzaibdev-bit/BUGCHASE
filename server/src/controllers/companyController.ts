@@ -10,6 +10,7 @@ import { sendEmail, inviteMemberTemplate, reportEmailTemplate, walletTopUpTempla
 import { suggestBountyAmount, generateReportMessage as geminiGenerateMessage } from '../services/geminiService';
 import { getIO } from '../services/socketService';
 import { uploadToCloudinary } from '../utils/cloudinary';
+import { isReportThreadLocked, REPORT_THREAD_LOCKED_MESSAGE } from '../services/disputeReportLinkService';
 import Transaction from '../models/Transaction';
 import redisClient from '../config/redis';
 import {
@@ -818,6 +819,10 @@ export const addCompanyComment = catchAsync(async (req: Request, res: Response, 
 
     if (!report) {
          return next(new AppError('Report not found', 404));
+    }
+
+    if (isReportThreadLocked(report.status)) {
+        return next(new AppError(REPORT_THREAD_LOCKED_MESSAGE, 403));
     }
 
     // Permission Check: Verify company owns the program (simplified access check based on getReport/updateReportSeverity)
