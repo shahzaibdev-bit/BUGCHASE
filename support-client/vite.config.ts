@@ -5,8 +5,7 @@ import path from "path";
 export default defineConfig(({ mode }) => {
   if (mode === "production" && !process.env.VITE_API_URL?.trim()) {
     console.warn(
-      "\n⚠️  [support-client] VITE_API_URL is not set. Production builds will call /api on support.bugchase.com and get 404.\n" +
-        "   Set VITE_API_URL in Vercel → Environment Variables (e.g. https://YOUR-SERVER.vercel.app/api) and redeploy.\n"
+      "\n[support-client] VITE_API_URL is not set — production will use /api via vercel.json proxy to bugchase-server.vercel.app.\n"
     );
   }
 

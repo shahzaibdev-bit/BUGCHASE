@@ -1,9 +1,8 @@
 /**
  * API base URL for the support portal.
  *
- * Production (Vercel): MUST set VITE_API_URL to your live backend, e.g.
- *   https://your-api-host.vercel.app/api
- *   https://api.bugchase.com/api
+ * Production (Vercel): set VITE_API_URL to your live backend, or leave unset and
+ * rely on support-client/vercel.json proxying /api → bugchase-server.vercel.app.
  *
  * Local dev: leave unset — Vite proxies /api → http://localhost:5000
  */
@@ -22,6 +21,5 @@ function resolveApiUrl(): string {
 
 export const API_URL = resolveApiUrl();
 
-/** True when the built app has no explicit backend URL (will 404 on Vercel). */
-export const isApiMisconfigured =
-  import.meta.env.PROD && !import.meta.env.VITE_API_URL?.trim();
+/** Legacy warning — production uses vercel.json /api proxy when VITE_API_URL is unset. */
+export const isApiMisconfigured = false;
