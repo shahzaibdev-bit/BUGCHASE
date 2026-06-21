@@ -113,7 +113,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const refreshUser = useCallback(async (): Promise<SupportUser | null> => {
     try {
-      if (!localStorage.getItem('support_token')) return null;
       return await fetchCurrentUser();
     } catch {
       return null;

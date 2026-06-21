@@ -9,6 +9,7 @@ import { ThemeToggle } from '@/components/ThemeToggle';
 import { GoogleLoginButton } from '@/components/GoogleLoginButton';
 import AnimatedBackground from '@/components/effects/AnimatedBackground';
 import { useAuth } from '@/contexts/AuthContext';
+import { isApiMisconfigured } from '@/config';
 
 export function LoginPage() {
   const navigate = useNavigate();
@@ -106,6 +107,13 @@ export function LoginPage() {
                   </div>
                   <div className="w-2 h-2 bg-zinc-900 dark:bg-white rounded-full animate-pulse shadow-[0_0_10px_rgba(0,0,0,0.5)] dark:shadow-[0_0_10px_white]" />
                 </div>
+
+                {isApiMisconfigured && (
+                  <div className="mb-4 rounded-lg border border-amber-300 dark:border-amber-500/40 bg-amber-50 dark:bg-amber-500/10 px-3 py-2.5 text-xs font-mono text-amber-900 dark:text-amber-100 leading-relaxed">
+                    API not configured: set <strong>VITE_API_URL</strong> in Vercel to your live backend (e.g.{' '}
+                    <code className="text-[10px]">https://your-api.vercel.app/api</code>) and redeploy.
+                  </div>
+                )}
 
                 <form onSubmit={handleSubmit} className="space-y-4">
                   <div className="space-y-1.5">

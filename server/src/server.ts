@@ -19,6 +19,7 @@ import programRoutes from './routes/programRoutes';
 import publicRoutes from './routes/publicRoutes';
 import disputeRoutes from './routes/disputeRoutes';
 import { rateLimiter } from './middlewares/rateLimit';
+import { isOriginAllowed } from './config/corsOrigins';
 
 // Load env vars
 dotenv.config(); // Reload env
@@ -41,46 +42,19 @@ const app = express();
 // Trust Proxy for Vercel
 app.set('trust proxy', 1);
 
-// Set security HTTP headers
-app.use(helmet());
+// Set security HTTP headers (allow cross-origin API use from BugChase frontends).
+app.use(
+  helmet({
+    crossOriginResourcePolicy: { policy: 'cross-origin' },
+    // Google Identity Services (support portal login) uses postMessage from popups/iframes.
+    crossOriginOpenerPolicy: { policy: 'same-origin-allow-popups' },
+  }),
+);
 
-// Cross-Origin Resource Sharing
-const allowedOrigins = new Set([
-  'http://localhost:3000',
-  'http://localhost:3100',
-  'http://localhost:3101',
-  'http://127.0.0.1:3101',
-  'http://localhost:5173',
-  'https://bugchase-client.vercel.app',
-  'https://bugchase.imkasim.xyz',
-  'https://bugchase.com',
-  'https://www.bugchase.com',
-]);
-
-if (process.env.CLIENT_URL) {
-  process.env.CLIENT_URL.split(',')
-    .map((origin) => origin.trim().replace(/\/$/, ''))
-    .filter(Boolean)
-    .forEach((origin) => allowedOrigins.add(origin));
-}
-
-// Patterns for dynamic origins (Vercel preview URLs + any bugchase.com subdomain).
-const dynamicOriginPatterns: RegExp[] = [
-  /^https:\/\/bugchase-client-[a-z0-9-]+\.vercel\.app$/i,
-  /^https:\/\/([a-z0-9-]+\.)*bugchase\.com$/i,
-];
-
+// Cross-Origin Resource Sharing — see config/corsOrigins.ts
 const corsOptions: cors.CorsOptions = {
   origin(origin, callback) {
-    // Allow same-origin/server-to-server requests with no Origin header.
-    if (!origin) return callback(null, true);
-
-    const normalizedOrigin = origin.replace(/\/$/, '');
-    const isAllowed =
-      allowedOrigins.has(normalizedOrigin) ||
-      dynamicOriginPatterns.some((pattern) => pattern.test(normalizedOrigin));
-
-    if (isAllowed) return callback(null, true);
+    if (isOriginAllowed(origin)) return callback(null, true);
     return callback(new AppError(`CORS blocked origin: ${origin}`, 403));
   },
   credentials: true,
