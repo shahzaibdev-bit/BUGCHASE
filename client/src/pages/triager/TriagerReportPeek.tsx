@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { ArrowLeft, Eye } from 'lucide-react';
-import { API_URL } from '@/config';
+import { apiFetchJson } from '@/lib/api';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Separator } from '@/components/ui/separator';
@@ -25,13 +25,7 @@ export default function TriagerReportPeek() {
     const load = async () => {
       if (!id) return;
       try {
-        const token = localStorage.getItem('token');
-        const res = await fetch(`${API_URL}/triager/reports/${id}`, {
-          headers: { Authorization: `Bearer ${token}` },
-        });
-        const data = await res.json();
-        if (!res.ok) throw new Error(data?.message || 'Failed to load report');
-
+        const data = await apiFetchJson<{ data: { report: any }; message?: string }>(`/triager/reports/${id}`);
         const r = data.data.report;
         setReport(r);
 
@@ -58,8 +52,7 @@ export default function TriagerReportPeek() {
           content: c.content,
           attachments: c.attachments || [],
           timestamp: c.createdAt,
-          metadata: c.metadata || {},
-        }));
+          metadata: c.metadata || {} }));
 
         const submissionEvent: ReportTimelineEvent = {
           id: 'submission',
@@ -68,8 +61,7 @@ export default function TriagerReportPeek() {
           authorAvatar: r.researcherId?.avatar,
           role: 'Researcher',
           content: `Submission: **${r.title}**`,
-          timestamp: r.createdAt,
-        };
+          timestamp: r.createdAt };
 
         setTimeline([submissionEvent, ...comments]);
       } catch (e: any) {

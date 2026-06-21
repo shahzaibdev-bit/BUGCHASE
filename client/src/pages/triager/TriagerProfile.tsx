@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect, useMemo } from 'react';
+import { apiFetch } from '@/lib/api';
 import { useNavigate } from 'react-router-dom';
 import { 
   Shield, 
@@ -188,7 +189,7 @@ const countries = [
           
           // Fetch Triager Stats
           const token = localStorage.getItem('token');
-          fetch(`${API_URL}/triager/profile`, { 
+          apiFetch(`/triager/profile`, { 
             headers: { 'Authorization': `Bearer ${token}` } 
           })
             .then(res => res.json())
@@ -209,7 +210,7 @@ const countries = [
       setLoginHistoryLoading(true);
       try {
         const token = localStorage.getItem('token');
-        const res = await fetch(`${API_URL}/auth/login-history`, {
+        const res = await apiFetch(`/auth/login-history`, {
           headers: token ? { Authorization: `Bearer ${token}` } : {},
           credentials: 'include',
         });
@@ -235,7 +236,7 @@ const countries = [
       setInAppNotificationsLoading(true);
       try {
         const token = localStorage.getItem('token');
-        const res = await fetch(`${API_URL}/users/notifications`, {
+        const res = await apiFetch(`/users/notifications`, {
           headers: token ? { Authorization: `Bearer ${token}` } : {},
           credentials: 'include',
         });
@@ -284,7 +285,7 @@ const countries = [
     if (!row.read) {
       try {
         const token = localStorage.getItem('token');
-        const res = await fetch(`${API_URL}/users/notifications/${row.id}/read`, {
+        const res = await apiFetch(`/users/notifications/${row.id}/read`, {
           method: 'PATCH',
           headers: token ? { Authorization: `Bearer ${token}` } : {},
           credentials: 'include',
@@ -303,7 +304,7 @@ const countries = [
     setTwoFaSetupBusy(true);
     try {
       const token = localStorage.getItem('token');
-      const res = await fetch(`${API_URL}/auth/2fa/setup`, {
+      const res = await apiFetch(`/auth/2fa/setup`, {
         method: 'POST',
         headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
         credentials: 'include',
@@ -325,7 +326,7 @@ const countries = [
     setTwoFaBusy(true);
     try {
       const token = localStorage.getItem('token');
-      const res = await fetch(`${API_URL}/auth/2fa/enable`, {
+      const res = await apiFetch(`/auth/2fa/enable`, {
         method: 'POST',
         headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
         credentials: 'include',
@@ -350,7 +351,7 @@ const countries = [
     setTwoFaBusy(true);
     try {
       const token = localStorage.getItem('token');
-      const res = await fetch(`${API_URL}/auth/2fa/disable`, {
+      const res = await apiFetch(`/auth/2fa/disable`, {
         method: 'POST',
         headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
         credentials: 'include',
@@ -407,7 +408,7 @@ const countries = [
 
       setIsUploading(true);
       try {
-          const res = await fetch(`${API_URL}/users/upload-avatar`, {
+          const res = await apiFetch(`/users/upload-avatar`, {
               method: 'POST',
               body: formData,
           });
@@ -451,7 +452,7 @@ const countries = [
         };
 
         const token = localStorage.getItem('token');
-        const res = await fetch(`${API_URL}/auth/update-me`, {
+        const res = await apiFetch(`/auth/update-me`, {
             method: 'PATCH',
             headers: { 
                 'Content-Type': 'application/json',
@@ -495,7 +496,7 @@ const countries = [
     setIsUpdatingPassword(true);
     try {
         const token = localStorage.getItem('token');
-        const res = await fetch(`${API_URL}/auth/update-password`, {
+        const res = await apiFetch(`/auth/update-password`, {
             method: 'PATCH',
             headers: { 
                 'Content-Type': 'application/json',
@@ -559,13 +560,13 @@ const countries = [
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
         
         {/* === LEFT COLUMN (2/3) - Tab Content === */}
-        <div className="lg:col-span-2 space-y-8 min-h-[500px]">
+        <div className="lg:col-span-2 space-y-8 min-h-[500px] min-w-0">
             
             {/* --- ACCOUNT TAB --- */}
             {activeTab === 'account' && (
                 <div className="space-y-8 animate-in fade-in slide-in-from-left-4 duration-300">
                     {/* General Info */}
-                    <section className="bg-white dark:bg-zinc-900/50 border border-zinc-200 dark:border-zinc-800 rounded-2xl p-6 backdrop-blur-sm">
+                    <section className="bg-white dark:bg-zinc-900/50 border border-zinc-200 dark:border-zinc-800 rounded-2xl p-6 backdrop-blur-sm overflow-hidden">
                         <div className="flex items-center justify-between mb-6">
                             <h2 className="text-xl font-bold text-zinc-900 dark:text-white flex items-center gap-2">
                                 General info
@@ -578,7 +579,7 @@ const countries = [
                             )}
                         </div>
 
-                        <div className="flex flex-col md:flex-row gap-8 items-start">
+                        <div className="flex flex-col md:flex-row gap-8 items-start min-w-0">
                             {/* Avatar Section */}
                             <div className="flex flex-col items-center gap-3 w-full md:w-auto">
                                 <div 
@@ -630,7 +631,7 @@ const countries = [
                             </div>
 
                             {/* Inputs or Read-only View */}
-                            <div className="flex-1 space-y-4 w-full">
+                            <div className="flex-1 min-w-0 space-y-4 w-full">
                                 {editMode.general ? (
                                     <>
                                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -718,27 +719,27 @@ const countries = [
                                         </div>
                                     </>
                                 ) : (
-                                    <div className="space-y-6">
-                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-                                            <div>
+                                    <div className="space-y-6 min-w-0">
+                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-8 min-w-0">
+                                            <div className="min-w-0">
                                                 <span className="text-xs text-zinc-500 uppercase tracking-widest font-semibold block mb-1">Full Name</span>
-                                                <p className="text-lg font-medium text-zinc-900 dark:text-white">{profile.name || 'Not set'}</p>
+                                                <p className="text-lg font-medium text-zinc-900 dark:text-white break-words">{profile.name || 'Not set'}</p>
                                             </div>
-                                            <div>
+                                            <div className="min-w-0">
                                                 <span className="text-xs text-zinc-500 uppercase tracking-widest font-semibold block mb-1">Username</span>
-                                                <p className="text-lg font-medium text-zinc-900 dark:text-white font-mono">@{profile.nickname}</p>
+                                                <p className="text-lg font-medium text-zinc-900 dark:text-white font-mono break-all">@{profile.nickname}</p>
                                             </div>
-                                            <div>
+                                            <div className="min-w-0">
                                                 <span className="text-xs text-zinc-500 uppercase tracking-widest font-semibold block mb-1">Country</span>
-                                                <div className="flex items-center gap-2 text-lg font-medium text-zinc-900 dark:text-white">
-                                                    <span className="text-2xl">{countries.find(c => c.name === profile.country)?.flag || '🌍'}</span>
-                                                    {profile.country || 'Global'}
+                                                <div className="flex items-center gap-2 text-lg font-medium text-zinc-900 dark:text-white min-w-0">
+                                                    <span className="text-2xl shrink-0">{countries.find(c => c.name === profile.country)?.flag || '🌍'}</span>
+                                                    <span className="break-words">{profile.country || 'Global'}</span>
                                                 </div>
                                             </div>
                                         </div>
-                                        <div>
+                                        <div className="min-w-0">
                                             <span className="text-xs text-zinc-500 uppercase tracking-widest font-semibold block mb-1">Bio</span>
-                                            <p className="text-zinc-600 dark:text-zinc-300 leading-relaxed whitespace-pre-wrap">
+                                            <p className="text-zinc-600 dark:text-zinc-300 leading-relaxed whitespace-pre-wrap break-words">
                                                 {profile.bio || 'Tell us about yourself...'}
                                             </p>
                                         </div>
@@ -1126,10 +1127,10 @@ const countries = [
         </div>
 
         {/* === RIGHT COLUMN (1/3) - Widgets (Persist across tabs) === */}
-        <div className="space-y-8">
+        <div className="space-y-8 min-w-0">
             
             {/* Status Card */}
-            <div className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-2xl p-6 text-center relative overflow-hidden">
+            <div className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-2xl p-6 text-center relative overflow-hidden min-w-0">
                 <div className="absolute top-0 inset-x-0 h-1 bg-gradient-to-r from-zinc-300 via-zinc-500 to-zinc-300 dark:from-zinc-700 dark:via-zinc-500 dark:to-zinc-700" />
                 
                 <div className="relative inline-block mb-3">
@@ -1149,7 +1150,7 @@ const countries = [
                     </div>
                 </div>
 
-                <h3 className="text-lg font-bold text-zinc-900 dark:text-white">@{profile.nickname}</h3>
+                <h3 className="text-lg font-bold text-zinc-900 dark:text-white break-all leading-snug px-1">@{profile.nickname}</h3>
                 <p className="text-zinc-500 text-sm mb-4">Triager Level 3</p>
 
                 <div className="bg-zinc-50 dark:bg-zinc-950 rounded-lg p-3 border border-zinc-200 dark:border-zinc-800 mb-4">

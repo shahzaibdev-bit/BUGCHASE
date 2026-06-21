@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { apiFetch } from '@/lib/api';
 import { loadStripe } from '@stripe/stripe-js';
 import {
   Elements,
@@ -168,7 +169,7 @@ function CheckoutForm({
 
     if (paymentIntent?.status === 'succeeded') {
       try {
-        const res = await fetch(`${API_URL}/company/wallet/topup/confirm`, {
+        const res = await apiFetch(`/company/wallet/topup/confirm`, {
           method: 'POST',
           headers: authHeaders(),
           body: JSON.stringify({ paymentIntentId: paymentIntent.id }),
@@ -236,7 +237,7 @@ export default function CompanyEscrow() {
   const fetchTransactions = useCallback(async (page = 1) => {
     setTxLoading(true);
     try {
-      const res = await fetch(`${API_URL}/company/wallet/transactions?page=${page}&limit=${ITEMS_PER_PAGE}`, { headers: authHeaders() });
+      const res = await apiFetch(`/company/wallet/transactions?page=${page}&limit=${ITEMS_PER_PAGE}`, { headers: authHeaders() });
       const data = await res.json();
       if (res.ok) {
         setTransactions(data.data.transactions);
@@ -251,7 +252,7 @@ export default function CompanyEscrow() {
   const fetchPaymentMethods = useCallback(async () => {
     setPmLoading(true);
     try {
-      const res = await fetch(`${API_URL}/company/wallet/payment-methods`, { headers: authHeaders() });
+      const res = await apiFetch(`/company/wallet/payment-methods`, { headers: authHeaders() });
       const data = await res.json();
       if (res.ok) setPaymentMethods(data.data.paymentMethods);
     } finally {
@@ -269,7 +270,7 @@ export default function CompanyEscrow() {
   const handleOpenLinkAccount = async () => {
     setIntentLoading(true);
     try {
-      const res = await fetch(`${API_URL}/company/wallet/setup-intent`, {
+      const res = await apiFetch(`/company/wallet/setup-intent`, {
         method: 'POST',
         headers: authHeaders(),
       });
@@ -288,7 +289,7 @@ export default function CompanyEscrow() {
     if (amountToFund < 100) { toast.error('Minimum top-up is PKR 100'); return; }
     setIntentLoading(true);
     try {
-      const res = await fetch(`${API_URL}/company/wallet/topup/intent`, {
+      const res = await apiFetch(`/company/wallet/topup/intent`, {
         method: 'POST',
         headers: authHeaders(),
         body: JSON.stringify({ amount: amountToFund, paymentMethodId: selectedPmId }),
@@ -362,7 +363,7 @@ export default function CompanyEscrow() {
     setOtpCode(new Array(6).fill(''));
     setIsButtonLoading(pm.id);
     try {
-      const res = await fetch(`${API_URL}/company/wallet/payment-methods/otp`, {
+      const res = await apiFetch(`/company/wallet/payment-methods/otp`, {
         method: 'POST', headers: authHeaders(),
       });
       const data = await res.json();
@@ -382,7 +383,7 @@ export default function CompanyEscrow() {
     setIsOtpLoading(true);
     try {
       // 1. Verify OTP
-      const verifyRes = await fetch(`${API_URL}/company/wallet/payment-methods/verify-otp`, {
+      const verifyRes = await apiFetch(`/company/wallet/payment-methods/verify-otp`, {
         method: 'POST', headers: authHeaders(), body: JSON.stringify({ otp: finalOtp }),
       });
       const verifyData = await verifyRes.json();
@@ -392,7 +393,7 @@ export default function CompanyEscrow() {
         return;
       }
       // 2. Delete
-      const deleteRes = await fetch(`${API_URL}/company/wallet/payment-methods/${pmToDelete.id}`, {
+      const deleteRes = await apiFetch(`/company/wallet/payment-methods/${pmToDelete.id}`, {
         method: 'DELETE', headers: authHeaders(),
       });
       const deleteData = await deleteRes.json();

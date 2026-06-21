@@ -10,13 +10,12 @@ import {
   SelectContent,
   SelectItem,
   SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
+  SelectValue } from '@/components/ui/select';
 
 
 
 import { useAuth } from '@/contexts/AuthContext';
-import { API_URL } from '@/config';
+import { apiFetch } from '@/lib/api';
 
 export default function TriagerAssigned() {
   const navigate = useNavigate();
@@ -30,10 +29,7 @@ export default function TriagerAssigned() {
       console.log("DEBUG: Current User in Frontend:", user);
       const fetchReports = async () => {
           try {
-              const token = localStorage.getItem('token');
-              const res = await fetch(`${API_URL}/triager/assigned`, {
-                  headers: { 'Authorization': `Bearer ${token}` }
-              });
+              const res = await apiFetch('/triager/assigned');
               const data = await res.json();
               console.log("DEBUG: API Response:", data);
               if (data.status === 'success') {
@@ -198,11 +194,8 @@ export default function TriagerAssigned() {
                                 e.stopPropagation();
                                 if(!confirm('Are you sure you want to reopen this report?')) return;
                                 try {
-                                    const token = localStorage.getItem('token');
-                                    const res = await fetch(`${API_URL}/triager/reports/${report._id}/reopen`, {
-                                        method: 'POST',
-                                        headers: { 'Authorization': `Bearer ${token}` }
-                                    });
+                                    const res = await apiFetch(`/triager/reports/${report._id}/reopen`, {
+                                        method: 'POST' });
                                     if(res.ok) {
                                         // Simple refresh
                                         window.location.reload(); 

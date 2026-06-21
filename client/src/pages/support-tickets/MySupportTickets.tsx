@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { apiFetch } from '@/lib/api';
 import { useNavigate } from 'react-router-dom';
 import { LifeBuoy, ChevronRight, Lock, MessageSquare } from 'lucide-react';
 import { API_URL } from '@/config';
@@ -22,7 +23,7 @@ export default function MySupportTickets() {
     (async () => {
       try {
         const token = localStorage.getItem('token');
-        const res = await fetch(`${API_URL}/disputes/mine`, {
+        const res = await apiFetch(`/disputes/mine`, {
           headers: token ? { Authorization: `Bearer ${token}` } : {},
           credentials: 'include',
         });

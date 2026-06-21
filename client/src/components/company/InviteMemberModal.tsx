@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { apiFetch } from '@/lib/api';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -61,7 +62,7 @@ export function InviteMemberModal({ isOpen, onClose, onInviteSuccess, companyNam
             const prefix = companyName.toLowerCase().replace(/[^a-z0-9]/g, '');
             const fullUsername = `${prefix}@${generatedUsername}`;
 
-            const res = await fetch(`${API_URL}/company/invite`, {
+            const res = await apiFetch(`/company/invite`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({

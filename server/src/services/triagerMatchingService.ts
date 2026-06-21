@@ -156,7 +156,7 @@ export const searchTriagerCandidates = async (
         _id: id,
         name,
         reason: 'current_assignee',
-        detail: 'Already the primary triager on this report.',
+        detail: 'Already assigned to this report.',
         expertise,
       });
       continue;
@@ -219,3 +219,28 @@ export const searchTriagerCandidates = async (
 export const generateInviteToken = () => crypto.randomBytes(32).toString('hex');
 
 export const INVITE_TTL_MS = 48 * 60 * 60 * 1000;
+
+/** Normalize populated or raw ObjectId user refs to a string id. */
+export const resolveUserRefId = (ref: unknown): string | null => {
+  if (!ref) return null;
+  if (typeof ref === 'string') return ref;
+  if (typeof ref === 'object' && ref !== null && '_id' in ref) {
+    const id = (ref as { _id?: unknown })._id;
+    return id != null ? String(id) : null;
+  }
+  return String(ref);
+};
+
+export const collectReportTriagerIdsToExclude = (report: {
+  triagerId?: unknown;
+  triagerParticipants?: Array<{ triagerId?: unknown }>;
+}): string[] => {
+  const ids = new Set<string>();
+  const primary = resolveUserRefId(report.triagerId);
+  if (primary) ids.add(primary);
+  for (const p of report.triagerParticipants || []) {
+    const pid = resolveUserRefId(p.triagerId);
+    if (pid) ids.add(pid);
+  }
+  return [...ids];
+};

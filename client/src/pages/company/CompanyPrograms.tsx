@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { apiFetch } from '@/lib/api';
 import { useNavigate } from 'react-router-dom';
 import { Plus, Search, Globe, Lock, Users, Banknote, Calendar, MoreVertical, Edit, Trash2, Eye, ShieldAlert } from 'lucide-react';
 import { GlassCard } from '@/components/ui/glass-card';
@@ -33,8 +34,8 @@ export default function CompanyPrograms() {
          const token = localStorage.getItem('token');
          const headers = { 'Authorization': `Bearer ${token}` };
          const [assetsRes, programsRes] = await Promise.all([
-             fetch(`${API_URL}/company/assets`, { headers }),
-             fetch(`${API_URL}/company/programs`, { headers })
+             apiFetch(`/company/assets`, { headers }),
+             apiFetch(`/company/programs`, { headers })
          ]);
 
          const assetsData = await assetsRes.json();
@@ -66,7 +67,7 @@ export default function CompanyPrograms() {
 
     try {
       const token = localStorage.getItem('token');
-      const response = await fetch(`${API_URL}/company/programs/${programId}`, {
+      const response = await apiFetch(`/company/programs/${programId}`, {
         method: 'DELETE',
         headers: {
           'Authorization': `Bearer ${token}`

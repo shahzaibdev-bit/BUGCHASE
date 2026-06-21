@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { apiFetch } from '@/lib/api';
 import { useNavigate, useParams, useLocation } from 'react-router-dom';
 import { ArrowLeft, Clock, CheckCircle, XCircle, Calculator, Send, Pencil } from 'lucide-react';
 import { io } from 'socket.io-client';
@@ -101,7 +102,7 @@ export default function AdminReportDetails() {
   const fetchReport = async () => {
     try {
       const token = localStorage.getItem('token');
-      const res = await fetch(`${API_URL}/admin/reports/${id}`, { headers: { Authorization: `Bearer ${token}` } });
+      const res = await apiFetch(`/admin/reports/${id}`, { headers: { Authorization: `Bearer ${token}` } });
       const data = await res.json();
       if (!res.ok) throw new Error(data.message || 'Failed to load report');
       const r = data.data.report;
@@ -196,7 +197,7 @@ export default function AdminReportDetails() {
     if (!editorContent.trim()) return;
     try {
       const token = localStorage.getItem('token');
-      const res = await fetch(`${API_URL}/admin/reports/${id}/comments`, {
+      const res = await apiFetch(`/admin/reports/${id}/comments`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
         body: JSON.stringify({ content: editorContent }),
@@ -213,7 +214,7 @@ export default function AdminReportDetails() {
   const changeStatus = async (status: string) => {
     try {
       const token = localStorage.getItem('token');
-      const res = await fetch(`${API_URL}/admin/reports/${id}/status`, {
+      const res = await apiFetch(`/admin/reports/${id}/status`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
         body: JSON.stringify({ status }),
@@ -232,7 +233,7 @@ export default function AdminReportDetails() {
     const severity = score >= 9 ? 'Critical' : score >= 7 ? 'High' : score >= 4 ? 'Medium' : 'Low';
     try {
       const token = localStorage.getItem('token');
-      const res = await fetch(`${API_URL}/admin/reports/${id}/severity`, {
+      const res = await apiFetch(`/admin/reports/${id}/severity`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
         body: JSON.stringify({ cvssVector: vector, cvssScore: score, severity }),
@@ -262,7 +263,7 @@ export default function AdminReportDetails() {
     setIsSavingField(true);
     try {
       const token = localStorage.getItem('token');
-      const res = await fetch(`${API_URL}/admin/reports/${id}`, {
+      const res = await apiFetch(`/admin/reports/${id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
         body: JSON.stringify({ [editingField]: fieldDraft }),

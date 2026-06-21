@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { apiFetch } from '@/lib/api';
 import { io as socketIO } from 'socket.io-client';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
@@ -253,7 +254,7 @@ export default function CompanyReportDetails() {
       try {
           setAiSuggestionLoading(true);
           const token = localStorage.getItem('token');
-          const res = await fetch(`${API_URL}/company/reports/${id}/suggest-bounty`, {
+          const res = await apiFetch(`/company/reports/${id}/suggest-bounty`, {
               method: 'POST',
               headers: { 
                   'Authorization': `Bearer ${token}`
@@ -283,7 +284,7 @@ export default function CompanyReportDetails() {
       try {
           setIsGeneratingContent(true);
           const token = localStorage.getItem('token');
-          const res = await fetch(`${API_URL}/company/reports/${id}/generate-message`, {
+          const res = await apiFetch(`/company/reports/${id}/generate-message`, {
               method: 'POST',
               headers: { 
                   'Content-Type': 'application/json',
@@ -318,7 +319,7 @@ export default function CompanyReportDetails() {
   const handleCompanyAction = async (status: ReportStatus, reason?: string) => {
       try {
           const token = localStorage.getItem('token');
-          const res = await fetch(`${API_URL}/company/reports/${id}/status`, {
+          const res = await apiFetch(`/company/reports/${id}/status`, {
               method: 'PATCH',
               headers: { 
                   'Content-Type': 'application/json',
@@ -368,7 +369,7 @@ export default function CompanyReportDetails() {
           
           setIsSubmitting(true);
           const token = localStorage.getItem('token');
-          const res = await fetch(`${API_URL}/company/reports/${id}/bounty`, {
+          const res = await apiFetch(`/company/reports/${id}/bounty`, {
               method: 'POST',
               headers: { 
                   'Content-Type': 'application/json',
@@ -415,7 +416,7 @@ export default function CompanyReportDetails() {
       let statusChanged = false;
       if (String(reportState.status).trim().toLowerCase() !== 'resolved') {
         const token = localStorage.getItem('token');
-        const resolveRes = await fetch(`${API_URL}/company/reports/${id}/status`, {
+        const resolveRes = await apiFetch(`/company/reports/${id}/status`, {
             method: 'PATCH',
             headers: {
                 'Content-Type': 'application/json',
@@ -439,7 +440,7 @@ export default function CompanyReportDetails() {
       formData.append('certificateId', certificateId);
 
       const token = localStorage.getItem('token');
-      const commentRes = await fetch(`${API_URL}/company/reports/${id}/comments`, {
+      const commentRes = await apiFetch(`/company/reports/${id}/comments`, {
           method: 'POST',
           headers: {
               'Authorization': `Bearer ${token}`
@@ -477,7 +478,7 @@ export default function CompanyReportDetails() {
   const fetchReport = async () => {
     try {
       setLoading(true);
-      const res = await fetch(`${API_URL}/company/reports/${id}`, {
+      const res = await apiFetch(`/company/reports/${id}`, {
         credentials: 'include',
       });
       const data = await res.json();
@@ -586,7 +587,7 @@ export default function CompanyReportDetails() {
     setIsSubmitting(true);
 
     try {
-      const res = await fetch(`${API_URL}/company/reports/${id}/comments`, {
+      const res = await apiFetch(`/company/reports/${id}/comments`, {
         method: 'POST',
         credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
@@ -621,7 +622,7 @@ export default function CompanyReportDetails() {
       try {
           const token = localStorage.getItem('token');
           const severity = score >= 9 ? 'Critical' : score >= 7 ? 'High' : score >= 4 ? 'Medium' : 'Low';
-          const res = await fetch(`${API_URL}/company/reports/${id}/severity`, {
+          const res = await apiFetch(`/company/reports/${id}/severity`, {
               method: 'PATCH',
               headers: { 
                   'Content-Type': 'application/json',

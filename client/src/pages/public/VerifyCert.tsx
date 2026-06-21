@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { apiFetch } from '@/lib/api';
 import { useParams } from 'react-router-dom';
 import { Search, ShieldCheck, XCircle, Award, Calendar, Building2, UserCircle, AlertTriangle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -36,7 +37,7 @@ export default function VerifyCert() {
     setCertData(null);
 
     try {
-      const res = await fetch(`${API_URL}/public/verify-cert/${encodeURIComponent(sanitizedId)}`);
+      const res = await apiFetch(`/public/verify-cert/${encodeURIComponent(sanitizedId)}`);
       const data = await res.json();
 
       if (res.ok && data.status === 'success') {

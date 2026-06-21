@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { apiFetch } from '@/lib/api';
 import {
   Headphones,
   Search,
@@ -49,7 +50,7 @@ export default function AdminSupport() {
     setIsLoading(true);
     try {
         const token = localStorage.getItem('token');
-        const res = await fetch(`${API_URL}/admin/support`, {
+        const res = await apiFetch(`/admin/support`, {
             headers: { 'Authorization': `Bearer ${token}` }
         });
         const data = await res.json();

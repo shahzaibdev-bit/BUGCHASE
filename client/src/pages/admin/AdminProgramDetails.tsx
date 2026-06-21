@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import { apiFetch } from '@/lib/api';
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import {
   ArrowLeft,
@@ -100,7 +101,7 @@ export default function AdminProgramDetails() {
     setIsLoading(true);
     try {
       const token = localStorage.getItem('token');
-      const adminRes = await fetch(`${API_URL}/admin/programs/${id}`, {
+      const adminRes = await apiFetch(`/admin/programs/${id}`, {
         headers: { Authorization: `Bearer ${token}` },
       });
       const adminData = await adminRes.json();
@@ -123,7 +124,7 @@ export default function AdminProgramDetails() {
   const patchProgram = useCallback(
     async (body: Record<string, unknown>) => {
       const token = localStorage.getItem('token');
-      const res = await fetch(`${API_URL}/admin/programs/${id}`, {
+      const res = await apiFetch(`/admin/programs/${id}`, {
         method: 'PATCH',
         headers: {
           'Content-Type': 'application/json',
@@ -231,7 +232,7 @@ export default function AdminProgramDetails() {
     const token = localStorage.getItem('token');
     let res: Response;
     try {
-      res = await fetch(`${API_URL}/admin/programs/${id}/status`, {
+      res = await apiFetch(`/admin/programs/${id}/status`, {
         method: 'PATCH',
         headers: {
           'Content-Type': 'application/json',

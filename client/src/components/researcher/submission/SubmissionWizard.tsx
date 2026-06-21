@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { apiFetch } from '@/lib/api';
 import { SubmissionData, STEPS } from './types';
 import { StepSidebar } from './StepSidebar';
 import { StepClassification } from './StepClassification';
@@ -46,7 +47,7 @@ export const SubmissionWizard = () => {
         const fetchProgram = async () => {
             setLoadingProgram(true);
             try {
-                const res = await fetch(`${API_URL}/programs/${programId}`);
+                const res = await apiFetch(`/programs/${programId}`);
                 if (res.ok) {
                     const json = await res.json();
                     if (json.data && json.data.program && json.data.program.scope) {
@@ -129,7 +130,7 @@ export const SubmissionWizard = () => {
                 });
             }
 
-            const res = await fetch(`${API_URL}/reports`, {
+            const res = await apiFetch(`/reports`, {
                 method: 'POST',
                 headers,
                 credentials: 'include',

@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import { apiFetch } from '@/lib/api';
 import { Link } from 'react-router-dom';
 import { 
   Radar, 
@@ -185,7 +186,7 @@ export default function CompanyAssets() {
     setIsLoadingAssets(true);
     try {
       const token = localStorage.getItem('token');
-      const res = await fetch(`${API_URL}/company/assets`, {
+      const res = await apiFetch(`/company/assets`, {
         headers: { Authorization: `Bearer ${token}` },
       });
       const data = await res.json();
@@ -299,7 +300,7 @@ export default function CompanyAssets() {
 
     try {
       const token = localStorage.getItem('token');
-      const res = await fetch(`${API_URL}/company/assets/discovery-scan`, {
+      const res = await apiFetch(`/company/assets/discovery-scan`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -408,7 +409,7 @@ export default function CompanyAssets() {
 
         try {
             const token = localStorage.getItem('token');
-            await fetch(`${API_URL}/company/assets/${rootVerifiedDomain.id}/scope`, {
+            await apiFetch(`/company/assets/${rootVerifiedDomain.id}/scope`, {
                 method: 'PATCH',
                 headers: {
                     'Content-Type': 'application/json',
@@ -443,7 +444,7 @@ export default function CompanyAssets() {
 
     try {
       const token = localStorage.getItem('token');
-      const res = await fetch(`${API_URL}/company/assets/${rootVerifiedDomain.id}/host`, {
+      const res = await apiFetch(`/company/assets/${rootVerifiedDomain.id}/host`, {
         method: 'DELETE',
         headers: {
           'Content-Type': 'application/json',

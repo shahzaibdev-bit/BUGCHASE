@@ -10,6 +10,8 @@ import {
   findEligibleTriagerCandidates,
   generateInviteToken,
   searchTriagerCandidates,
+  collectReportTriagerIdsToExclude,
+  resolveUserRefId,
   INVITE_TTL_MS,
 } from '../services/triagerMatchingService';
 import { restoreLinkedReportAfterDispute } from '../services/disputeReportLinkService';
@@ -94,12 +96,13 @@ export const getTriagerCandidatesForDispute = catchAsync(
     const report = await Report.findById(dispute.reportRef).populate('triagerId', 'name username');
     if (!report) return next(new AppError('Linked report not found', 404));
 
-    const exclude = [report.triagerId?.toString()].filter(Boolean) as string[];
+    const exclude = collectReportTriagerIdsToExclude(report);
     const { assetKey, candidates, ineligible } = await searchTriagerCandidates(report, {
       excludeTriagerIds: exclude,
     });
     const pendingInvite = await getPendingInviteForDispute(dispute._id);
     const currentTriager = report.triagerId as any;
+    const currentTriagerId = resolveUserRefId(report.triagerId);
 
     res.status(200).json({
       status: 'success',
@@ -109,7 +112,7 @@ export const getTriagerCandidatesForDispute = catchAsync(
         ineligible,
         pendingInvite: pendingInvite?.status === 'pending' ? pendingInvite : null,
         canAssign: !pendingInvite || pendingInvite.status !== 'pending',
-        currentTriagerId: report.triagerId ? String(report.triagerId) : null,
+        currentTriagerId,
         currentTriagerName: currentTriager?.name || currentTriager?.username || null,
       },
     });
@@ -137,7 +140,7 @@ export const sendTriagerReassignmentInvite = catchAsync(
       return next(new AppError('Invalid triager selected', 400));
     }
 
-    const exclude = [report.triagerId?.toString()].filter(Boolean) as string[];
+    const exclude = collectReportTriagerIdsToExclude(report);
     const eligible = await findEligibleTriagerCandidates(report, { excludeTriagerIds: exclude });
     const match = eligible.find((c) => c._id === String(triager._id));
     if (!match) {

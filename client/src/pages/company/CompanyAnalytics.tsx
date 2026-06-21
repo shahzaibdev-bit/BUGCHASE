@@ -1,4 +1,5 @@
 import React, { useState, useMemo } from 'react';
+import { apiFetch } from '@/lib/api';
 import { TrendingUp, TrendingDown, Clock, DollarSign, Users, FileText, Calendar as CalendarIcon, X, Ghost } from 'lucide-react';
 import { GlassCard } from '@/components/ui/glass-card';
 import { Badge } from '@/components/ui/badge';
@@ -81,7 +82,7 @@ export default function CompanyAnalytics() {
     const fetchAnalytics = async () => {
       try {
         setIsLoading(true);
-        const res = await fetch(`${API_URL}/company/analytics`, {
+        const res = await apiFetch(`/company/analytics`, {
           headers: {
             'Authorization': `Bearer ${localStorage.getItem('token')}`
           }

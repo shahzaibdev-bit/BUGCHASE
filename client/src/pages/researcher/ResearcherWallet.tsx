@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { apiFetch } from '@/lib/api';
 import { loadStripe } from '@stripe/stripe-js';
 import {
   Elements,
@@ -139,7 +140,7 @@ export default function ResearcherWallet() {
 
   const fetchWalletData = async () => {
       try {
-          const res = await fetch(`${API_URL}/users/wallet`, { headers: authHeaders() });
+          const res = await apiFetch(`/users/wallet`, { headers: authHeaders() });
           if (res.ok) {
               const data = await res.json();
               setWalletBalance(data.data.walletBalance || 0);
@@ -154,7 +155,7 @@ export default function ResearcherWallet() {
 
   const fetchPaymentMethods = async () => {
     try {
-      const res = await fetch(`${API_URL}/users/payout-methods`, { headers: authHeaders() });
+      const res = await apiFetch(`/users/payout-methods`, { headers: authHeaders() });
       if (res.ok) {
         const data = await res.json();
         setPaymentMethods(data.data.methods || []);
@@ -175,7 +176,7 @@ export default function ResearcherWallet() {
   const handleLinkNewMethod = async () => {
     try {
       setIsAddingMethod(true);
-      const res = await fetch(`${API_URL}/users/payout-setup`, {
+      const res = await apiFetch(`/users/payout-setup`, {
         method: 'POST',
         headers: authHeaders(),
       });
@@ -209,7 +210,7 @@ export default function ResearcherWallet() {
 
       setIsWithdrawing(true);
       try {
-          const res = await fetch(`${API_URL}/users/withdraw`, {
+          const res = await apiFetch(`/users/withdraw`, {
               method: 'POST',
               headers: authHeaders(),
               body: JSON.stringify({ amount, paymentMethodId: selectedMethodId })
@@ -292,7 +293,7 @@ export default function ResearcherWallet() {
       setCardToView(method);
       setCode(new Array(6).fill(""));
       setIsOtpLoading(true);
-      const res = await fetch(`${API_URL}/users/payout-methods/otp`, {
+      const res = await apiFetch(`/users/payout-methods/otp`, {
         method: 'POST',
         headers: authHeaders(),
       });
@@ -317,7 +318,7 @@ export default function ResearcherWallet() {
     
     try {
       // 1. Verify OTP
-      const verifyRes = await fetch(`${API_URL}/users/payout-methods/verify-otp`, {
+      const verifyRes = await apiFetch(`/users/payout-methods/verify-otp`, {
         method: 'POST',
         headers: authHeaders(),
         body: JSON.stringify({ otp: finalOtp }),
@@ -331,7 +332,7 @@ export default function ResearcherWallet() {
       }
 
       // 2. Immediate Delete
-      const deleteRes = await fetch(`${API_URL}/users/payout-methods/${cardToView.id}`, {
+      const deleteRes = await apiFetch(`/users/payout-methods/${cardToView.id}`, {
         method: 'DELETE',
         headers: authHeaders(),
       });

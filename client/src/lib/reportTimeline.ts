@@ -14,8 +14,7 @@ const PROGRESS_INDEX: Record<string, number> = {
   Triaged: 2,
   Pending_Fix: 2,
   Paid: 3,
-  Resolved: 4,
-};
+  Resolved: 4 };
 
 /** Build timeline steps that match the report's real lifecycle status. */
 export function getReportTimelineConfig(
@@ -42,6 +41,5 @@ export function getReportTimelineConfig(
   return {
     steps,
     activeIndex: PROGRESS_INDEX[status] ?? 0,
-    variant: 'default',
-  };
+    variant: 'default' };
 }

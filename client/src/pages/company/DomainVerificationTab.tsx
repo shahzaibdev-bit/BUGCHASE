@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { apiFetch } from '@/lib/api';
 import { Globe, ArrowRight, Copy, CheckCircle, AlertTriangle, RefreshCw, Smartphone, ShieldCheck, Terminal, AlertCircle, Eye, EyeOff, MoreHorizontal, Ban, Trash } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -41,7 +42,7 @@ export function DomainVerificationTab() {
   // Fetch existing assets
   React.useEffect(() => {
     const token = localStorage.getItem('token');
-    fetch(`${API_URL}/company/assets`, {
+    apiFetch(`/company/assets`, {
         headers: { 'Authorization': `Bearer ${token}` }
     })
         .then(res => res.json())
@@ -64,7 +65,7 @@ export function DomainVerificationTab() {
     }
 
     try {
-        const res = await fetch(`${API_URL}/company/generate-token`, {
+        const res = await apiFetch(`/company/generate-token`, {
             method: 'POST',
             headers: { 
                 'Content-Type': 'application/json',
@@ -90,7 +91,7 @@ export function DomainVerificationTab() {
     setVerificationStatus('verifying');
     
     try {
-        const res = await fetch(`${API_URL}/company/verify-domain`, {
+        const res = await apiFetch(`/company/verify-domain`, {
             method: 'POST',
             headers: { 
                 'Content-Type': 'application/json',
@@ -124,7 +125,7 @@ export function DomainVerificationTab() {
   const toggleAssetStatus = async (id: string, currentStatus: string) => {
     const newStatus = currentStatus === 'verified' ? 'disabled' : 'verified';
     try {
-        const res = await fetch(`${API_URL}/company/assets/${id}/status`, {
+        const res = await apiFetch(`/company/assets/${id}/status`, {
             method: 'PATCH',
             headers: { 
                 'Content-Type': 'application/json',
@@ -150,7 +151,7 @@ export function DomainVerificationTab() {
     if(!confirm("Are you sure you want to delete this asset? This action cannot be undone.")) return;
 
     try {
-        const res = await fetch(`${API_URL}/company/assets/${id}`, {
+        const res = await apiFetch(`/company/assets/${id}`, {
             method: 'DELETE',
             headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
         });

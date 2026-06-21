@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { apiFetch } from '@/lib/api';
 import { Users, DollarSign, AlertTriangle, Bug, Building2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { GlassCard, StatCard } from '@/components/ui/glass-card';
@@ -37,7 +38,7 @@ export default function AdminDashboard() {
     const fetchDashboardData = async () => {
       try {
         const token = localStorage.getItem('token');
-        const res = await fetch(`${API_URL}/admin/dashboard/analytics`, {
+        const res = await apiFetch(`/admin/dashboard/analytics`, {
           headers: { Authorization: `Bearer ${token}` },
         });
         const data = await res.json();

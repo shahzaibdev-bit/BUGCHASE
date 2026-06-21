@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import { apiFetch } from '@/lib/api';
 import { useNavigate } from 'react-router-dom';
 import { Search, AlertTriangle, CheckCircle, Clock, XCircle, Eye, Sparkles, ShieldAlert } from 'lucide-react';
 import { GlassCard } from '@/components/ui/glass-card';
@@ -71,7 +72,7 @@ export default function CompanyReports() {
     const fetchReports = async () => {
       try {
         const token = localStorage.getItem('token');
-        const res = await fetch(`${API_URL}/company/reports`, {
+        const res = await apiFetch(`/company/reports`, {
           headers: { 'Authorization': `Bearer ${token}` }
         });
         const data = await res.json();

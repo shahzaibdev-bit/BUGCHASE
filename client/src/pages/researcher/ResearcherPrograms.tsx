@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { apiFetch } from '@/lib/api';
 import { Search, Filter } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
@@ -40,7 +41,7 @@ export default function ResearcherPrograms() {
   useEffect(() => {
     const fetchPrograms = async () => {
         try {
-            const res = await fetch(`${API_URL}/programs`);
+            const res = await apiFetch(`/programs`);
             const data = await res.json();
             if (res.ok) {
                 setPrograms(data.data);

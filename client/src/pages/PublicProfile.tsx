@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
+import { apiFetch } from '@/lib/api';
 import { useParams } from 'react-router-dom';
 import {
   MapPin,
@@ -150,7 +151,7 @@ export default function PublicProfile() {
       }
       try {
         const enc = encodeURIComponent(username);
-        const res = await fetch(`${API_URL}/users/p/${enc}`);
+        const res = await apiFetch(`/users/p/${enc}`);
         const data = await res.json();
 
         if (res.ok) {

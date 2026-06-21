@@ -24,19 +24,18 @@ import {
   SelectContent,
   SelectItem,
   SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
+  SelectValue } from '@/components/ui/select';
 import {
   Tooltip,
   TooltipContent,
   TooltipProvider,
-  TooltipTrigger,
-} from '@/components/ui/tooltip';
+  TooltipTrigger } from '@/components/ui/tooltip';
 import { toast } from '@/hooks/use-toast';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { InvertedTiltCard } from '@/components/InvertedTiltCard';
 import { InverseSpotlightCard } from '@/components/InverseSpotlightCard';
 import { API_URL } from '@/config';
+import { apiFetch } from '@/lib/api';
 
 // Enhanced Mock Data Types
 type ReportStatus = 'Submitted' | 'Under Review' | 'Needs Info' | 'Triaged' | 'Spam' | 'Duplicate' | 'OOS';
@@ -109,13 +108,11 @@ export default function TriagerQueue() {
   const fetchData = async () => {
     setLoading(true);
     try {
-        const token = localStorage.getItem('token');
-        const headers = { 'Authorization': `Bearer ${token}` };
         const [queueRes, poolRes, profileRes, invitesRes] = await Promise.all([
-            fetch(`${API_URL}/triager/queue`, { headers }),
-            fetch(`${API_URL}/triager/pool`, { headers }),
-            fetch(`${API_URL}/triager/profile`, { headers }),
-            fetch(`${API_URL}/triager/reassignment-invites`, { headers }),
+            apiFetch('/triager/queue'),
+            apiFetch('/triager/pool'),
+            apiFetch('/triager/profile'),
+            apiFetch('/triager/reassignment-invites'),
         ]);
         
         const queueData = await queueRes.json();
@@ -178,18 +175,13 @@ export default function TriagerQueue() {
 
   const handleClaim = async (id: string) => {
     try {
-        const token = localStorage.getItem('token');
-        const res = await fetch(`${API_URL}/triager/claim/${id}`, { 
-            method: 'POST',
-            headers: { 'Authorization': `Bearer ${token}` }
-        });
+        const res = await apiFetch(`/triager/claim/${id}`, { method: 'POST' });
         const data = await res.json();
         
         if (res.ok) {
              toast({
               title: "Report Claimed",
-              description: `You have successfully claimed report. It is now in your active queue.`,
-            });
+              description: `You have successfully claimed report. It is now in your active queue.` });
             fetchData(); // Refresh lists
             setActiveTab('active');
         } else {

@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { apiFetch } from '@/lib/api';
 import { useNavigate } from 'react-router-dom';
 import { Search, Filter, MoreVertical, Ban, CheckCircle, Mail, Shield, User, AlertTriangle, Building2, Trash2 } from 'lucide-react';
 import { GlassCard } from '@/components/ui/glass-card';
@@ -84,7 +85,7 @@ export default function AdminUsers() {
     // ... same content ...
       try {
           const token = localStorage.getItem('token');
-          const res = await fetch(`${API_URL}/admin/users`, {
+          const res = await apiFetch(`/admin/users`, {
               headers: { 'Authorization': `Bearer ${token}` }
           });
           const data = await res.json();
@@ -118,7 +119,7 @@ export default function AdminUsers() {
       try {
           const body = { status: newStatus, reason };
           const token = localStorage.getItem('token');
-          const res = await fetch(`${API_URL}/admin/users/${userId}/status`, {
+          const res = await apiFetch(`/admin/users/${userId}/status`, {
               method: 'PATCH',
               headers: { 
                   'Content-Type': 'application/json',
@@ -167,7 +168,7 @@ export default function AdminUsers() {
       try {
           setIsSendingEmail(true);
           const token = localStorage.getItem('token');
-          const res = await fetch(`${API_URL}/admin/users/${emailDialog.user.id}/email`, {
+          const res = await apiFetch(`/admin/users/${emailDialog.user.id}/email`, {
               method: 'POST',
               headers: {
                   'Content-Type': 'application/json',
@@ -203,7 +204,7 @@ export default function AdminUsers() {
       if (!confirmed) return;
       try {
           const token = localStorage.getItem('token');
-          const res = await fetch(`${API_URL}/admin/users/${userId}`, {
+          const res = await apiFetch(`/admin/users/${userId}`, {
               method: 'DELETE',
               headers: { 'Authorization': `Bearer ${token}` }
           });

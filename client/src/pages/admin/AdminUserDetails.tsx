@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { apiFetch } from '@/lib/api';
 import { useNavigate, useParams } from 'react-router-dom';
 import {
   ArrowLeft,
@@ -186,7 +187,7 @@ export default function AdminUserDetails() {
     setIsLoading(true);
     try {
       const token = localStorage.getItem('token');
-      const res = await fetch(`${API_URL}/admin/users/${id}`, { headers: { Authorization: `Bearer ${token}` } });
+      const res = await apiFetch(`/admin/users/${id}`, { headers: { Authorization: `Bearer ${token}` } });
       const payload = await res.json();
       if (!res.ok) throw new Error(payload.message || 'Failed to load user');
       setData(payload.data);
@@ -264,7 +265,7 @@ export default function AdminUserDetails() {
       try {
         setUsernameStatus('checking');
         const token = localStorage.getItem('token');
-        const res = await fetch(`${API_URL}/admin/users/check-username?username=${encodeURIComponent(username)}&excludeId=${id}`, {
+        const res = await apiFetch(`/admin/users/check-username?username=${encodeURIComponent(username)}&excludeId=${id}`, {
           headers: { Authorization: `Bearer ${token}` },
         });
         const payload = await res.json();
@@ -338,7 +339,7 @@ export default function AdminUserDetails() {
           twitter: String(form.linkedAccounts?.twitter ?? '').trim(),
         };
       }
-      const res = await fetch(`${API_URL}/admin/users/${id}`, {
+      const res = await apiFetch(`/admin/users/${id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
         body: JSON.stringify(body),
@@ -385,7 +386,7 @@ export default function AdminUserDetails() {
             outScope: Array.isArray(prev?.outScope) ? prev.outScope.map(String) : [],
           };
         });
-      const res = await fetch(`${API_URL}/admin/users/${id}`, {
+      const res = await apiFetch(`/admin/users/${id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
         body: JSON.stringify({ verifiedAssets }),
@@ -410,7 +411,7 @@ export default function AdminUserDetails() {
   const toggleWalletHold = async (checked: boolean) => {
     try {
       const token = localStorage.getItem('token');
-      const res = await fetch(`${API_URL}/admin/users/${id}/wallet-hold`, {
+      const res = await apiFetch(`/admin/users/${id}/wallet-hold`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
         body: JSON.stringify({ payoutHold: checked }),

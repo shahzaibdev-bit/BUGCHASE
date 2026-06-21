@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { apiFetch } from '@/lib/api';
 import { 
   X, 
   Shield, 
@@ -21,7 +22,6 @@ import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
 import { toast } from 'sonner';
-import { API_URL } from '@/config';
 
 interface TriagerOnboardingModalProps {
   isOpen: boolean;
@@ -87,7 +87,7 @@ export const TriagerOnboardingModal = ({ isOpen, onClose, onSuccess }: TriagerOn
     setIsSubmitting(true);
 
     try {
-        const res = await fetch(`${API_URL}/admin/triagers`, {
+        const res = await apiFetch(`/admin/triagers`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(formData)
@@ -112,8 +112,8 @@ export const TriagerOnboardingModal = ({ isOpen, onClose, onSuccess }: TriagerOn
         } else {
             toast.error("Failed to Create Triager", { description: data.message || "An error occurred." });
         }
-    } catch (error) {
-        toast.error("Network Error", { description: "Could not reach server." });
+    } catch (error: any) {
+        toast.error("Request failed", { description: error?.message || "Could not reach server." });
     } finally {
         setIsSubmitting(false);
     }

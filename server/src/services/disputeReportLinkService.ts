@@ -6,6 +6,7 @@ import { getIO } from './socketService';
 export const REPORT_IN_DISPUTE_STATUS = 'In Dispute';
 
 const ACTIVE_DISPUTE_STATUSES = ['open', 'in_review'] as const;
+export { ACTIVE_DISPUTE_STATUSES };
 
 export type DisputeActor = { _id: any; name?: string; username?: string; role?: string };
 

@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { apiFetch } from '@/lib/api';
 import {
     Dialog,
     DialogContent,
@@ -20,7 +21,6 @@ import {
 import CyberpunkEditor from '@/components/ui/CyberpunkEditor';
 import { toast } from '@/hooks/use-toast';
 import { useAuth } from '@/contexts/AuthContext';
-import { API_URL } from '@/config';
 import { LifeBuoy, Loader2, FileText } from 'lucide-react';
 
 export interface SupportReportContext {
@@ -35,11 +35,14 @@ interface ContactSupportDialogProps {
     onOpenChange: (open: boolean) => void;
     /** When provided, the issue is linked to this report and posted into its thread. */
     report?: SupportReportContext;
+    /** When set, user already has an open ticket for this report. */
+    activeDispute?: { _id: string; disputeId: string; subject: string } | null;
 }
 
 type IssueOption = { value: string; category: string };
 
-const COMMON_ISSUES: Record<string, IssueOption[]> = {
+/** Shown when Contact Support is opened from a specific report page. */
+const REPORT_ISSUES: Record<string, IssueOption[]> = {
     researcher: [
         { value: 'Bounty / payout not received', category: 'payout' },
         { value: 'Disagree with duplicate decision', category: 'duplicate' },
@@ -47,34 +50,53 @@ const COMMON_ISSUES: Record<string, IssueOption[]> = {
         { value: 'Scope clarification needed', category: 'scope' },
         { value: 'Report stuck / no response', category: 'other' },
         { value: 'Triager conduct concern', category: 'conduct' },
-        { value: 'Account or access problem', category: 'other' },
     ],
     company: [
-        { value: 'Billing / escrow issue', category: 'payout' },
         { value: 'Disagree with triage decision', category: 'severity' },
         { value: 'Report quality concern', category: 'other' },
         { value: 'Researcher conduct concern', category: 'conduct' },
-        { value: 'Program configuration issue', category: 'scope' },
-        { value: 'Account or access problem', category: 'other' },
     ],
     triager: [
         { value: 'Report assignment issue', category: 'other' },
         { value: 'Report content / data problem', category: 'other' },
         { value: 'Need to escalate a report', category: 'other' },
-        { value: 'Platform / tooling bug', category: 'other' },
+    ],
+};
+
+/** Shown on dashboard, footer, support list — no report linked. */
+const GENERAL_ISSUES: Record<string, IssueOption[]> = {
+    researcher: [
         { value: 'Account or access problem', category: 'other' },
+        { value: 'Wallet / payout setup issue', category: 'payout' },
+        { value: 'Verification / KYC problem', category: 'other' },
+        { value: 'Program access or eligibility', category: 'scope' },
+        { value: 'Platform bug or technical issue', category: 'other' },
+        { value: 'General question', category: 'other' },
+    ],
+    company: [
+        { value: 'Billing / escrow issue', category: 'payout' },
+        { value: 'Program configuration issue', category: 'scope' },
+        { value: 'Account or access problem', category: 'other' },
+        { value: 'Platform / integration issue', category: 'other' },
+        { value: 'General question', category: 'other' },
+    ],
+    triager: [
+        { value: 'Account or access problem', category: 'other' },
+        { value: 'Platform / tooling bug', category: 'other' },
+        { value: 'Queue or availability settings', category: 'other' },
+        { value: 'General question', category: 'other' },
     ],
 };
 
 const FALLBACK_ISSUES: IssueOption[] = [
     { value: 'General question', category: 'other' },
     { value: 'Account or access problem', category: 'other' },
-    { value: 'Report a bug', category: 'other' },
+    { value: 'Platform bug or technical issue', category: 'other' },
 ];
 
 const OTHER_VALUE = '__other__';
 
-export default function ContactSupportDialog({ open, onOpenChange, report }: ContactSupportDialogProps) {
+export default function ContactSupportDialog({ open, onOpenChange, report, activeDispute }: ContactSupportDialogProps) {
     const { user } = useAuth();
     const [issueType, setIssueType] = useState('');
     const [customIssue, setCustomIssue] = useState('');
@@ -82,10 +104,14 @@ export default function ContactSupportDialog({ open, onOpenChange, report }: Con
     const [submitting, setSubmitting] = useState(false);
 
     const issueOptions = useMemo(() => {
-        return (user?.role && COMMON_ISSUES[user.role]) || FALLBACK_ISSUES;
-    }, [user?.role]);
+        const role = user?.role;
+        if (report?.id) {
+            return (role && REPORT_ISSUES[role]) || FALLBACK_ISSUES;
+        }
+        return (role && GENERAL_ISSUES[role]) || FALLBACK_ISSUES;
+    }, [user?.role, report?.id]);
 
-    // Reset the form whenever the dialog is opened fresh.
+    // Reset the form whenever the dialog is opened or report context changes.
     useEffect(() => {
         if (open) {
             setIssueType('');
@@ -93,7 +119,7 @@ export default function ContactSupportDialog({ open, onOpenChange, report }: Con
             setDescription('');
             setSubmitting(false);
         }
-    }, [open]);
+    }, [open, report?.id]);
 
     const isOther = issueType === OTHER_VALUE;
     const resolvedSubject = isOther ? customIssue.trim() : issueType;
@@ -127,7 +153,7 @@ export default function ContactSupportDialog({ open, onOpenChange, report }: Con
         setSubmitting(true);
         try {
             const token = localStorage.getItem('token');
-            const res = await fetch(`${API_URL}/disputes`, {
+            const res = await apiFetch(`/disputes`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
@@ -171,7 +197,9 @@ export default function ContactSupportDialog({ open, onOpenChange, report }: Con
                         <LifeBuoy className="w-5 h-5 shrink-0" /> Contact Support
                     </DialogTitle>
                     <DialogDescription className="break-words">
-                        Tell us what's going on and our support team will get back to you.
+                        {report?.id
+                            ? 'Describe the issue with this report and our support team will get back to you.'
+                            : 'Tell us what you need help with. For report-specific issues, open Contact Support from that report page.'}
                     </DialogDescription>
                 </DialogHeader>
 
@@ -190,8 +218,16 @@ export default function ContactSupportDialog({ open, onOpenChange, report }: Con
                         </div>
                     </div>
 
+                    {report?.id && activeDispute && (
+                        <div className="rounded-lg border border-amber-200 dark:border-amber-500/30 bg-amber-50 dark:bg-amber-500/10 p-3 text-sm text-amber-900 dark:text-amber-100">
+                            You already have an open support ticket for this report (
+                            <strong>{activeDispute.disputeId}</strong>). Please wait until it is resolved before
+                            opening another ticket on the same report.
+                        </div>
+                    )}
+
                     {/* Linked report (auto-filled when opened from a report) */}
-                    {report?.id && (
+                    {report?.id && !activeDispute && (
                         <div className="min-w-0 rounded-lg border border-border bg-muted/40 dark:bg-white/5 p-3 flex items-start gap-2">
                             <FileText className="w-4 h-4 mt-0.5 text-muted-foreground shrink-0" />
                             <div className="min-w-0 flex-1 overflow-hidden">
@@ -209,11 +245,18 @@ export default function ContactSupportDialog({ open, onOpenChange, report }: Con
                     )}
 
                     {/* Issue type */}
+                    {!activeDispute && (
                     <div className="min-w-0 space-y-2">
                         <Label>Issue</Label>
                         <Select value={issueType} onValueChange={setIssueType}>
                             <SelectTrigger className="w-full bg-background dark:bg-[#151515]">
-                                <SelectValue placeholder="Select the issue you're facing" />
+                                <SelectValue
+                                    placeholder={
+                                        report?.id
+                                            ? "Select the issue with this report"
+                                            : "Select what you need help with"
+                                    }
+                                />
                             </SelectTrigger>
                             <SelectContent>
                                 {issueOptions.map((o) => (
@@ -225,9 +268,10 @@ export default function ContactSupportDialog({ open, onOpenChange, report }: Con
                             </SelectContent>
                         </Select>
                     </div>
+                    )}
 
                     {/* Custom issue title when "Other" is chosen */}
-                    {isOther && (
+                    {!activeDispute && isOther && (
                         <div className="min-w-0 space-y-2">
                             <Label>Your issue</Label>
                             <Input
@@ -241,6 +285,7 @@ export default function ContactSupportDialog({ open, onOpenChange, report }: Con
                     )}
 
                     {/* Description (rich text) */}
+                    {!activeDispute && (
                     <div className="min-w-0 space-y-2 [&_.ProseMirror]:min-h-[120px] [&_.ProseMirror]:max-w-full [&_.ProseMirror]:break-words [&_.ProseMirror]:[overflow-wrap:anywhere] [&_.ProseMirror]:whitespace-pre-wrap [&_.tiptap]:max-w-full">
                         <Label>Description</Label>
                         <div className="max-w-full overflow-hidden [&>div]:min-h-[190px] [&>div]:max-w-full [&>div]:overflow-hidden [&>div>div:first-child]:min-w-0 [&>div>div:first-child]:max-w-full [&>div>div:first-child]:overflow-x-hidden">
@@ -251,16 +296,19 @@ export default function ContactSupportDialog({ open, onOpenChange, report }: Con
                             />
                         </div>
                     </div>
+                    )}
                 </div>
 
                 <DialogFooter>
                     <Button variant="outline" onClick={() => onOpenChange(false)} disabled={submitting}>
-                        Cancel
+                        {activeDispute ? 'Close' : 'Cancel'}
                     </Button>
+                    {!activeDispute && (
                     <Button onClick={handleSubmit} disabled={!canSubmit}>
                         {submitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                         Send request
                     </Button>
+                    )}
                 </DialogFooter>
             </DialogContent>
         </Dialog>

@@ -1,6 +1,7 @@
 import { useEffect, useState, useMemo } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
 import { API_URL } from '@/config';
+import { apiFetch } from '@/lib/api';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
@@ -10,8 +11,7 @@ import {
   DialogContent,
   DialogHeader,
   DialogTitle,
-  DialogTrigger,
-} from '@/components/ui/dialog';
+  DialogTrigger } from '@/components/ui/dialog';
 import { toast } from '@/hooks/use-toast';
 import { CheckCircle2, XCircle, Lock, Clock, ArrowLeft, Scale } from 'lucide-react';
 import { ReportTimelineNode } from '@/components/reports/ReportTimelineNode';
@@ -51,8 +51,7 @@ function buildTimeline(report: any): ReportTimelineEvent[] {
     content: c.content,
     attachments: c.attachments || [],
     timestamp: c.createdAt,
-    metadata: c.metadata,
-  }));
+    metadata: c.metadata }));
 
   const submissionEvent: ReportTimelineEvent = {
     id: 'submission',
@@ -61,8 +60,7 @@ function buildTimeline(report: any): ReportTimelineEvent[] {
     authorAvatar: report.researcherId?.avatar,
     role: 'Researcher',
     content: `Submission: **${report.title}**`,
-    timestamp: report.createdAt,
-  };
+    timestamp: report.createdAt };
 
   return [submissionEvent, ...comments];
 }
@@ -97,10 +95,8 @@ export default function TriagerReassignmentInvite() {
     setLoading(true);
     try {
       const authToken = localStorage.getItem('token');
-      const res = await fetch(`${API_URL}/public/triager-reassignment/${token}`, {
-        headers: authToken ? { Authorization: `Bearer ${authToken}` } : {},
-        credentials: 'include',
-      });
+      const res = await apiFetch(`/public/triager-reassignment/${token}`, {
+        headers: authToken && authToken !== 'null' ? { Authorization: `Bearer ${authToken}` } : {} });
       const json = await res.json();
       if (!res.ok) throw new Error(json.message || 'Failed to load invite');
       setData(json.data);
@@ -123,14 +119,9 @@ export default function TriagerReassignmentInvite() {
     setBusy(true);
     try {
       const authToken = localStorage.getItem('token');
-      const res = await fetch(`${API_URL}/triager/reassignment-invites/${token}/${action}`, {
+      const res = await apiFetch(`/triager/reassignment-invites/${token}/${action}`, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          ...(authToken ? { Authorization: `Bearer ${authToken}` } : {}),
-        },
-        credentials: 'include',
-      });
+        headers: authToken && authToken !== 'null' ? { Authorization: `Bearer ${authToken}` } : {} });
       const json = await res.json();
       if (!res.ok) throw new Error(json.message || 'Action failed');
       toast({
@@ -138,8 +129,7 @@ export default function TriagerReassignmentInvite() {
         description:
           action === 'accept'
             ? 'You are now the primary triager on this report.'
-            : 'Support can invite another triager.',
-      });
+            : 'Support can invite another triager.' });
       if (action === 'accept') {
         navigate(json.data?.reportId ? `/triager/reports/${json.data.reportId}` : '/triager?tab=active');
       } else {

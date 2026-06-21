@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { apiFetch } from '@/lib/api';
 import { motion, AnimatePresence } from 'framer-motion';
 import { 
   X, Check, ChevronRight, ChevronLeft, Shield, Banknote, 
@@ -121,7 +122,7 @@ export const CreateProgramModal = ({ isOpen, onClose, companyName, verifiedAsset
           };
 
           const token = localStorage.getItem('token');
-          const res = await fetch(`${API_URL}/company/programs`, {
+          const res = await apiFetch(`/company/programs`, {
               method: 'POST',
               headers: { 
                   'Content-Type': 'application/json',

@@ -188,8 +188,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const refreshUser = useCallback(async (): Promise<User | null> => {
     try {
-      const token = localStorage.getItem('token');
-      if (!token) return null;
       return await fetchCurrentUser();
     } catch (error) {
       console.error('Failed to refresh user', error);

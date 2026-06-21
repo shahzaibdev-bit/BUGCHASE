@@ -1,5 +1,6 @@
 
 import React, { useState, useEffect } from 'react';
+import { apiFetch } from '@/lib/api';
 import { useParams, Link } from 'react-router-dom';
 import { 
     ChevronLeft, 
@@ -29,7 +30,7 @@ const ProgramDetails = () => {
              if (!id) return;
              try {
                  // 1. Fetch Program Details
-                 const res = await fetch(`${API_URL}/programs/${id}`);
+                 const res = await apiFetch(`/programs/${id}`);
                  const data = await res.json();
                  
                  if (res.ok) {

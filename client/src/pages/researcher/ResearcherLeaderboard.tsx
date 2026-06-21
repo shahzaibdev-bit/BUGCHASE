@@ -1,4 +1,5 @@
 import React from 'react';
+import { apiFetch } from '@/lib/api';
 import { TrendingUp, Flag, Check, ChevronsUpDown } from 'lucide-react';
 import { GlassCard } from '@/components/ui/glass-card';
 import { InvertedTiltCard } from '@/components/InvertedTiltCard';
@@ -41,7 +42,7 @@ export default function ResearcherLeaderboard() {
       try {
         setIsLoading(true);
         const token = localStorage.getItem('token');
-        const res = await fetch(`${API_URL}/users/leaderboard`, {
+        const res = await apiFetch(`/users/leaderboard`, {
           headers: { Authorization: `Bearer ${token}` }
         });
         const payload = await res.json();

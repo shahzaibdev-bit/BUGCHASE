@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { apiFetch } from '@/lib/api';
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import { 
   Lock, 
@@ -321,7 +322,7 @@ export default function TriagerReportDetails() {
     const fetchReport = async () => {
         try {
             const token = localStorage.getItem('token');
-            const res = await fetch(`${API_URL}/triager/reports/${id}`, {
+            const res = await apiFetch(`/triager/reports/${id}`, {
                 headers: { 'Authorization': `Bearer ${token}` }
             });
             const data = await res.json();
@@ -556,7 +557,7 @@ export default function TriagerReportDetails() {
     const performStatusUpdate = async (status: ReportStatus, reason: string) => {
         try {
             const token = localStorage.getItem('token');
-            const res = await fetch(`${API_URL}/triager/reports/${id}/status`, {
+            const res = await apiFetch(`/triager/reports/${id}/status`, {
                 method: 'PATCH',
                 headers: { 
                     'Content-Type': 'application/json',
@@ -600,7 +601,7 @@ export default function TriagerReportDetails() {
         if (!selectedDuplicate) return;
         try {
             const token = localStorage.getItem('token');
-            const res = await fetch(`${API_URL}/reports/${id}/mark-duplicate`, {
+            const res = await apiFetch(`/reports/${id}/mark-duplicate`, {
                 method: 'PATCH',
                 headers: {
                     'Content-Type': 'application/json',
@@ -624,7 +625,7 @@ export default function TriagerReportDetails() {
     const handleClearDuplicateReview = async () => {
         try {
             const token = localStorage.getItem('token');
-            const res = await fetch(`${API_URL}/reports/${id}/duplicate-review/clear`, {
+            const res = await apiFetch(`/reports/${id}/duplicate-review/clear`, {
                 method: 'PATCH',
                 headers: { Authorization: `Bearer ${token}` },
             });
@@ -643,7 +644,7 @@ export default function TriagerReportDetails() {
 
         try {
             const token = localStorage.getItem('token');
-            const res = await fetch(`${API_URL}/triager/reports/${id}/chat`, {
+            const res = await apiFetch(`/triager/reports/${id}/chat`, {
                 method: 'POST',
                 headers: { 
                     'Content-Type': 'application/json',
@@ -664,7 +665,7 @@ export default function TriagerReportDetails() {
     const handleSeverityUpdate = async (vector: string, score: number) => {
         try {
             const token = localStorage.getItem('token');
-            const res = await fetch(`${API_URL}/triager/reports/${id}/severity`, {
+            const res = await apiFetch(`/triager/reports/${id}/severity`, {
                 method: 'PATCH',
                 headers: { 
                     'Content-Type': 'application/json',
@@ -704,7 +705,7 @@ export default function TriagerReportDetails() {
     const submitFinalDecision = async () => {
          try {
             const token = localStorage.getItem('token');
-            const res = await fetch(`${API_URL}/triager/reports/${id}/decision`, {
+            const res = await apiFetch(`/triager/reports/${id}/decision`, {
                 method: 'POST',
                 headers: { 
                     'Content-Type': 'application/json',
@@ -733,7 +734,7 @@ export default function TriagerReportDetails() {
         
         try {
             const token = localStorage.getItem('token');
-            const res = await fetch(`${API_URL}/triager/reports/${id}/generate-summary`, {
+            const res = await apiFetch(`/triager/reports/${id}/generate-summary`, {
                 method: 'POST',
                 headers: { 
                     'Authorization': `Bearer ${token}`
@@ -799,7 +800,7 @@ export default function TriagerReportDetails() {
         setIssueReportSending(true);
         try {
             const token = localStorage.getItem('token');
-            const res = await fetch(`${API_URL}/triager/reports/${id}/triager-notice`, {
+            const res = await apiFetch(`/triager/reports/${id}/triager-notice`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
@@ -1315,7 +1316,7 @@ export default function TriagerReportDetails() {
                                         if (triageFieldsLocked) return;
                                         const newVal = !state.validation.reproduced;
                                         try {
-                                            await fetch(`${API_URL}/triager/reports/${id}/validation`, {
+                                            await apiFetch(`/triager/reports/${id}/validation`, {
                                                 method: 'PATCH',
                                                 headers: { 'Content-Type': 'application/json' },
                                                 body: JSON.stringify({ isReproduced: newVal })

@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { toast } from '@/hooks/use-toast';
 import { apiFetch } from '@/lib/api';
 import { Button } from '@/components/ui/button';
@@ -48,6 +48,19 @@ const INELIGIBLE_LABEL: Record<TriagerIneligible['reason'], string> = {
   inactive: 'Inactive',
 };
 
+function normalizeCandidatesPayload(payload: CandidatesPayload): CandidatesPayload {
+  const excludeIds = new Set(
+    [payload.currentTriagerId, ...(payload.ineligible || []).filter((i) => i.reason === 'current_assignee').map((i) => i._id)]
+      .filter(Boolean) as string[],
+  );
+
+  return {
+    ...payload,
+    candidates: payload.candidates.filter((c) => !excludeIds.has(c._id)),
+    ineligible: (payload.ineligible || []).filter((i) => i.reason !== 'current_assignee'),
+  };
+}
+
 export function AssignTriagerPanel({
   disputeId,
   canAct,
@@ -57,41 +70,32 @@ export function AssignTriagerPanel({
   canAct: boolean;
   isClosed: boolean;
 }) {
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
   const [searched, setSearched] = useState(false);
   const [sending, setSending] = useState<string | null>(null);
   const [data, setData] = useState<CandidatesPayload | null>(null);
 
-  const loadPendingOnly = async () => {
-    try {
-      const res = await apiFetch<{ data: CandidatesPayload }>(`/disputes/${disputeId}/triager-candidates`);
-      setData((prev) => ({
-        ...res.data,
-        candidates: prev?.candidates ?? [],
-        ineligible: prev?.ineligible,
-      }));
-    } catch {
-      // Non-blocking — panel still works without pending state
-    }
-  };
-
-  useEffect(() => {
-    loadPendingOnly();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [disputeId]);
-
-  const findTriagers = async () => {
+  const loadCandidates = useCallback(async (options?: { markSearched?: boolean }) => {
     setLoading(true);
-    setSearched(true);
+    if (options?.markSearched) setSearched(true);
     try {
       const res = await apiFetch<{ data: CandidatesPayload }>(`/disputes/${disputeId}/triager-candidates`);
-      setData(res.data);
+      setData(normalizeCandidatesPayload(res.data));
+      setSearched(true);
     } catch (err: any) {
-      toast({ title: 'Error', description: err.message || 'Failed to find triager matches.', variant: 'destructive' });
+      if (options?.markSearched) {
+        toast({ title: 'Error', description: err.message || 'Failed to find triager matches.', variant: 'destructive' });
+      }
     } finally {
       setLoading(false);
     }
-  };
+  }, [disputeId]);
+
+  useEffect(() => {
+    void loadCandidates();
+  }, [loadCandidates]);
+
+  const findTriagers = () => loadCandidates({ markSearched: true });
 
   const sendInvite = async (triagerId: string) => {
     setSending(triagerId);
@@ -101,7 +105,7 @@ export function AssignTriagerPanel({
         body: JSON.stringify({ triagerId }),
       });
       toast({ title: 'Invite sent', description: 'The triager has 48 hours to accept or decline via email.' });
-      await findTriagers();
+      await loadCandidates();
     } catch (err: any) {
       toast({ title: 'Invite failed', description: err.message || 'Could not send invite.', variant: 'destructive' });
     } finally {
@@ -143,6 +147,7 @@ export function AssignTriagerPanel({
       {data?.currentTriagerName && (
         <p className="text-[10px] font-mono text-zinc-500 mb-3">
           Current triager: <span className="text-zinc-700 dark:text-zinc-300">{data.currentTriagerName}</span>
+          <span className="text-zinc-400"> — excluded from matches</span>
         </p>
       )}
 
@@ -169,10 +174,8 @@ export function AssignTriagerPanel({
         )}
       </div>
 
-      {!searched ? (
-        <p className="text-sm text-zinc-500 font-mono">
-          Click <strong>Find matching triagers</strong> to search by report asset expertise and open capacity.
-        </p>
+      {loading && !data ? (
+        <div className="text-center py-6 text-zinc-500 font-mono text-xs">Loading triager matches…</div>
       ) : loading ? (
         <div className="text-center py-6 text-zinc-500 font-mono text-xs">Searching triagers…</div>
       ) : !data ? null : data.candidates.length === 0 ? (
@@ -210,7 +213,7 @@ export function AssignTriagerPanel({
                 <p className="text-[10px] font-mono text-zinc-400 truncate">{c.matchSummary}</p>
                 <div className="flex flex-wrap gap-1 mt-1">
                   {c.expertise.slice(0, 4).map((e) => (
-                    <Badge key={e} variant="outline" className="text-[9px] px-1 py-0">
+                    <Badge key={e} className="text-[9px] px-1 py-0 border-zinc-200 dark:border-white/20 bg-transparent">
                       {e}
                     </Badge>
                   ))}

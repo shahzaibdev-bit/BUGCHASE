@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { apiFetch } from '@/lib/api';
 import { useNavigate, useParams } from 'react-router-dom';
 import { ArrowLeft, Lock, Send, LifeBuoy, FileText, ExternalLink } from 'lucide-react';
 import { API_URL } from '@/config';
@@ -49,7 +50,7 @@ export default function MySupportTicketDetails() {
     setLoading(true);
     try {
       const token = localStorage.getItem('token');
-      const res = await fetch(`${API_URL}/disputes/mine/${id}`, {
+      const res = await apiFetch(`/disputes/mine/${id}`, {
         headers: token ? { Authorization: `Bearer ${token}` } : {},
         credentials: 'include',
       });
@@ -77,7 +78,7 @@ export default function MySupportTicketDetails() {
     setSending(true);
     try {
       const token = localStorage.getItem('token');
-      const res = await fetch(`${API_URL}/disputes/mine/${id}/messages`, {
+      const res = await apiFetch(`/disputes/mine/${id}/messages`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

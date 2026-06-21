@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { apiFetch } from '@/lib/api';
 import {
   Headphones,
   CheckCircle,
@@ -17,7 +18,6 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Separator } from '@/components/ui/separator';
 import { toast } from 'sonner';
-import { API_URL } from '@/config';
 
 interface SupportOnboardingModalProps {
   isOpen: boolean;
@@ -83,7 +83,7 @@ export const SupportOnboardingModal = ({ isOpen, onClose, onSuccess }: SupportOn
 
     try {
         const token = localStorage.getItem('token');
-        const res = await fetch(`${API_URL}/admin/support`, {
+        const res = await apiFetch(`/admin/support`, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
@@ -110,8 +110,8 @@ export const SupportOnboardingModal = ({ isOpen, onClose, onSuccess }: SupportOn
         } else {
             toast.error("Failed to Create Support Member", { description: data.message || "An error occurred." });
         }
-    } catch (error) {
-        toast.error("Network Error", { description: "Could not reach server." });
+    } catch (error: any) {
+        toast.error("Request failed", { description: error?.message || "Could not reach server." });
     } finally {
         setIsSubmitting(false);
     }

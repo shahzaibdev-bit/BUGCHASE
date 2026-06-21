@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
+import { apiFetch } from '@/lib/api';
 import { useAuth } from '@/contexts/AuthContext';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
@@ -110,7 +111,7 @@ export default function ResearcherVerification() {
 
     try {
       const token = localStorage.getItem('token');
-      const response = await fetch(`${API_URL}/users/kyc-verify`, {
+      const response = await apiFetch(`/users/kyc-verify`, {
         method: 'POST',
         headers: token ? { Authorization: `Bearer ${token}` } : undefined,
         body: formData,

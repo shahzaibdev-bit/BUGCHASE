@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { apiFetch } from '@/lib/api';
 import { createPortal } from 'react-dom';
 import { io as socketIO } from 'socket.io-client';
 import { useParams, Link } from 'react-router-dom';
@@ -119,6 +120,7 @@ const Timeline = ({
 export default function ReportDetails() {
   const { id } = useParams<{ id: string }>();
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const threadEndRef = useRef<HTMLDivElement>(null);
   const [activeTab, setActiveTab] = useState<'comments' | 'history'>('comments');
   const [commentContent, setCommentContent] = useState('');
   const [report, setReport] = useState<any>(null);
@@ -133,7 +135,7 @@ export default function ReportDetails() {
     try {
         setLoadError(null);
         const token = localStorage.getItem('token');
-        const res = await fetch(`${API_URL}/reports/${id}`, {
+        const res = await apiFetch(`/reports/${id}`, {
           headers: token ? { Authorization: `Bearer ${token}` } : {},
           credentials: 'include',
         });
@@ -156,6 +158,15 @@ export default function ReportDetails() {
   useEffect(() => {
     fetchReport();
   }, [id]);
+
+  /** Scroll to the latest thread activity when opening a report. */
+  useEffect(() => {
+    if (loading || !report) return;
+    const timer = window.setTimeout(() => {
+      threadEndRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' });
+    }, 300);
+    return () => window.clearTimeout(timer);
+  }, [id, loading, report?._id]);
 
   // Real-time socket — receive live updates from triager/company actions
   useEffect(() => {
@@ -235,7 +246,7 @@ export default function ReportDetails() {
       });
 
       try {
-          const res = await fetch(`${API_URL}/reports/${id}/comments`, {
+          const res = await apiFetch(`/reports/${id}/comments`, {
               method: 'POST',
               headers: { 
                   Authorization: `Bearer ${localStorage.getItem('token')}` 
@@ -253,7 +264,10 @@ export default function ReportDetails() {
           setSelectedFiles([]);
           
           // Re-fetch to ensure data consistency (IDs, real user details)
-          fetchReport();
+          await fetchReport();
+          window.setTimeout(() => {
+            threadEndRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' });
+          }, 200);
           toast({ title: 'Comment posted successfully' });
       } catch (err: any) {
           console.error('Post comment error:', err);
@@ -738,6 +752,8 @@ export default function ReportDetails() {
                          </div>
                      </div>
                  )})}
+
+                 <div ref={threadEndRef} className="h-0 w-full" aria-hidden />
 
                  {/* Editor (Fixed Activity Item) */}
                  <div className="relative">

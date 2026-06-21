@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { apiFetch } from '@/lib/api';
 import { useNavigate } from 'react-router-dom';
 import { 
   Shield, 
@@ -229,7 +230,7 @@ export default function ResearcherProfile() {
       setLoginHistoryLoading(true);
       try {
         const token = localStorage.getItem('token');
-        const res = await fetch(`${API_URL}/auth/login-history`, {
+        const res = await apiFetch(`/auth/login-history`, {
           headers: token ? { Authorization: `Bearer ${token}` } : {},
           credentials: 'include',
         });
@@ -257,14 +258,14 @@ export default function ResearcherProfile() {
         const token = localStorage.getItem('token');
         const flushKey = `notifications_legacy_flushed_v2_${(user as any)?._id || user?.id || 'me'}`;
         if (!localStorage.getItem(flushKey)) {
-          await fetch(`${API_URL}/users/notifications/legacy`, {
+          await apiFetch(`/users/notifications/legacy`, {
             method: 'DELETE',
             headers: token ? { Authorization: `Bearer ${token}` } : {},
             credentials: 'include',
           });
           localStorage.setItem(flushKey, '1');
         }
-        const res = await fetch(`${API_URL}/users/notifications`, {
+        const res = await apiFetch(`/users/notifications`, {
           headers: token ? { Authorization: `Bearer ${token}` } : {},
           credentials: 'include',
         });
@@ -301,7 +302,7 @@ export default function ResearcherProfile() {
     if (!row.read) {
       try {
         const token = localStorage.getItem('token');
-        const res = await fetch(`${API_URL}/users/notifications/${row.id}/read`, {
+        const res = await apiFetch(`/users/notifications/${row.id}/read`, {
           method: 'PATCH',
           headers: token ? { Authorization: `Bearer ${token}` } : {},
           credentials: 'include',
@@ -340,7 +341,7 @@ export default function ResearcherProfile() {
     setTwoFaSetupBusy(true);
     try {
       const token = localStorage.getItem('token');
-      const res = await fetch(`${API_URL}/auth/2fa/setup`, {
+      const res = await apiFetch(`/auth/2fa/setup`, {
         method: 'POST',
         headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
         credentials: 'include',
@@ -362,7 +363,7 @@ export default function ResearcherProfile() {
     setTwoFaBusy(true);
     try {
       const token = localStorage.getItem('token');
-      const res = await fetch(`${API_URL}/auth/2fa/enable`, {
+      const res = await apiFetch(`/auth/2fa/enable`, {
         method: 'POST',
         headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
         credentials: 'include',
@@ -387,7 +388,7 @@ export default function ResearcherProfile() {
     setTwoFaBusy(true);
     try {
       const token = localStorage.getItem('token');
-      const res = await fetch(`${API_URL}/auth/2fa/disable`, {
+      const res = await apiFetch(`/auth/2fa/disable`, {
         method: 'POST',
         headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
         credentials: 'include',
@@ -435,7 +436,7 @@ export default function ResearcherProfile() {
           const headers: HeadersInit = {};
           if (token) headers['Authorization'] = `Bearer ${token}`;
 
-          const res = await fetch(`${API_URL}/users/upload-avatar`, {
+          const res = await apiFetch(`/users/upload-avatar`, {
               method: 'POST',
               headers,
               credentials: 'include',
@@ -466,7 +467,7 @@ export default function ResearcherProfile() {
           const headers: HeadersInit = {};
           if (token) headers['Authorization'] = `Bearer ${token}`;
 
-          const res = await fetch(`${API_URL}/users/upload-cover`, {
+          const res = await apiFetch(`/users/upload-cover`, {
               method: 'POST',
               headers,
               credentials: 'include',
@@ -524,7 +525,7 @@ export default function ResearcherProfile() {
         const headers: HeadersInit = { 'Content-Type': 'application/json' };
         if (token) headers['Authorization'] = `Bearer ${token}`;
 
-        const res = await fetch(`${API_URL}/auth/update-me`, {
+        const res = await apiFetch(`/auth/update-me`, {
             method: 'PATCH',
             headers,
             credentials: 'include',
@@ -592,7 +593,7 @@ export default function ResearcherProfile() {
           const headers: HeadersInit = { 'Content-Type': 'application/json' };
           if (token) headers['Authorization'] = `Bearer ${token}`;
 
-          const res = await fetch(`${API_URL}/auth/update-me`, {
+          const res = await apiFetch(`/auth/update-me`, {
               method: 'PATCH',
               headers,
               credentials: 'include',
@@ -625,7 +626,7 @@ export default function ResearcherProfile() {
         const headers: HeadersInit = { 'Content-Type': 'application/json' };
         if (token) headers['Authorization'] = `Bearer ${token}`;
 
-        const res = await fetch(`${API_URL}/auth/update-password`, {
+        const res = await apiFetch(`/auth/update-password`, {
             method: 'PATCH',
             headers,
             credentials: 'include',

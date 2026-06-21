@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { apiFetch } from '@/lib/api';
 import { Building2, Mail, Globe, Shield, Bell, Users, Key, Save, GlobeLock, Camera, Upload, MapPin, Linkedin, Twitter, Github } from 'lucide-react';
 import { DomainVerificationTab } from './DomainVerificationTab';
 import { GlassCard } from '@/components/ui/glass-card';
@@ -66,7 +67,7 @@ export default function CompanySettings() {
       setIsLoadingTeam(true);
       try {
           const token = localStorage.getItem('token');
-          const res = await fetch(`${API_URL}/company/team`, {
+          const res = await apiFetch(`/company/team`, {
             headers: { 'Authorization': `Bearer ${token}` }
           });
           const data = await res.json();
@@ -108,7 +109,7 @@ export default function CompanySettings() {
   const handleSave = async () => {
       try {
           const token = localStorage.getItem('token');
-          const res = await fetch(`${API_URL}/users/updateMe`, {
+          const res = await apiFetch(`/users/updateMe`, {
               method: 'PATCH',
               headers: { 
                   'Content-Type': 'application/json',
@@ -146,7 +147,7 @@ export default function CompanySettings() {
 
       try {
           const token = localStorage.getItem('token');
-          const res = await fetch(`${API_URL}/auth/update-password`, {
+          const res = await apiFetch(`/auth/update-password`, {
               method: 'PATCH',
               headers: { 
                   'Content-Type': 'application/json',
@@ -196,7 +197,7 @@ export default function CompanySettings() {
       setIsUploading(true);
       try {
           const token = localStorage.getItem('token');
-          const res = await fetch(`${API_URL}/users/upload-avatar`, {
+          const res = await apiFetch(`/users/upload-avatar`, {
               method: 'POST',
               headers: { 'Authorization': `Bearer ${token}` },
               body: formData,

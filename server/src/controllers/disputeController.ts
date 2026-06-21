@@ -4,13 +4,14 @@ import Report from '../models/Report';
 import User from '../models/User';
 import AppError from '../utils/AppError';
 import catchAsync from '../utils/catchAsync';
-import { sendEmail, disputeReceivedTemplate, disputeMessageTemplate, generateEmailMessageId } from '../services/emailService';
+import { sendEmail, disputeReceivedTemplate, disputeMessageTemplate, disputeClosedTemplate, generateEmailMessageId } from '../services/emailService';
 import { getIO } from '../services/socketService';
 import {
   markLinkedReportInDispute,
   restoreLinkedReportAfterDispute,
   resolveReportByRef,
   REPORT_IN_DISPUTE_STATUS,
+  ACTIVE_DISPUTE_STATUSES,
 } from '../services/disputeReportLinkService';
 
 const generateDisputeId = () => {
@@ -203,6 +204,36 @@ const notifyDisputeMessage = async (
   }
 };
 
+/** Email the ticket raiser when support resolves or rejects (same thread as prior messages). */
+const notifyDisputeClosed = async (
+  dispute: any,
+  opts: { status: 'resolved' | 'rejected'; agentName: string; resolutionNote?: string },
+) => {
+  if (!dispute.raisedByEmail) return;
+
+  try {
+    await sendThreadedDisputeEmail({
+      disputeId: dispute.disputeId,
+      disputeSubject: dispute.subject,
+      disputeMongoId: dispute._id,
+      to: dispute.raisedByEmail,
+      audience: 'raiser',
+      emailThread: dispute.emailThread || {},
+      html: disputeClosedTemplate({
+        recipientName: dispute.raisedByName || 'there',
+        disputeId: dispute.disputeId,
+        subject: dispute.subject,
+        status: opts.status,
+        agentName: opts.agentName,
+        resolutionNote: opts.resolutionNote,
+        link: raiserTicketLink(dispute),
+      }),
+    });
+  } catch (err) {
+    console.error(`Failed to send dispute ${opts.status} email:`, err);
+  }
+};
+
 const serializeDisputeForRaiser = (dispute: any) => {
   const doc = dispute.toJSON ? dispute.toJSON() : dispute;
   const awaiting = doc.awaitingReplyFrom || 'support';
@@ -228,6 +259,35 @@ export const listMyDisputes = catchAsync(async (req: Request, res: Response) => 
     },
   });
 });
+
+/** GET /api/disputes/mine/active-for-report/:reportRef — open ticket by this user for a report. */
+export const getActiveDisputeForReport = catchAsync(
+  async (req: Request, res: Response, next: NextFunction) => {
+    const linkedReport = await resolveReportByRef(String(req.params.reportRef));
+    if (!linkedReport) {
+      return res.status(200).json({
+        status: 'success',
+        data: { activeDispute: null, canOpenNew: true },
+      });
+    }
+
+    const activeDispute = await Dispute.findOne({
+      reportRef: linkedReport._id,
+      raisedBy: req.user._id,
+      status: { $in: [...ACTIVE_DISPUTE_STATUSES] },
+    })
+      .select('_id disputeId status subject createdAt')
+      .lean();
+
+    res.status(200).json({
+      status: 'success',
+      data: {
+        activeDispute: activeDispute || null,
+        canOpenNew: !activeDispute,
+      },
+    });
+  },
+);
 
 /** GET /api/disputes/mine/:id — single ticket for the raiser. */
 export const getMyDispute = catchAsync(async (req: Request, res: Response, next: NextFunction) => {
@@ -565,6 +625,7 @@ export const updateDispute = catchAsync(async (req: Request, res: Response, next
       resolvedByName: req.user.name || 'Support',
       resolvedAt: new Date(),
     };
+    dispute.awaitingReplyFrom = 'support';
   }
 
   await dispute.save();
@@ -578,6 +639,14 @@ export const updateDispute = catchAsync(async (req: Request, res: Response, next
 
   if ((status === 'resolved' || status === 'rejected') && dispute.reportRef) {
     await restoreLinkedReportAfterDispute(dispute.reportRef, req.user, dispute.disputeId);
+  }
+
+  if (status === 'resolved' || status === 'rejected') {
+    await notifyDisputeClosed(dispute, {
+      status,
+      agentName: req.user.name || req.user.username || 'Support',
+      resolutionNote: dispute.resolution?.note,
+    });
   }
 
   res.status(200).json({ status: 'success', data: { dispute } });
@@ -599,6 +668,23 @@ export const createDispute = catchAsync(async (req: Request, res: Response, next
   const descriptionClean = String(description).trim();
 
   const linkedReport = reportRef ? await resolveReportByRef(String(reportRef)) : null;
+
+  if (linkedReport && !isSupportRole(req.user.role)) {
+    const existingOpen = await Dispute.findOne({
+      reportRef: linkedReport._id,
+      raisedBy: req.user._id,
+      status: { $in: [...ACTIVE_DISPUTE_STATUSES] },
+    }).select('disputeId status');
+
+    if (existingOpen) {
+      return next(
+        new AppError(
+          `You already have an open support ticket (${existingOpen.disputeId}) for this report. Please wait until it is resolved before opening another.`,
+          409,
+        ),
+      );
+    }
+  }
 
   const dispute = await Dispute.create({
     disputeId: generateDisputeId(),

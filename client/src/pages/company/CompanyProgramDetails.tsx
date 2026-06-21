@@ -1,4 +1,5 @@
 import React, { useState, useMemo, useEffect } from 'react';
+import { apiFetch } from '@/lib/api';
 import { useParams, useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { 
@@ -208,8 +209,8 @@ const CompanyProgramDetails = () => {
             const token = localStorage.getItem('token');
             const headers = { 'Authorization': `Bearer ${token}` };
             const [programRes, assetsRes] = await Promise.all([
-                fetch(`${API_URL}/company/programs/${id}`, { headers }),
-                fetch(`${API_URL}/company/assets`, { headers })
+                apiFetch(`/company/programs/${id}`, { headers }),
+                apiFetch(`/company/assets`, { headers })
             ]);
 
             if (!programRes.ok) throw new Error('Failed to fetch program');
@@ -258,7 +259,7 @@ const CompanyProgramDetails = () => {
     setIsDeleteDialogOpen(false); // Close dialog immediately
     try {
         const token = localStorage.getItem('token');
-        const res = await fetch(`${API_URL}/company/programs/${id}`, {
+        const res = await apiFetch(`/company/programs/${id}`, {
             method: 'DELETE',
             headers: { 'Authorization': `Bearer ${token}` }
         });

@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
+import { apiFetch } from '@/lib/api';
 import { useNavigate, useParams } from 'react-router-dom';
 import { ArrowLeft, CheckCircle, Clock, Eye, Pencil, Shield, XCircle } from 'lucide-react';
 import { toast } from 'sonner';
@@ -58,7 +59,7 @@ export default function AdminTriagerDetails() {
     setIsLoading(true);
     try {
       const token = localStorage.getItem('token');
-      const res = await fetch(`${API_URL}/admin/users/${id}`, {
+      const res = await apiFetch(`/admin/users/${id}`, {
         headers: { Authorization: `Bearer ${token}` },
       });
       const payload = await res.json();
@@ -142,7 +143,7 @@ export default function AdminTriagerDetails() {
           twitter: String(form.linkedAccounts?.twitter ?? '').trim(),
         },
       };
-      const res = await fetch(`${API_URL}/admin/users/${id}`, {
+      const res = await apiFetch(`/admin/users/${id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
         body: JSON.stringify(body),
@@ -242,7 +243,7 @@ export default function AdminTriagerDetails() {
             <Shield className="h-6 w-6" />
             {user.name}
           </h1>
-          <p className="text-sm text-muted-foreground">
+          <p className="text-sm text-muted-foreground break-all">
             {user.email} {user.username ? `· @${user.username}` : ''} · Triager
           </p>
         </div>
@@ -291,7 +292,7 @@ export default function AdminTriagerDetails() {
                 {usernameStatus === 'taken' && <p className="text-xs text-red-500">Username already exists.</p>}
               </>
             ) : (
-              <p className="font-medium">{user.username ? `@${user.username}` : '-'}</p>
+              <p className="font-medium break-all">{user.username ? `@${user.username}` : '-'}</p>
             )}
           </div>
           <div className="space-y-1">
@@ -299,7 +300,7 @@ export default function AdminTriagerDetails() {
             {editing ? (
               <Input value={form.email || ''} onChange={(e) => setForm((p: any) => ({ ...p, email: e.target.value }))} />
             ) : (
-              <p className="font-medium">{user.email || '-'}</p>
+              <p className="font-medium break-all">{user.email || '-'}</p>
             )}
           </div>
           <div className="space-y-1">

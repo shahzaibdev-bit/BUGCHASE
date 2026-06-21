@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { apiFetch } from '@/lib/api';
 import { Megaphone, AlertTriangle, Send, Bold, Italic, List, ListOrdered, Quote, Undo, Redo } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { toast } from 'sonner';
@@ -63,7 +64,7 @@ export default function AdminAnnouncements() {
     try {
         const message = editor.getHTML();
         const token = localStorage.getItem('token');
-        const res = await fetch(`${API_URL}/admin/announcements/broadcast`, {
+        const res = await apiFetch(`/admin/announcements/broadcast`, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',

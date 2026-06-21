@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
+import { apiFetch } from '@/lib/api';
 import { DollarSign, TrendingUp, AlertTriangle, Building2, ArrowUpRight, ArrowDownRight, RefreshCw } from 'lucide-react';
 import { GlassCard } from '@/components/ui/glass-card';
 import { Button } from '@/components/ui/button';
@@ -97,7 +98,7 @@ export default function AdminFinance() {
     try {
       setIsLoading(true);
       const token = localStorage.getItem('token');
-      const res = await fetch(`${API_URL}/admin/finance/analytics`, {
+      const res = await apiFetch(`/admin/finance/analytics`, {
         headers: { Authorization: `Bearer ${token}` },
       });
       const payload = await res.json();
@@ -167,7 +168,7 @@ export default function AdminFinance() {
     try {
       setIsApplyingAction(true);
       const token = localStorage.getItem('token');
-      const res = await fetch(`${API_URL}/admin/users/${selectedCompany.id}/status`, {
+      const res = await apiFetch(`/admin/users/${selectedCompany.id}/status`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
         body: JSON.stringify({ status, reason: reasonToSend || undefined }),
@@ -194,7 +195,7 @@ export default function AdminFinance() {
     try {
       setIsSendingEmail(true);
       const token = localStorage.getItem('token');
-      const res = await fetch(`${API_URL}/admin/users/${selectedCompany.id}/email`, {
+      const res = await apiFetch(`/admin/users/${selectedCompany.id}/email`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
         body: JSON.stringify({ subject: emailSubject.trim(), message: emailBodyText }),

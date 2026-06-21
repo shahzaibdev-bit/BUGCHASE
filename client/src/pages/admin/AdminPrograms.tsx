@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { apiFetch } from '@/lib/api';
 import { useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
 import { Search, Filter, MoreVertical, Shield, Building2, CheckCircle, XCircle, AlertTriangle, Eye } from 'lucide-react';
@@ -53,7 +54,7 @@ export default function AdminPrograms() {
     setIsLoading(true);
     try {
         const token = localStorage.getItem('token');
-        const res = await fetch(`${API_URL}/admin/programs`, {
+        const res = await apiFetch(`/admin/programs`, {
             headers: { 'Authorization': `Bearer ${token}` }
         });
         const data = await res.json();
@@ -83,7 +84,7 @@ export default function AdminPrograms() {
       if (extra?.banDurationKey) body.banDurationKey = extra.banDurationKey;
 
       const token = localStorage.getItem('token');
-      const res = await fetch(`${API_URL}/admin/programs/${id}/status`, {
+      const res = await apiFetch(`/admin/programs/${id}/status`, {
         method: 'PATCH',
         headers: {
           'Content-Type': 'application/json',

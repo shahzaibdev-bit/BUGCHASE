@@ -11,6 +11,7 @@ import {
   addDisputeMessage,
   updateDispute,
   createDispute,
+  getActiveDisputeForReport,
 } from '../controllers/disputeController';
 import {
   getTriagerCandidatesForDispute,
@@ -25,6 +26,7 @@ router.use(protect);
 // Any authenticated platform user can raise a dispute and manage their own tickets.
 router.post('/', createDispute);
 router.get('/mine', listMyDisputes);
+router.get('/mine/active-for-report/:reportRef', getActiveDisputeForReport);
 router.get('/mine/:id', getMyDispute);
 router.post('/mine/:id/messages', replyToMyDispute);
 

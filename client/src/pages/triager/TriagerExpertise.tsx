@@ -7,7 +7,7 @@ import { Label } from '@/components/ui/label';
 import { Slider } from '@/components/ui/slider';
 import { Badge } from '@/components/ui/badge';
 import { useToast } from '@/hooks/use-toast';
-import { API_URL } from '@/config';
+import { apiFetchJson } from '@/lib/api';
 
 const expertiseAreas = [
   { id: 'web', label: 'Web Application Security', icon: Globe, description: 'XSS, CSRF, SQL Injection' },
@@ -29,7 +29,6 @@ const severityPreferences = [
 
 export default function TriagerExpertise() {
   const { toast } = useToast();
-  const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
 
@@ -38,25 +37,25 @@ export default function TriagerExpertise() {
   const [expertise, setExpertise] = useState<Record<string, boolean>>({});
   const [severities, setSeverities] = useState<Record<string, boolean>>({});
 
-  const fetchPreferences = () => {
-    fetch(`${API_URL}/triager/profile`)
-        .then(res => res.json())
-        .then(data => {
-            if (data.status === 'success' && data.data.preferences) {
-                const prefs = data.data.preferences;
-                if (prefs.isAvailable !== undefined) setAvailability(prefs.isAvailable);
-                if (prefs.maxConcurrentReports) setMaxReports([prefs.maxConcurrentReports]);
-                
-                const expMap: Record<string, boolean> = {};
-                expertiseAreas.forEach(a => expMap[a.id] = (prefs.expertise || []).includes(a.id));
-                setExpertise(expMap);
+  const fetchPreferences = async () => {
+    try {
+      const data = await apiFetchJson<{ status: string; data: { preferences: any } }>('/triager/profile');
+      if (data.status === 'success' && data.data.preferences) {
+        const prefs = data.data.preferences;
+        if (prefs.isAvailable !== undefined) setAvailability(prefs.isAvailable);
+        if (prefs.maxConcurrentReports) setMaxReports([prefs.maxConcurrentReports]);
 
-                const sevMap: Record<string, boolean> = {};
-                severityPreferences.forEach(s => sevMap[s.id] = (prefs.severityPreferences || []).includes(s.id));
-                setSeverities(sevMap);
-            }
-        })
-        .catch(err => console.error(err));
+        const expMap: Record<string, boolean> = {};
+        expertiseAreas.forEach((a) => (expMap[a.id] = (prefs.expertise || []).includes(a.id)));
+        setExpertise(expMap);
+
+        const sevMap: Record<string, boolean> = {};
+        severityPreferences.forEach((s) => (sevMap[s.id] = (prefs.severityPreferences || []).includes(s.id)));
+        setSeverities(sevMap);
+      }
+    } catch (err) {
+      console.error(err);
+    }
   };
 
   useEffect(() => {
@@ -65,54 +64,53 @@ export default function TriagerExpertise() {
 
   const toggleExpertise = (id: string) => {
     if (!isEditing) return;
-    setExpertise(prev => ({ ...prev, [id]: !prev[id] }));
+    setExpertise((prev) => ({ ...prev, [id]: !prev[id] }));
   };
 
   const toggleSeverity = (id: string) => {
     if (!isEditing) return;
-    setSeverities(prev => ({ ...prev, [id]: !prev[id] }));
+    setSeverities((prev) => ({ ...prev, [id]: !prev[id] }));
   };
 
   const handleCancel = () => {
-      setIsEditing(false);
-      fetchPreferences(); 
-      toast({ title: "Cancelled", description: "Changes discarded" });
-  }
+    setIsEditing(false);
+    fetchPreferences();
+    toast({ title: 'Cancelled', description: 'Changes discarded' });
+  };
 
   const handleSave = async () => {
-      setSaving(true);
-      
-      const selectedExpertise = Object.entries(expertise).filter(([_, v]) => v).map(([k]) => k);
-      const selectedSeverities = Object.entries(severities).filter(([_, v]) => v).map(([k]) => k);
+    setSaving(true);
 
-      try {
-          const res = await fetch(`${API_URL}/triager/preferences`, {
-              method: 'PATCH',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                  expertise: selectedExpertise,
-                  severityPreferences: selectedSeverities,
-                  maxConcurrentReports: maxReports[0],
-                  isAvailable: availability
-              })
-          });
-          
-          if (res.ok) {
-              toast({ title: "Success", description: "Preferences saved successfully" });
-              setIsEditing(false);
-          } else {
-              toast({ title: "Error", description: "Failed to save preferences", variant: "destructive" });
-          }
-      } catch (error) {
-           toast({ title: "Error", description: "Something went wrong", variant: "destructive" });
-      } finally {
-          setSaving(false);
-      }
+    const selectedExpertise = Object.entries(expertise)
+      .filter(([_, v]) => v)
+      .map(([k]) => k);
+    const selectedSeverities = Object.entries(severities)
+      .filter(([_, v]) => v)
+      .map(([k]) => k);
+
+    try {
+      await apiFetchJson('/triager/preferences', {
+        method: 'PATCH',
+        body: JSON.stringify({
+          expertise: selectedExpertise,
+          severityPreferences: selectedSeverities,
+          maxConcurrentReports: maxReports[0],
+          isAvailable: availability }) });
+      toast({ title: 'Success', description: 'Preferences saved successfully' });
+      setIsEditing(false);
+    } catch (error: any) {
+      toast({
+        title: 'Error',
+        description: error.message || 'Failed to save preferences',
+        variant: 'destructive' });
+    } finally {
+      setSaving(false);
+    }
   };
 
   const activeExpertiseCount = Object.entries(expertise).filter(([_, active]) => active).length;
-  const activeSeverities = severityPreferences.filter(s => severities[s.id]);
-  const activeExpertiseList = expertiseAreas.filter(a => expertise[a.id]);
+  const activeSeverities = severityPreferences.filter((s) => severities[s.id]);
+  const activeExpertiseList = expertiseAreas.filter((a) => expertise[a.id]);
 
   return (
     <div className="space-y-6 animate-fade-in-up">

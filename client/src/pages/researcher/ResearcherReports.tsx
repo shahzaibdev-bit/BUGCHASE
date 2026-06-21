@@ -1,4 +1,5 @@
 import React, { useState, useMemo, useEffect } from 'react';
+import { apiFetch } from '@/lib/api';
 import { useNavigate } from 'react-router-dom';
 import { Search, Calendar as CalendarIcon, Activity, Circle, Archive, AtSign, Filter, ChevronDown, Check, X } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -76,7 +77,7 @@ export default function ResearcherReports() {
             headers['Authorization'] = `Bearer ${token}`;
         }
 
-        const res = await fetch(`${API_URL}/reports`, {
+        const res = await apiFetch(`/reports`, {
             headers,
             credentials: 'include'
         });

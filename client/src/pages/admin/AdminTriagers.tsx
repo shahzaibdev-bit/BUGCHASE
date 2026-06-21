@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { apiFetch } from '@/lib/api';
 import { 
   Shield, 
   Search, 
@@ -87,7 +88,7 @@ export default function AdminTriagers() {
     setIsLoading(true);
     try {
         const token = localStorage.getItem('token');
-        const res = await fetch(`${API_URL}/admin/triagers`, {
+        const res = await apiFetch(`/admin/triagers`, {
             headers: { 'Authorization': `Bearer ${token}` }
         });
         const data = await res.json();
@@ -163,24 +164,24 @@ export default function AdminTriagers() {
             >
                  <div className="p-4 flex flex-col md:flex-row items-start md:items-center gap-6">
                      {/* Identity */}
-                    <div className="flex items-center gap-4 min-w-[250px]">
-                        <Avatar className="h-12 w-12 border-2 border-zinc-200 dark:border-zinc-800">
+                    <div className="flex items-center gap-4 min-w-0 flex-1 md:max-w-[320px]">
+                        <Avatar className="h-12 w-12 border-2 border-zinc-200 dark:border-zinc-800 shrink-0">
                              <AvatarImage src={triager.avatar && triager.avatar !== 'default.jpg' ? triager.avatar : undefined} />
                             <AvatarFallback className="bg-zinc-100 dark:bg-zinc-900 text-zinc-600 dark:text-zinc-400 font-mono">
                                 {triager.name.substring(0, 2).toUpperCase()}
                             </AvatarFallback>
                         </Avatar>
-                        <div>
-                            <div className="flex items-center gap-2">
-                                <h3 className="font-bold text-foreground">{triager.name}</h3>
-                                {triager.status === 'Active' && <div className="h-2 w-2 rounded-full bg-zinc-900 dark:bg-white animate-pulse" />}
+                        <div className="min-w-0">
+                            <div className="flex items-center gap-2 min-w-0">
+                                <h3 className="font-bold text-foreground truncate">{triager.name}</h3>
+                                {triager.status === 'Active' && <div className="h-2 w-2 rounded-full bg-zinc-900 dark:bg-white animate-pulse shrink-0" />}
                             </div>
-                            <div className="flex items-center gap-2 text-xs text-muted-foreground font-mono mt-1">
-                                <span className="text-zinc-500 max-w-[100px] truncate">{triager._id}</span>
-                                <span>•</span>
-                                <span className="flex items-center gap-1">
-                                    <Mail className="h-3 w-3" />
-                                    {triager.email}
+                            <div className="flex items-center gap-2 text-xs text-muted-foreground font-mono mt-1 min-w-0">
+                                <span className="text-zinc-500 truncate max-w-[100px]">{triager._id}</span>
+                                <span className="shrink-0">•</span>
+                                <span className="flex items-center gap-1 min-w-0 truncate">
+                                    <Mail className="h-3 w-3 shrink-0" />
+                                    <span className="truncate">{triager.email}</span>
                                 </span>
                             </div>
                         </div>

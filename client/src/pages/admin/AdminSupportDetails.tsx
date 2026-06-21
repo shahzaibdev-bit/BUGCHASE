@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { apiFetch } from '@/lib/api';
 import { useNavigate, useParams } from 'react-router-dom';
 import { ArrowLeft, Headphones, Pencil } from 'lucide-react';
 import { toast } from 'sonner';
@@ -39,7 +40,7 @@ export default function AdminSupportDetails() {
     setIsLoading(true);
     try {
       const token = localStorage.getItem('token');
-      const res = await fetch(`${API_URL}/admin/users/${id}`, {
+      const res = await apiFetch(`/admin/users/${id}`, {
         headers: { Authorization: `Bearer ${token}` },
       });
       const payload = await res.json();
@@ -116,7 +117,7 @@ export default function AdminSupportDetails() {
           twitter: String(form.linkedAccounts?.twitter ?? '').trim(),
         },
       };
-      const res = await fetch(`${API_URL}/admin/users/${id}`, {
+      const res = await apiFetch(`/admin/users/${id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
         body: JSON.stringify(body),
