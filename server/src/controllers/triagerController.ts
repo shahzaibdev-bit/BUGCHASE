@@ -16,7 +16,7 @@ import {
   runInitialDuplicateScanForNewReport,
   pruneDuplicateCandidatesNotOlderThanSelf,
 } from '../services/duplicateDetectionService';
-import { isReportInAiTriage } from '../services/cvssTriageService';
+import { isReportAiProcessing } from '../services/cvssTriageService';
 import { isReopenToTriaging, formatReopenForTriageMarkdown } from '../utils/reopenTriageNotice';
 import {
   applyResearcherReputationOnStatusTransition,
@@ -227,11 +227,9 @@ export const claimReport = catchAsync(async (req: Request, res: Response, next: 
         return next(new AppError('Report already claimed by another triager', 400));
     }
 
-    // Block claim while AI CVSS triage is still in progress. The report is
-    // visible in the queue so triagers can see what is coming, but they
-    // cannot claim it until automated triage finishes.
-    if (isReportInAiTriage(report)) {
-        return next(new AppError('Report is still in the system process. Please wait until automated triage is complete before claiming.', 409));
+    // Block claim while automated duplicate scan + CVSS triage are still running.
+    if (isReportAiProcessing(report)) {
+        return next(new AppError('Report is still being processed. Please wait until automated duplicate scan and CVSS triage complete before claiming.', 409));
     }
 
     // --- NEW: Concurrency Enforcements ---

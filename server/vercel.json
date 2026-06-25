@@ -11,5 +11,11 @@
       "src": "/(.*)",
       "dest": "src/server.ts"
     }
+  ],
+  "crons": [
+    {
+      "path": "/api/cron/private-invite-scaling",
+      "schedule": "0 0 * * *"
+    }
   ]
 }

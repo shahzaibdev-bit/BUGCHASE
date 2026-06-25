@@ -43,6 +43,8 @@ import {
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
 import { API_URL } from '@/config';
+import { toast } from '@/hooks/use-toast';
+import { PrivateProgramInvitePanel } from '@/components/company/PrivateProgramInvitePanel';
 
 // Mock reports and assets removed
 
@@ -310,6 +312,14 @@ const CompanyProgramDetails = () => {
       }
   };
 
+  const programTabs = [
+    'overview',
+    'scope',
+    'reports',
+    ...(data?.isPrivate ? ['invites'] : []),
+    ...(data?.type === 'BBP' ? ['rewards'] : []),
+  ];
+
   return (
     <div className="min-h-screen  text-foreground font-sans p-6 overflow-x-hidden">
         <div className="max-w-7xl mx-auto space-y-6">
@@ -415,7 +425,7 @@ const CompanyProgramDetails = () => {
             {/* Main Content Tabs */}
             <div className="mt-8">
                 <div className="flex border-b border-border mb-6 gap-8">
-                    {['overview', 'scope', 'reports', ...(data.type === 'BBP' ? ['rewards'] : [])].map((tab) => (
+                    {programTabs.map((tab) => (
                         <button
                             key={tab}
                             onClick={() => setActiveTab(tab)}
@@ -503,6 +513,14 @@ const CompanyProgramDetails = () => {
                                          </div>
                                      </div>
                                 </div>
+                            )}
+
+                            {activeTab === 'invites' && data.isPrivate && id && (
+                                <PrivateProgramInvitePanel
+                                    programId={id}
+                                    initialSettings={data.privateInviteSettings}
+                                    inviteMetrics={data.inviteMetrics}
+                                />
                             )}
 
                             {activeTab === 'scope' && (

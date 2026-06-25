@@ -8,11 +8,13 @@ import {
     Trophy, 
     User,
     Shield,
-    LifeBuoy
+    LifeBuoy,
+    Lock
 } from 'lucide-react';
 
 const navItems = [
   { label: 'Programs', path: '/researcher', icon: Shield },
+  { label: 'Private Invites', path: '/researcher/private-invites', icon: Lock },
   { label: 'My Reports', path: '/researcher/reports', icon: FileText },
   { label: 'Wallet', path: '/researcher/wallet', icon: Wallet },
   { label: 'Leaderboard', path: '/researcher/leaderboard', icon: Trophy },

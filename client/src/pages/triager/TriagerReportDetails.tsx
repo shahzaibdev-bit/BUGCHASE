@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { apiFetch } from '@/lib/api';
+import { isReportAiProcessing } from '@/lib/reportAiProcessing';
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import { 
   Lock, 
@@ -773,7 +774,7 @@ export default function TriagerReportDetails() {
     const aiSaysDuplicate = !!aiAnalysis.isDuplicate;
     const aiReasoning = String(aiAnalysis.reasoning || '').trim();
     const aiResearcherCommunication = String(aiAnalysis.researcherCommunication || '').trim();
-    const aiProcessing = aiStatus === 'pending' || aiStatus === 'processing';
+    const aiProcessing = isReportAiProcessing(report);
 
     // The threshold the spec requires: only flag a "duplicate review required"
     // workflow when the LLM is confident enough (>= 60%). Below that, the
@@ -830,7 +831,7 @@ export default function TriagerReportDetails() {
              {aiProcessing && (
                  <div className="mx-6 mb-2 rounded-lg border border-blue-200 dark:border-blue-900/50 bg-blue-50 dark:bg-blue-950/30 px-4 py-3 text-sm text-blue-900 dark:text-blue-100 shrink-0 flex items-center gap-2">
                      <div className="animate-spin rounded-full h-3 w-3 border-2 border-blue-500/30 border-t-blue-500" />
-                     <span><span className="font-semibold">AI duplicate scan in progress.</span> The system is comparing this submission against prior reports — please check back in a moment.</span>
+                     <span><span className="font-semibold">Automated processing in progress.</span> Duplicate scan and CVSS triage are running — please check back in a moment.</span>
                  </div>
              )}
              {duplicateBlocking && (

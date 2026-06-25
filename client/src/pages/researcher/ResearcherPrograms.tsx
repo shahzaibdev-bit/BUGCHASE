@@ -5,28 +5,30 @@ import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { GlassCard } from '@/components/ui/glass-card';
+import { ProgramCard, ProgramCardData } from '@/components/researcher/ProgramCard';
 import { useNavigate } from 'react-router-dom';
-import { API_URL } from '@/config';
 
-// Simplified Program Interface matching backend response
-interface Program {
-    _id: string; // MongoDB ID
-    id?: string; // Fallback
-    title: string;
-    companyName: string;
-    companyId?: {
-        avatar?: string;
-    };
-    type: string;
-    description: string;
-    bountyRange: string;
-    rewards: {
-        critical: { min: number, max: number };
-        high: { min: number, max: number };
-        medium: { min: number, max: number };
-        low: { min: number, max: number };
-    };
-    createdAt: string;
+interface Program extends ProgramCardData {
+  _id: string;
+  createdAt: string;
+}
+
+function normalizeProgram(raw: any, company?: any): Program {
+  const companyRef = raw.companyId && typeof raw.companyId === 'object'
+    ? raw.companyId
+    : company ? { avatar: company.avatar } : undefined;
+
+  return {
+    _id: raw._id,
+    title: raw.title,
+    companyName: raw.companyName || company?.companyName || company?.name,
+    companyId: companyRef,
+    type: raw.type,
+    description: raw.description,
+    bountyRange: raw.bountyRange,
+    isPrivate: raw.isPrivate ?? false,
+    createdAt: raw.createdAt,
+  };
 }
 
 const allTags = ['Web', 'Mobile', 'API', 'Fintech', 'E-commerce', 'Banking', 'IoT', 'Crypto'];
@@ -40,35 +42,36 @@ export default function ResearcherPrograms() {
 
   useEffect(() => {
     const fetchPrograms = async () => {
-        try {
-            const res = await apiFetch(`/programs`);
-            const data = await res.json();
-            if (res.ok) {
-                setPrograms(data.data);
-            } else {
-                console.error("Failed to fetch programs");
-            }
-        } catch (error) {
-            console.error("Error fetching programs:", error);
-        } finally {
-            setIsLoading(false);
+      try {
+        const res = await apiFetch('/programs');
+        const data = await res.json();
+        if (res.ok) {
+          const list = (data.data || [])
+            .filter((p: any) => !p.isPrivate)
+            .map((p: any) => normalizeProgram(p));
+          setPrograms(list);
         }
+      } catch (error) {
+        console.error('Error fetching programs:', error);
+      } finally {
+        setIsLoading(false);
+      }
     };
     fetchPrograms();
   }, []);
 
-  const filteredPrograms = programs.filter(program => {
-    const matchesSearch = program.title?.toLowerCase().includes(search.toLowerCase()) ||
-                          program.companyName?.toLowerCase().includes(search.toLowerCase());
-    const matchesTags = selectedTags.length === 0 || 
-                        selectedTags.some(tag => program.description?.includes(tag) || program.type === tag);
+  const filteredPrograms = programs.filter((program) => {
+    const matchesSearch =
+      program.title?.toLowerCase().includes(search.toLowerCase()) ||
+      program.companyName?.toLowerCase().includes(search.toLowerCase());
+    const matchesTags =
+      selectedTags.length === 0 ||
+      selectedTags.some((tag) => program.description?.includes(tag) || program.type === tag);
     return matchesSearch && matchesTags;
   });
 
   const toggleTag = (tag: string) => {
-    setSelectedTags(prev => 
-      prev.includes(tag) ? prev.filter(t => t !== tag) : [...prev, tag]
-    );
+    setSelectedTags((prev) => (prev.includes(tag) ? prev.filter((t) => t !== tag) : [...prev, tag]));
   };
 
   return (
@@ -78,7 +81,6 @@ export default function ResearcherPrograms() {
         <p className="text-muted-foreground">Discover and join security programs</p>
       </div>
 
-      {/* Search and Filters */}
       <GlassCard className="space-y-4">
         <div className="flex flex-col sm:flex-row gap-4">
           <div className="relative flex-1">
@@ -97,7 +99,7 @@ export default function ResearcherPrograms() {
         </div>
 
         <div className="flex flex-wrap gap-2">
-          {allTags.map(tag => (
+          {allTags.map((tag) => (
             <Badge
               key={tag}
               variant={selectedTags.includes(tag) ? 'default' : 'tag'}
@@ -110,71 +112,23 @@ export default function ResearcherPrograms() {
         </div>
       </GlassCard>
 
-      {/* Programs Grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-        {isLoading ? (
-            // Skeleton / Loading State
-            [1, 2, 3].map(i => (
-                <GlassCard key={i} className="h-64 animate-pulse">
-                    <div className="h-12 w-12 bg-zinc-200 dark:bg-zinc-800 rounded-lg mb-4" />
-                    <div className="h-4 w-3/4 bg-zinc-200 dark:bg-zinc-800 rounded mb-2" />
-                    <div className="h-4 w-1/2 bg-zinc-200 dark:bg-zinc-800 rounded" />
-                </GlassCard>
+        {isLoading
+          ? [1, 2, 3].map((i) => (
+              <GlassCard key={i} className="h-64 animate-pulse">
+                <div className="h-12 w-12 bg-zinc-200 dark:bg-zinc-800 rounded-lg mb-4" />
+                <div className="h-4 w-3/4 bg-zinc-200 dark:bg-zinc-800 rounded mb-2" />
+                <div className="h-4 w-1/2 bg-zinc-200 dark:bg-zinc-800 rounded" />
+              </GlassCard>
             ))
-        ) : (
-            filteredPrograms.map((program, index) => (
-            <GlassCard 
+          : filteredPrograms.map((program, index) => (
+              <ProgramCard
                 key={program._id}
-                variant="glow"
-                className="group hover:scale-[1.02] transition-all duration-300 animate-fade-in flex flex-col cursor-pointer"
-                style={{ animationDelay: `${index * 0.1}s` }}
+                program={program}
+                index={index}
                 onClick={() => navigate(`/researcher/programs/${program._id}`)}
-            >
-                <div className="flex items-start gap-4 mb-4">
-                {/* Logo or Placeholder */}
-                <div className="w-12 h-12 rounded-lg bg-zinc-100 dark:bg-zinc-800 flex items-center justify-center overflow-hidden flex-shrink-0">
-                    {program.companyId?.avatar && program.companyId.avatar !== 'default.jpg' ? (
-                        <img 
-                            src={program.companyId.avatar} 
-                            alt={`${program.companyName} logo`} 
-                            className="w-full h-full object-cover"
-                        />
-                    ) : (
-                        <span className="text-xl font-bold text-zinc-500">
-                            {program.companyName.charAt(0)}
-                        </span>
-                    )}
-                </div>
-                <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2">
-                    <h3 className="font-semibold truncate">{program.title}</h3>
-                    <Badge variant="outline" className="text-xs border-emerald-500/50 text-emerald-600 dark:text-emerald-400 capitalize">
-                        {program.type}
-                    </Badge>
-                    </div>
-                    <p className="text-sm text-muted-foreground">{program.companyName}</p>
-                </div>
-                </div>
-
-                <p className="text-sm text-muted-foreground mb-4 line-clamp-2 flex-grow">
-                {program.description.replace(/<[^>]*>?/gm, '')}
-                </p>
-
-                <div className="flex items-center justify-between pt-4 border-t border-border/30 mt-auto">
-                  <div>
-                      <p className="text-xs text-muted-foreground">Bounty</p>
-                      <p className="font-bold text-primary font-mono text-sm">{program.bountyRange?.replace(/\$/g, 'PKR ')}</p>
-                  </div>
-                  <div className="text-right">
-                    <p className="text-xs text-muted-foreground">Avg Response</p>
-                    <p className="text-xs font-mono text-zinc-600 dark:text-zinc-300">
-                      {program.avgTriageTime ? `~${program.avgTriageTime}` : '~24h'}
-                    </p>
-                  </div>
-                </div>
-            </GlassCard>
-            ))
-        )}
+              />
+            ))}
       </div>
 
       {!isLoading && filteredPrograms.length === 0 && (

@@ -21,37 +21,69 @@ declare global {
 }
 
 export const protect = catchAsync(async (req: Request, res: Response, next: NextFunction) => {
-  let token;
+  let bearerToken: string | undefined;
   if (req.headers.authorization && req.headers.authorization.startsWith('Bearer')) {
-    token = req.headers.authorization.split(' ')[1];
-    if (token === 'null' || token === 'undefined') token = undefined;
-  }
-  
-  if (!token && req.cookies && req.cookies.jwt) {
-    token = req.cookies.jwt;
+    bearerToken = req.headers.authorization.split(' ')[1];
+    if (bearerToken === 'null' || bearerToken === 'undefined') bearerToken = undefined;
   }
 
-  if (!token) {
+  const cookieToken =
+    req.cookies?.jwt && req.cookies.jwt !== 'loggedout' ? req.cookies.jwt : undefined;
+
+  const tokenCandidates = [...new Set([bearerToken, cookieToken].filter(Boolean))] as string[];
+
+  if (!tokenCandidates.length) {
     return next(new AppError('You are not logged in! Please log in to get access.', 401));
   }
 
-  // Verify token
-  let decoded: DecodedToken;
-  try {
-    // @ts-ignore - promisify types are tricky with jwt.verify
-    decoded = await promisify(jwt.verify)(token, process.env.JWT_SECRET as string) as DecodedToken;
-  } catch (err) {
-    return next(new AppError('Invalid token. Please log in again.', 401));
+  for (const token of tokenCandidates) {
+    try {
+      const decoded = await (promisify(jwt.verify) as any)(
+        token,
+        process.env.JWT_SECRET as string,
+      ) as DecodedToken;
+      const currentUser = await User.findById(decoded.id);
+      if (currentUser) {
+        req.user = currentUser;
+        return next();
+      }
+    } catch {
+      // Try the next token source (e.g. cookie when Bearer is stale).
+    }
   }
 
-  // Check if user still exists
-  const currentUser = await User.findById(decoded.id);
-  if (!currentUser) {
-    return next(new AppError('The user belonging to this token does no longer exist.', 401));
+  return next(new AppError('Invalid token. Please log in again.', 401));
+});
+
+/** Sets req.user when a valid JWT is present; continues anonymously otherwise. */
+export const optionalProtect = catchAsync(async (req: Request, res: Response, next: NextFunction) => {
+  let bearerToken: string | undefined;
+  if (req.headers.authorization && req.headers.authorization.startsWith('Bearer')) {
+    bearerToken = req.headers.authorization.split(' ')[1];
+    if (bearerToken === 'null' || bearerToken === 'undefined') bearerToken = undefined;
   }
 
-  // Grant Access
-  req.user = currentUser;
+  const cookieToken =
+    req.cookies?.jwt && req.cookies.jwt !== 'loggedout' ? req.cookies.jwt : undefined;
+
+  const tokenCandidates = [...new Set([bearerToken, cookieToken].filter(Boolean))] as string[];
+
+  for (const token of tokenCandidates) {
+    try {
+      const decoded = await (promisify(jwt.verify) as any)(
+        token,
+        process.env.JWT_SECRET as string,
+      ) as DecodedToken;
+      const currentUser = await User.findById(decoded.id);
+      if (currentUser) {
+        req.user = currentUser;
+        break;
+      }
+    } catch {
+      // Invalid or expired token — try the next source.
+    }
+  }
+
   next();
 });
 

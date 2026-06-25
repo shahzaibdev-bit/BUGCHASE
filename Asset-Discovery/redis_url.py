@@ -18,16 +18,18 @@ load_dotenv()
 def normalize_redis_url(raw: str | None) -> str:
     u = (raw or "").strip()
     if not u:
-        return "redis://localhost:6379/0"
+        raise RuntimeError(
+            "REDIS_URL is required. Set your Upstash Redis URL in .env "
+            "(e.g. rediss://default:PASSWORD@YOUR-ENDPOINT.upstash.io:6379). "
+            "Use the Redis protocol URL from the Upstash dashboard, not the REST API URL."
+        )
 
     lower = u.lower()
-    # Upstash Redis requires TLS
     if "upstash.io" in lower and u.startswith("redis://"):
         u = "rediss://" + u[len("redis://") :]
 
     parsed = urlparse(u)
     path = parsed.path or ""
-    # Fix empty or broken path (e.g. ...:6379//) so Celery gets a DB index
     if path in ("", "/", "//"):
         path = "/0"
     return urlunparse((parsed.scheme, parsed.netloc, path, "", "", ""))

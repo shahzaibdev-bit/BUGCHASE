@@ -48,6 +48,8 @@ const ResearcherProfile = lazy(() => import("./pages/researcher/ResearcherProfil
 const ResearcherVerification = lazy(() => import("./pages/researcher/ResearcherVerification"));
 const ProgramDetails = lazy(() => import("./pages/researcher/ProgramDetails"));
 const ReportDetails = lazy(() => import("./pages/researcher/ReportDetails"));
+const ResearcherPrivateInvites = lazy(() => import("./pages/researcher/ResearcherPrivateInvites"));
+const ResearcherPrivateInviteLanding = lazy(() => import("./pages/researcher/ResearcherPrivateInviteLanding"));
 
 // Company Pages
 const CompanyDashboard = lazy(() => import("./pages/company/CompanyDashboard"));
@@ -156,6 +158,7 @@ const App = () => (
                 </Route>
 
                 <Route path="/triager/reassignment-invite/:token" element={<TriagerReassignmentInvite />} />
+                <Route path="/researcher/private-invite/:token" element={<ResearcherPrivateInviteLanding />} />
 
                 {/* Researcher Routes */}
                 <Route element={<ProtectedRoute allowedRoles={['researcher']} />}>
@@ -169,6 +172,7 @@ const App = () => (
                       <Route path="leaderboard" element={<ResearcherLeaderboard />} />
                       <Route path="profile" element={<ResearcherProfile />} />
                       <Route path="verify" element={<ResearcherVerification />} />
+                      <Route path="private-invites" element={<ResearcherPrivateInvites />} />
                       <Route path="support" element={<MySupportTickets />} />
                       <Route path="support/:id" element={<MySupportTicketDetails />} />
                   </Route>

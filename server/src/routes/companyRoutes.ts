@@ -1,6 +1,7 @@
 import express from 'express';
 import { protect, restrictTo } from '../middlewares/auth';
-import { inviteMember, getTeamMembers, generateVerificationToken, verifyDomain, getVerifiedAssets, updateAssetStatus, deleteVerifiedAsset, deleteAssetHost, updateAssetScope, postAssetDiscoveryScan, createProgram, getCompanyPrograms, getProgramById, deleteProgram, getReportDetails, getCompanyReports, updateReportSeverity, addCompanyComment, suggestBounty, updateReportStatus, awardBounty, generateReportMessage, createTopUpIntent, confirmTopUp, getWalletTransactions, createSetupIntent, getPaymentMethods, detachPaymentMethod, getCompanyAnalytics, requestPaymentMethodOtp, verifyPaymentMethodOtp } from '../controllers/companyController';
+import { inviteMember, getTeamMembers, generateVerificationToken, verifyDomain, getVerifiedAssets, updateAssetStatus, deleteVerifiedAsset, deleteAssetHost, updateAssetScope, postAssetDiscoveryScan, createProgram, getCompanyPrograms, getProgramById, deleteProgram, getReportDetails, getCompanyReports, updateReportSeverity, addCompanyComment, suggestBounty, updateReportStatus, awardBounty, generateReportMessage, createTopUpIntent, confirmTopUp, getWalletTransactions, createSetupIntent, getPaymentMethods, detachPaymentMethod, getCompanyAnalytics, requestPaymentMethodOtp, verifyPaymentMethodOtp, getPrivateProgramEligibleResearchers, inviteResearcherToPrivateProgram } from '../controllers/companyController';
+import { updatePrivateProgramSettings, getPrivateProgramInviteStats } from '../controllers/privateProgramInviteController';
 import multer from 'multer';
 
 const upload = multer({ storage: multer.memoryStorage() });
@@ -28,6 +29,10 @@ router.delete('/assets/:id/host', deleteAssetHost);
 router.post('/programs', createProgram);
 router.get('/programs', getCompanyPrograms);
 router.get('/programs/:id', getProgramById);
+router.patch('/programs/:id/private-settings', updatePrivateProgramSettings);
+router.get('/programs/:id/invite-stats', getPrivateProgramInviteStats);
+router.get('/programs/:id/eligible-researchers', getPrivateProgramEligibleResearchers);
+router.post('/programs/:id/invite-researcher', inviteResearcherToPrivateProgram);
 router.delete('/programs/:id', deleteProgram);
 router.get('/reports', getCompanyReports);
 router.get('/reports/:id', getReportDetails);

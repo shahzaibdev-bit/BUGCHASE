@@ -23,13 +23,14 @@ const ProgramDetails = () => {
     const { id } = useParams();
     const [program, setProgram] = useState<any>(null);
     const [loading, setLoading] = useState(true);
+    const [error, setError] = useState<string | null>(null);
     const [leaderboard, setLeaderboard] = useState<any[]>([]);
 
     useEffect(() => {
         const fetchProgramData = async () => {
              if (!id) return;
+             setError(null);
              try {
-                 // 1. Fetch Program Details
                  const res = await apiFetch(`/programs/${id}`);
                  const data = await res.json();
                  
@@ -37,11 +38,13 @@ const ProgramDetails = () => {
                      setProgram(data.data.program);
                      setLeaderboard(data.data.hallOfFame || []);
                  } else {
-                     console.error('Failed to fetch program');
+                     setProgram(null);
+                     setError(data.message || 'Failed to load program');
                  }
 
              } catch (err) {
                  console.error('Failed to fetch details', err);
+                 setError('Failed to load program');
              } finally {
                  setLoading(false);
              }
@@ -60,8 +63,9 @@ const ProgramDetails = () => {
 
     if (!program) {
         return (
-            <div className="flex flex-col items-center justify-center min-h-[50vh] space-y-4">
+            <div className="flex flex-col items-center justify-center min-h-[50vh] space-y-4 px-4 text-center">
                 <h1 className="text-2xl font-bold font-mono">PROGRAM NOT FOUND</h1>
+                {error && <p className="text-sm text-muted-foreground max-w-md">{error}</p>}
                 <Link to="/researcher">
                     <Button>Return to Programs</Button>
                 </Link>

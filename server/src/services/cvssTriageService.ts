@@ -374,14 +374,24 @@ export async function runCvssTriageForReport(reportId: string | mongoose.Types.O
   }
 }
 
+const AI_DUPLICATE_TERMINAL = new Set(['completed', 'failed', 'no_candidates', 'skipped']);
+const AI_TRIAGE_TERMINAL = new Set(['completed', 'failed', 'skipped']);
+
 /**
- * `true` while the report is still being processed by the AI triage
- * pipeline (pending or actively processing). Used to gate the triager
- * Claim action.
+ * True while duplicate scan and/or CVSS triage are still queued or running.
+ * Triagers cannot claim until both pipelines reach a terminal state.
+ */
+export function isReportAiProcessing(report: any): boolean {
+  const dupStatus = String(report?.aiDuplicateAnalysis?.status || 'pending');
+  const triageStatus = String(report?.aiTriage?.status || 'pending');
+  return !AI_DUPLICATE_TERMINAL.has(dupStatus) || !AI_TRIAGE_TERMINAL.has(triageStatus);
+}
+
+/**
+ * @deprecated Use isReportAiProcessing — kept for existing imports.
  */
 export function isReportInAiTriage(report: any): boolean {
-  const status = String(report?.aiTriage?.status || '');
-  return status === 'pending' || status === 'processing';
+  return isReportAiProcessing(report);
 }
 
 export const AI_TRIAGE_USERNAME = AI_USERNAME;

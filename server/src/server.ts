@@ -18,6 +18,8 @@ import triagerRoutes from './routes/triagerRoutes';
 import programRoutes from './routes/programRoutes';
 import publicRoutes from './routes/publicRoutes';
 import disputeRoutes from './routes/disputeRoutes';
+import researcherRoutes from './routes/researcherRoutes';
+import cronRoutes from './routes/cronRoutes';
 import { rateLimiter } from './middlewares/rateLimit';
 import { isOriginAllowed } from './config/corsOrigins';
 
@@ -80,9 +82,16 @@ app.use(async (req, res, next) => {
   }
 });
 
-// Rate Limiting (Global API) - 100 requests per 15 minutes
+// Rate Limiting (Global API) - 100 requests per 15 minutes per route.
+// Session bootstrap (GET /auth/me) is exempt — blocking it logs users out on reload.
 const apiLimiter = rateLimiter(100, 15 * 60);
-app.use('/api', apiLimiter);
+app.use('/api', (req, res, next) => {
+  const isAuthMe =
+    req.method === 'GET' &&
+    (req.originalUrl === '/api/auth/me' || req.originalUrl.startsWith('/api/auth/me?'));
+  if (isAuthMe) return next();
+  return apiLimiter(req, res, next);
+});
 
 // Health Check Root Route
 app.get('/', (req, res) => {
@@ -99,6 +108,8 @@ app.use('/api/triager', triagerRoutes);
 app.use('/api/programs', programRoutes);
 app.use('/api/disputes', disputeRoutes);
 app.use('/api/public', publicRoutes);
+app.use('/api/researcher', researcherRoutes);
+app.use('/api/cron', cronRoutes);
 
 // Handle Unhandled Routes
 app.all(/(.*)/, (req, res, next) => {
@@ -117,17 +128,19 @@ export default app;
 if (process.env.NODE_ENV !== 'production' && !process.env.VERCEL) {
   const server = app.listen(PORT, () => {
     console.log(`Server running in ${process.env.NODE_ENV} mode on port ${PORT}`);
+    import('./config/redis').then(({ ensureRedisConnected }) => {
+      ensureRedisConnected().catch((err) => {
+        console.error('[redis] Failed to connect to Upstash:', err?.message || err);
+      });
+    });
+    import('./services/reportProcessingQueue').then(({ recoverPendingReportsIntoQueue }) => {
+      recoverPendingReportsIntoQueue();
+    });
   });
 
   // Initialize WebSockets
   import('./services/socketService').then(({ initSocket }) => {
       initSocket(server);
-      // Once sockets are up we can safely re-queue any reports that were
-      // mid-flight before the previous shutdown so the AI pipeline picks up
-      // where it left off (FIFO, one at a time).
-      import('./services/reportProcessingQueue').then(({ recoverPendingReportsIntoQueue }) => {
-          recoverPendingReportsIntoQueue();
-      });
   });
 
   // Handle Unhandled Rejections

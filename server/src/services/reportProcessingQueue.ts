@@ -106,9 +106,11 @@ async function tick(): Promise<void> {
     await runCvssTriagePhase(job.reportId);
     log(`done ${job.reportId} in ${Date.now() - startedAt}ms`);
     emitJobPhase(job.reportId, 'done');
+    safeEmit(null, 'report_ai_processing_complete', { reportId: job.reportId });
   } catch (err) {
     console.error('[report-queue] job failed', job.reportId, err);
     emitJobPhase(job.reportId, 'failed', { error: (err as Error)?.message });
+    safeEmit(null, 'report_ai_processing_complete', { reportId: job.reportId });
   } finally {
     isProcessing = false;
     currentJobId = null;
@@ -155,9 +157,11 @@ async function runDuplicateScanPhase(reportId: string): Promise<void> {
     console.error('[report-queue] duplicate scan failed', reportId, scanErr);
     try {
       await Report.findByIdAndUpdate(reportId, {
-        'aiDuplicateAnalysis.status': 'failed',
-        'aiDuplicateAnalysis.error': (scanErr as Error)?.message || 'scan failed',
-        'aiDuplicateAnalysis.processedAt': new Date(),
+        $set: {
+          'aiDuplicateAnalysis.status': 'failed',
+          'aiDuplicateAnalysis.error': (scanErr as Error)?.message || 'scan failed',
+          'aiDuplicateAnalysis.processedAt': new Date(),
+        },
       });
     } catch {
       /* noop */

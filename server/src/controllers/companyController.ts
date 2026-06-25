@@ -4,6 +4,12 @@ import crypto from 'crypto';
 import User, { IUser } from '../models/User';
 import Program from '../models/Program';
 import Report from '../models/Report';
+import {
+  createPrivateProgramInvite,
+  getProgramThirtyDayValidReportCount,
+  normalizePrivateInviteSettings,
+  scoreEligibleResearchersForProgram,
+} from '../services/privateProgramInviteService';
 import AppError from '../utils/AppError';
 import catchAsync from '../utils/catchAsync';
 import { sendEmail, inviteMemberTemplate, reportEmailTemplate, walletTopUpTemplate, otpTemplate, cardDeletionOtpTemplate } from '../services/emailService';
@@ -17,7 +23,7 @@ import {
   applyResearcherReputationOnStatusTransition,
   clearReputationMilestonesForReTriage,
 } from '../services/researcherReputationService';
-import { resolveCompanyAccount } from '../utils/companyAccount';
+import { resolveCompanyAccount, companyOwnerId } from '../utils/companyAccount';
 import { getStripeClient } from '../utils/stripeClient';
 
 const getOrCreateStripeCustomer = async (userId: string) => {
@@ -540,7 +546,9 @@ export const createProgram = catchAsync(async (req: Request, res: Response, next
             submissionGuidelines = '',
             outOfScope = [],
             slas = { firstResponse: 24, triage: 48, bounty: 168, resolution: 360 },
-            isPrivate = false
+            isPrivate = false,
+            privateInviteSettings = {},
+            assetTags = [],
         } = req.body; 
         
         const user = await User.findById(req.user!.id);
@@ -622,6 +630,14 @@ export const createProgram = catchAsync(async (req: Request, res: Response, next
             outOfScope: formattedOutOfScope,
             slas,
             isPrivate,
+            privateInviteSettings: isPrivate
+                ? normalizePrivateInviteSettings({
+                    ...privateInviteSettings,
+                    assetTags: Array.isArray(assetTags) && assetTags.length
+                        ? assetTags
+                        : privateInviteSettings?.assetTags,
+                })
+                : undefined,
             rewards: sanitizedRewards,
             bountyRange,
             status: 'Pending'
@@ -661,34 +677,123 @@ export const getProgramById = catchAsync(async (req: Request, res: Response, nex
         tier: s.tier || 'Low'
     }));
 
-    // Mock stats for now as we don't have reports linked yet
+    const programReports = await Report.find({ programId: program._id.toString() })
+        .select('status bounty createdAt comments researcherId')
+        .sort({ createdAt: -1 });
+
+    const openStatuses = new Set(['Submitted', 'Triaging', 'Triaged', 'Pending_Fix', 'Needs Info', 'Under Review', 'In Dispute']);
+    const responseMinutes: number[] = [];
+    for (const report of programReports as any[]) {
+        const comments = (report.comments || []).map((c: any) => ({
+            sender: c.sender?.toString?.() || c.sender,
+            createdAt: c.createdAt ? new Date(c.createdAt) : null
+        })).filter((c: any) => c.createdAt);
+        const firstCompanyComment = comments.find((c: any) => c.sender && c.sender === req.user!.id);
+        if (firstCompanyComment && report.createdAt) {
+            const createdAt = new Date(report.createdAt).getTime();
+            const firstReplyAt = new Date(firstCompanyComment.createdAt).getTime();
+            if (firstReplyAt > createdAt) {
+                responseMinutes.push(Math.round((firstReplyAt - createdAt) / 60000));
+            }
+        }
+    }
+    const avgMinutes = responseMinutes.length
+        ? Math.round(responseMinutes.reduce((a, b) => a + b, 0) / responseMinutes.length)
+        : 0;
+    const avgResponse = avgMinutes >= 60 ? `${Math.round(avgMinutes / 60)}h` : `${avgMinutes || 24}m`;
+    const paidTotal = programReports.reduce((sum: number, r: any) => sum + (Number(r.bounty) || 0), 0);
+    const resolvedCount = programReports.filter((r: any) => ['Resolved', 'Paid', 'Closed'].includes(r.status)).length;
+    const uniqueResearchers = new Set(programReports.map((r: any) => r.researcherId?.toString()).filter(Boolean)).size;
+
     const stats = {
-        reports: 0,
-        paid: '0',
-        avgResponse: '24h'
+        reports: programReports.length,
+        paid: String(paidTotal),
+        avgResponse
     };
 
-    // Reports - empty for now
-    const reports: any[] = [];
+    const reports = (programReports as any[]).map((r: any) => ({
+        id: r._id,
+        reportId: r.reportId || String(r._id),
+        title: r.title || 'Untitled Report',
+        severity: r.severity || 'Low',
+        status: r.status,
+        date: new Date(r.createdAt).toLocaleDateString()
+    }));
+
+    const settings = normalizePrivateInviteSettings(program.privateInviteSettings);
+    const actualReports = await getProgramThirtyDayValidReportCount(program._id, settings.lookbackDays);
 
     // Transform to frontend structure
     const programData = {
         id: program._id,
         title: program.title,
         type: program.type,
+        isPrivate: program.isPrivate,
         status: program.status,
         description: program.description || '',
         assets: assets,
         outOfScope: program.outOfScope || [],
         bounties: program.rewards,
         stats: stats,
-        reports: reports
+        reports,
+        privateInviteSettings: settings,
+        inviteMetrics: {
+            actualReportsLast30Days: actualReports,
+            targetMonthlyReports: settings.targetMonthlyReports,
+            deficit: Math.max(0, settings.targetMonthlyReports - actualReports),
+            invitesNeeded: Math.max(0, settings.targetMonthlyReports - actualReports) * settings.inviteToReportMultiplier,
+        },
+        performance: {
+            totalReports: programReports.length,
+            openReports: programReports.filter((r: any) => openStatuses.has(r.status)).length,
+            resolvedReports: resolvedCount,
+            uniqueResearchers,
+            responseRate: programReports.length ? Math.round((resolvedCount / programReports.length) * 100) : 0,
+        }
     };
 
     res.status(200).json({
         status: 'success',
         data: programData
     });
+});
+
+export const getPrivateProgramEligibleResearchers = catchAsync(async (req: Request, res: Response, next: NextFunction) => {
+    const ownerId = companyOwnerId(req.user as any);
+    const program = await Program.findOne({ _id: req.params.id, companyId: ownerId });
+    if (!program) return next(new AppError('Program not found', 404));
+    if (!program.isPrivate) return next(new AppError('Invites are only available for private programs', 400));
+
+    const scored = await scoreEligibleResearchersForProgram(program);
+    res.status(200).json({ status: 'success', data: scored });
+});
+
+export const inviteResearcherToPrivateProgram = catchAsync(async (req: Request, res: Response, next: NextFunction) => {
+    const ownerId = companyOwnerId(req.user as any);
+    const { researcherId } = req.body as { researcherId?: string };
+    if (!researcherId) return next(new AppError('researcherId is required', 400));
+
+    const program = await Program.findOne({ _id: req.params.id, companyId: ownerId });
+    if (!program) return next(new AppError('Program not found', 404));
+    if (!program.isPrivate) return next(new AppError('Invites are only available for private programs', 400));
+
+    const eligible = await scoreEligibleResearchersForProgram(program);
+    const candidate = eligible.find((r) => r.researcherId === researcherId);
+    if (!candidate?.eligibleForManualInvite) {
+        return next(new AppError('Researcher must have submitted at least one report on your company programs', 400));
+    }
+
+    const invite = await createPrivateProgramInvite(program, researcherId, 'manual', {
+        snrPercent: candidate.snrPercent,
+        impactScore: candidate.impactScore,
+        reputationScore: candidate.reputationScore,
+        assetMatchScore: candidate.assetMatchScore,
+        compositeScore: candidate.compositeScore,
+        matchSummary: `SNR ${candidate.snrPercent}% · Impact ${candidate.impactScore} · Asset match ${candidate.assetMatchScore}`,
+        eligibleForAutoInvite: candidate.eligibleForAutoInvite,
+    });
+
+    res.status(200).json({ status: 'success', data: invite });
 });
 
 export const getTeamMembers = catchAsync(async (req: Request, res: Response, next: NextFunction) => {

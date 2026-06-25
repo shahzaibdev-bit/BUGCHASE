@@ -141,15 +141,15 @@ export const createReport = catchAsync(async (req: Request, res: Response, next:
   delete createdPayload.duplicateCandidates;
   delete createdPayload.duplicateReviewStatus;
 
-  res.status(201).json({
-    status: 'success',
-    data: createdPayload,
-  });
-
   // Enqueue the heavy AI pipeline (duplicate scan + CVSS triage) into the
   // single-worker queue. If another report is already being processed, this
   // one waits its turn instead of competing for the local LLM.
   enqueueReportProcessing(String(newReport._id));
+
+  res.status(201).json({
+    status: 'success',
+    data: createdPayload,
+  });
   try {
     const snap = getQueueSnapshot();
     console.log(

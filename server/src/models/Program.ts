@@ -37,6 +37,19 @@ const programSchema = new mongoose.Schema({
     type: Boolean,
     default: false,
   },
+  /** Private program invite automation & trust thresholds (company-configurable). */
+  privateInviteSettings: {
+    autoInviteEnabled: { type: Boolean, default: false },
+    targetMonthlyReports: { type: Number, default: 15 },
+    inviteToReportMultiplier: { type: Number, default: 4 },
+    dailyInviteBatchSize: { type: Number, default: 10 },
+    minSnrPercent: { type: Number, default: 80 },
+    minReputationScore: { type: Number, default: 0 },
+    minImpactScore: { type: Number, default: 0 },
+    maxActivePrivateInvitesPerResearcher: { type: Number, default: 5 },
+    assetTags: { type: [String], default: ['Web', 'API'] },
+    lookbackDays: { type: Number, default: 30 },
+  },
   description: String,
   rulesOfEngagement: {
     type: String,

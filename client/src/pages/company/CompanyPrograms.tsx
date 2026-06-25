@@ -27,6 +27,7 @@ export default function CompanyPrograms() {
   const [programs, setPrograms] = useState<any[]>([]);
   const [verifiedAssets, setVerifiedAssets] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [activeTypeTab, setActiveTypeTab] = useState<'BBP' | 'VDP' | 'PRIVATE'>('BBP');
 
   const fetchData = async () => {
      try {
@@ -55,9 +56,14 @@ export default function CompanyPrograms() {
      fetchData();
   }, []);
 
-  const filteredPrograms = programs.filter(program =>
-    program.title.toLowerCase().includes(searchTerm.toLowerCase())
-  );
+  const filteredPrograms = programs.filter(program => {
+    const matchesSearch = program.title.toLowerCase().includes(searchTerm.toLowerCase());
+    const matchesType =
+      activeTypeTab === 'PRIVATE'
+        ? program.isPrivate
+        : program.type === activeTypeTab && !program.isPrivate;
+    return matchesSearch && matchesType;
+  });
 
   const handleDeleteProgram = async (programId: string, e: React.MouseEvent) => {
     e.stopPropagation();
@@ -102,7 +108,25 @@ export default function CompanyPrograms() {
       </div>
 
       {/* Search */}
-      <div className="relative max-w-md">
+      <div className="flex flex-col gap-3">
+        <div className="flex items-center gap-2 overflow-x-auto pb-1">
+          {[
+            { key: 'BBP', label: 'BBP' },
+            { key: 'VDP', label: 'VDP' },
+            { key: 'PRIVATE', label: 'Private Program' },
+          ].map((tab) => (
+            <Button
+              key={tab.key}
+              type="button"
+              variant={activeTypeTab === tab.key ? 'default' : 'outline'}
+              className="rounded-full"
+              onClick={() => setActiveTypeTab(tab.key as 'BBP' | 'VDP' | 'PRIVATE')}
+            >
+              {tab.label}
+            </Button>
+          ))}
+        </div>
+        <div className="relative max-w-md">
         <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
         <Input
           placeholder="Search programs..."
@@ -110,6 +134,7 @@ export default function CompanyPrograms() {
           onChange={(e) => setSearchTerm(e.target.value)}
           className="pl-10"
         />
+        </div>
       </div>
 
       {/* Programs Grid */}
@@ -119,7 +144,11 @@ export default function CompanyPrograms() {
           <div className="text-center py-12 border border-dashed border-border rounded-xl bg-muted/10">
               <ShieldAlert className="h-10 w-10 text-muted-foreground mx-auto mb-3" />
               <h3 className="text-lg font-bold text-foreground">No Programs Found</h3>
-              <p className="text-muted-foreground max-w-sm mx-auto mb-4">Create your first bug bounty or vulnerability disclosure program to start receiving reports.</p>
+              <p className="text-muted-foreground max-w-sm mx-auto mb-4">
+                {activeTypeTab === 'PRIVATE'
+                  ? 'Create your first private program and invite trusted researchers.'
+                  : `No ${activeTypeTab} programs match your search.`}
+              </p>
               <Button onClick={() => setIsCreateModalOpen(true)}>Create Program</Button>
           </div>
       ) : (

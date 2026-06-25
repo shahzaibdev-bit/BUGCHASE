@@ -17,6 +17,11 @@ export const rateLimiter = (limit: number, windowSeconds: number, prefix: string
 
       if (current === 1) {
         await redisClient.expire(key, windowSeconds);
+      } else {
+        const ttl = await redisClient.ttl(key);
+        if (ttl < 0) {
+          await redisClient.expire(key, windowSeconds);
+        }
       }
 
       if (current > limit) {

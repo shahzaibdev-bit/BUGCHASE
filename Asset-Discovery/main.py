@@ -11,7 +11,7 @@ load_dotenv()
 
 app = FastAPI(title="BugChase Asset Discovery Engine")
 
-# Redis (local or Upstash TLS via REDIS_URL)
+# Redis (Upstash TLS via REDIS_URL)
 r = get_redis()
 
 class ScanRequest(BaseModel):

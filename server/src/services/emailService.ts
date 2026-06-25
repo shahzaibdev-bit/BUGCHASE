@@ -1626,3 +1626,36 @@ export const triagerReassignmentAcceptedSupportTemplate = (opts: {
     'The linked report is now under active triage.',
   );
 };
+
+export const privateProgramInviteTemplate = (opts: {
+  researcherName: string;
+  programTitle: string;
+  companyName: string;
+  programType: string;
+  bountyRange: string;
+  assetTags: string[];
+  expiresAt: Date;
+  inviteUrl: string;
+  matchSummary: string;
+}) => {
+  const tags = opts.assetTags.length ? opts.assetTags.join(', ') : 'Web, API';
+  const body = `
+    <h1 style="color:#fff;font-size:20px;margin:0 0 12px;">You're invited to a private program</h1>
+    <p style="color:#a1a1aa;font-size:14px;line-height:1.6;">Hi ${opts.researcherName}, <strong style="color:#fff;">${opts.companyName}</strong> selected you for an exclusive private bug bounty engagement based on your trust metrics and skill alignment.</p>
+    <table style="width:100%;border-collapse:collapse;background:#18181b;border:1px solid #27272a;border-radius:8px;margin:16px 0;">
+      <tr><td style="padding:10px 12px;font-size:11px;color:#a1a1aa;text-transform:uppercase;">Program</td><td style="padding:10px 12px;font-size:13px;color:#fff;">${opts.programTitle}</td></tr>
+      <tr><td style="padding:10px 12px;font-size:11px;color:#a1a1aa;text-transform:uppercase;border-top:1px solid #27272a;">Type</td><td style="padding:10px 12px;font-size:13px;color:#fbbf24;border-top:1px solid #27272a;">${opts.programType}</td></tr>
+      <tr><td style="padding:10px 12px;font-size:11px;color:#a1a1aa;text-transform:uppercase;border-top:1px solid #27272a;">Bounty range</td><td style="padding:10px 12px;font-size:13px;color:#4ade80;border-top:1px solid #27272a;">${opts.bountyRange}</td></tr>
+      <tr><td style="padding:10px 12px;font-size:11px;color:#a1a1aa;text-transform:uppercase;border-top:1px solid #27272a;">Asset focus</td><td style="padding:10px 12px;font-size:13px;color:#fff;border-top:1px solid #27272a;">${tags}</td></tr>
+      <tr><td style="padding:10px 12px;font-size:11px;color:#a1a1aa;text-transform:uppercase;border-top:1px solid #27272a;">Why you</td><td style="padding:10px 12px;font-size:13px;color:#60a5fa;border-top:1px solid #27272a;">${opts.matchSummary}</td></tr>
+      <tr><td style="padding:10px 12px;font-size:11px;color:#a1a1aa;text-transform:uppercase;border-top:1px solid #27272a;">Expires</td><td style="padding:10px 12px;font-size:13px;color:#fff;border-top:1px solid #27272a;">${opts.expiresAt.toUTCString()}</td></tr>
+    </table>
+    <p style="color:#a1a1aa;font-size:13px;line-height:1.6;">Review the program scope and accept or decline from your BugChase dashboard. Private programs are invitation-only and not visible on the public program board until accepted.</p>`;
+  return triagerInviteEmailShell(
+    'Private program invite',
+    body,
+    'Review private invite',
+    opts.inviteUrl,
+    `This invite expires in 14 days (${opts.expiresAt.toUTCString()}).`,
+  );
+};

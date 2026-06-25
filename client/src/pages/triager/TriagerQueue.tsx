@@ -36,6 +36,9 @@ import { InvertedTiltCard } from '@/components/InvertedTiltCard';
 import { InverseSpotlightCard } from '@/components/InverseSpotlightCard';
 import { API_URL } from '@/config';
 import { apiFetch } from '@/lib/api';
+import { isReportAiProcessing, aiProcessingLabel } from '@/lib/reportAiProcessing';
+import { getRealtimeSocketUrl } from '@/lib/realtime';
+import { io as socketIO } from 'socket.io-client';
 
 // Enhanced Mock Data Types
 type ReportStatus = 'Submitted' | 'Under Review' | 'Needs Info' | 'Triaged' | 'Spam' | 'Duplicate' | 'OOS';
@@ -57,12 +60,10 @@ interface TriageReport {
   aiTriage?: {
     status?: 'pending' | 'processing' | 'completed' | 'failed' | 'skipped';
   };
+  aiDuplicateAnalysis?: {
+    status?: 'pending' | 'processing' | 'completed' | 'failed' | 'no_candidates' | 'skipped';
+  };
 }
-
-const isInAiTriage = (report: TriageReport): boolean => {
-  const status = report.aiTriage?.status;
-  return status === 'pending' || status === 'processing';
-};
 
 type DisputedInvite = {
   _id: string;
@@ -138,6 +139,41 @@ export default function TriagerQueue() {
 
   React.useEffect(() => {
     fetchData();
+  }, []);
+
+  // Refresh pool while any report is still in the AI pipeline.
+  React.useEffect(() => {
+    if (!unassignedPool.some(isReportAiProcessing)) return;
+    const interval = setInterval(() => {
+      apiFetch('/triager/pool')
+        .then((res) => res.json())
+        .then((data) => {
+          if (data?.data?.reports) setUnassignedPool(data.data.reports);
+        })
+        .catch(() => {});
+    }, 4000);
+    return () => clearInterval(interval);
+  }, [unassignedPool]);
+
+  React.useEffect(() => {
+    const socketUrl = getRealtimeSocketUrl();
+    if (!socketUrl) return;
+    const socket = socketIO(socketUrl, { withCredentials: true });
+    const refreshPool = () => {
+      apiFetch('/triager/pool')
+        .then((res) => res.json())
+        .then((data) => {
+          if (data?.data?.reports) setUnassignedPool(data.data.reports);
+        })
+        .catch(() => {});
+    };
+    socket.on('report_ai_processing_complete', refreshPool);
+    socket.on('report_processing_phase', refreshPool);
+    return () => {
+      socket.off('report_ai_processing_complete', refreshPool);
+      socket.off('report_processing_phase', refreshPool);
+      socket.disconnect();
+    };
   }, []);
 
   React.useEffect(() => {
@@ -489,7 +525,7 @@ export default function TriagerQueue() {
                             </div>
 
                              <div className="flex flex-col justify-center gap-2 lg:border-l lg:border-zinc-200 dark:lg:border-zinc-800 lg:pl-6">
-                                {isInAiTriage(report) ? (
+                                {isReportAiProcessing(report) ? (
                                     <TooltipProvider delayDuration={150}>
                                         <Tooltip>
                                             <TooltipTrigger asChild>
@@ -504,7 +540,7 @@ export default function TriagerQueue() {
                                                 </span>
                                             </TooltipTrigger>
                                             <TooltipContent className="max-w-xs text-xs font-mono">
-                                                Report is still in the system process. Automated CVSS triage is running — you can claim it once it completes.
+                                                {aiProcessingLabel(report)} You can claim this report once automated processing completes.
                                             </TooltipContent>
                                         </Tooltip>
                                     </TooltipProvider>

@@ -42,6 +42,7 @@ export const CreateProgramModal = ({ isOpen, onClose, companyName, verifiedAsset
     type: 'VDP', 
     description: '',
     isPrivate: false,
+    assetTags: ['Web', 'API'] as string[],
     selectedAssets: [] as string[],
     outOfScope: [] as { asset: string; reason: string }[],
     rulesOfEngagement: '',
@@ -112,6 +113,12 @@ export const CreateProgramModal = ({ isOpen, onClose, companyName, verifiedAsset
               description: formData.description,
               isPrivate: formData.isPrivate,
               selectedAssets: formData.selectedAssets,
+              assetTags: formData.isPrivate ? formData.assetTags : undefined,
+              privateInviteSettings: formData.isPrivate ? {
+                assetTags: formData.assetTags,
+                autoInviteEnabled: false,
+                targetMonthlyReports: 15,
+              } : undefined,
               // Derive outOfScope from the selected verified assets directly to send to backend if needed
               outOfScope: getSelectedAssetDetails().flatMap(a => a.outScope.map(domain => ({ asset: domain, reason: 'Out of scope subdomain' }))),
               rulesOfEngagement: formData.rulesOfEngagement,
@@ -332,6 +339,28 @@ export const CreateProgramModal = ({ isOpen, onClose, companyName, verifiedAsset
                             </div>
                         </div>
                         <p className="text-xs text-muted-foreground">Private programs are invitation-only. Public programs are visible to all registered researchers.</p>
+                        {formData.isPrivate && (
+                          <div className="pt-3 space-y-2">
+                            <label className="text-xs font-mono text-foreground uppercase">Asset focus tags (skill matching)</label>
+                            <div className="flex flex-wrap gap-2">
+                              {['Web', 'API', 'Mobile', 'iOS', 'Android', 'Infrastructure'].map((tag) => (
+                                <Badge
+                                  key={tag}
+                                  variant={formData.assetTags.includes(tag) ? 'default' : 'outline'}
+                                  className="cursor-pointer"
+                                  onClick={() => setFormData((prev) => ({
+                                    ...prev,
+                                    assetTags: prev.assetTags.includes(tag)
+                                      ? prev.assetTags.filter((t) => t !== tag)
+                                      : [...prev.assetTags, tag],
+                                  }))}
+                                >
+                                  {tag}
+                                </Badge>
+                              ))}
+                            </div>
+                          </div>
+                        )}
                      </div>
                   </>
                 )}

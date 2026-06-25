@@ -23,6 +23,10 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
+let inflightMeRequest: Promise<User | null> | null = null;
+
+const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -34,35 +38,88 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, [user]);
 
   const fetchCurrentUser = useCallback(async (): Promise<User | null> => {
-    const token = localStorage.getItem('token');
+    if (inflightMeRequest) return inflightMeRequest;
+
+    inflightMeRequest = (async () => {
+    const storedToken = localStorage.getItem('token');
     const headers: HeadersInit = {};
-    if (token) headers.Authorization = `Bearer ${token}`;
-
-    const res = await fetch(`${API_URL}/auth/me`, {
-      headers,
-      credentials: 'include',
-    });
-    const data = await res.json();
-
-    if (res.ok && data.user) {
-      setUser(data.user);
-      lastRefreshAtRef.current = Date.now();
-      return data.user;
+    if (storedToken && storedToken !== 'null' && storedToken !== 'undefined') {
+      headers.Authorization = `Bearer ${storedToken}`;
     }
 
-    localStorage.removeItem('token');
-    setUser(null);
-    userRef.current = null;
-    return null;
+    const applyUser = (nextUser: User, nextToken?: string) => {
+      setUser(nextUser);
+      userRef.current = nextUser;
+      lastRefreshAtRef.current = Date.now();
+      if (nextToken) localStorage.setItem('token', nextToken);
+      return nextUser;
+    };
+
+    const requestMe = async (authHeaders: HeadersInit = {}) => {
+      const res = await fetch(`${API_URL}/auth/me`, {
+        headers: authHeaders,
+        credentials: 'include',
+      });
+      let data: any = {};
+      try {
+        data = await res.json();
+      } catch {
+        data = {};
+      }
+      return { res, data };
+    };
+
+    try {
+      let { res, data } = await requestMe(headers);
+
+      if (res.status === 429) {
+        for (const delayMs of [800, 1600]) {
+          await sleep(delayMs);
+          ({ res, data } = await requestMe(headers));
+          if (res.status !== 429) break;
+        }
+      }
+
+      if ((res.status === 401 || res.status === 403) && headers.Authorization) {
+        const retry = await requestMe({});
+        res = retry.res;
+        data = retry.data;
+        if (res.status === 429) {
+          await sleep(1000);
+          ({ res, data } = await requestMe({}));
+        }
+      }
+
+      if (res.ok && data.user) {
+        return applyUser(data.user, data.token);
+      }
+
+      if (res.status === 401 || res.status === 403) {
+        localStorage.removeItem('token');
+        setUser(null);
+        userRef.current = null;
+        return null;
+      }
+
+      return userRef.current;
+    } catch {
+      return userRef.current;
+    }
+    })();
+
+    try {
+      return await inflightMeRequest;
+    } finally {
+      inflightMeRequest = null;
+    }
   }, []);
 
   useEffect(() => {
     const checkAuth = async () => {
       try {
         await fetchCurrentUser();
-      } catch (error) {
-        localStorage.removeItem('token');
-        setUser(null);
+      } catch {
+        // Network error on boot — session may still be valid via cookie.
       } finally {
         setIsLoading(false);
       }
@@ -191,7 +248,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       return await fetchCurrentUser();
     } catch (error) {
       console.error('Failed to refresh user', error);
-      return null;
+      return userRef.current;
     }
   }, [fetchCurrentUser]);
 
@@ -201,8 +258,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     const refreshIfStale = () => {
-      if (!userRef.current || !localStorage.getItem('token')) return;
-      if (Date.now() - lastRefreshAtRef.current < 10_000) return;
+      if (!userRef.current) return;
+      if (Date.now() - lastRefreshAtRef.current < 60_000) return;
       void refreshUser();
     };
 
@@ -210,12 +267,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       if (document.visibilityState === 'visible') refreshIfStale();
     };
 
-    window.addEventListener('focus', refreshIfStale);
     document.addEventListener('visibilitychange', onVisibilityChange);
     window.addEventListener('bugchase:user-updated', refreshIfStale);
 
     return () => {
-      window.removeEventListener('focus', refreshIfStale);
       document.removeEventListener('visibilitychange', onVisibilityChange);
       window.removeEventListener('bugchase:user-updated', refreshIfStale);
     };

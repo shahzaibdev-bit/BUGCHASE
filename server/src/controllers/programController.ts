@@ -1,24 +1,25 @@
 import { Request, Response, NextFunction } from 'express';
 import Program from '../models/Program';
+import PrivateProgramInvite from '../models/PrivateProgramInvite';
 import AppError from '../utils/AppError';
 import catchAsync from '../utils/catchAsync';
 import { releaseExpiredProgramBans } from '../services/programModerationService';
 
+const getRequestUserId = (req: Request) =>
+    (req.user as any)?._id?.toString?.() || req.user?.id;
+
+const BLOCKED_PROGRAM_STATUSES = new Set(['Banned', 'Rejected']);
+
 export const getPublicPrograms = catchAsync(async (req: Request, res: Response, next: NextFunction) => {
     await releaseExpiredProgramBans();
 
-    // 1. Fetch only ACTIVE programs (and not private unless we handle invites later)
-    // For now, public researcher view should only show 'Active' and public programs
-    // If we want researchers to see private programs they are invited to, that requires more logic.
-    // Assuming 'isPrivate: false' means public.
-
-    const programs = await Program.find({ 
+    const programs = await Program.find({
         status: 'Active',
-        isPrivate: false 
+        isPrivate: false,
     })
-    .select('title companyName type description rewards bountyRange createdAt companyId') // Ensure companyId is selected so it can be populated
-    .populate('companyId', 'avatar') // Populate avatar from the User model
-    .sort({ createdAt: -1 });
+        .select('title companyName type description rewards bountyRange createdAt companyId isPrivate')
+        .populate('companyId', 'avatar')
+        .sort({ createdAt: -1 });
 
     res.status(200).json({
         status: 'success',
@@ -30,22 +31,37 @@ export const getPublicPrograms = catchAsync(async (req: Request, res: Response, 
 export const getPublicProgramById = catchAsync(async (req: Request, res: Response, next: NextFunction) => {
     await releaseExpiredProgramBans();
 
-    const program = await Program.findOne({ 
+    const program = await Program.findOne({
         _id: req.params.id,
-        status: 'Active' 
-        // We might allow private if the user has access, but for now strict public
     }).populate(
         'companyId',
         'name email avatar companyName website industry city domainVerified verifiedAssets'
     );
 
     if (!program) {
+        return next(new AppError('Program not found', 404));
+    }
+
+    if (BLOCKED_PROGRAM_STATUSES.has(program.status)) {
         return next(new AppError('Program not found or not active', 404));
     }
 
-    // Checking if private and user not invited (Placeholder logic)
+    const userId = getRequestUserId(req);
+
     if (program.isPrivate) {
-        // Check invitation logic here in future
+        if (!userId) {
+            return next(new AppError('This private program requires an invitation', 403));
+        }
+        const invite = await PrivateProgramInvite.findOne({
+            programId: program._id,
+            researcherId: userId,
+            status: 'accepted',
+        }).select('_id');
+        if (!invite) {
+            return next(new AppError('You are not invited to this private program', 403));
+        }
+    } else if (program.status !== 'Active') {
+        return next(new AppError('Program not found or not active', 404));
     }
 
     // Fetch reports for this program to build Hall of Fame
