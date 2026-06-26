@@ -306,7 +306,7 @@ export default function PublicProfile() {
   }
 
   return (
-    <div className="min-h-screen bg-white dark:bg-black font-sans selection:bg-emerald-500/30">
+    <div className="min-h-screen bg-white dark:bg-black font-sans">
       {/* Cover / Header */}
       <div className="relative h-72 md:h-[26rem] bg-zinc-100 dark:bg-zinc-900 overflow-hidden">
         {profile.coverPhoto ? (

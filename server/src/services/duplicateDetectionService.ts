@@ -1,11 +1,13 @@
 import mongoose from 'mongoose';
 import Report from '../models/Report';
+import Program from '../models/Program';
 import { DUPLICATE_SEARCH_INDEX_NAME } from '../config/searchIndexes';
 import {
   DuplicateLlmVerdict,
   isDuplicateLlmEnabled,
   runDuplicateLlmAnalysis,
 } from './duplicateLlmService';
+import { extractVrtTaxonomy, pickVrtVariantForSearch } from '../utils/vrtTaxonomy';
 
 /* -------------------------------------------------------------------------- */
 /*                                Tunables                                    */
@@ -15,7 +17,7 @@ const TOP_K = Math.max(1, Math.min(10, Number(process.env.DUPLICATE_SEARCH_TOP_K
 const OVERFETCH = Math.max(TOP_K * 4, 20); // Atlas Search pre-filter overshoot
 
 const HYDRATE_FIELDS =
-  '_id reportId title vulnerabilityCategory vulnerableEndpoint description pocSteps impact severity status programId createdAt';
+  '_id reportId title vulnerabilityCategory vrtParent vrtCategory vrtVariant vulnerableEndpoint description pocSteps impact severity status programId createdAt';
 
 /* -------------------------------------------------------------------------- */
 /*                          Normalisation utilities                           */
@@ -95,11 +97,69 @@ function pickPrimaryParameter(report: any, endpointParams: string[]): string {
 }
 
 function pickBugCategory(report: any): string {
-  const candidates = [report?.vulnerabilityCategory, report?.bug_category, report?.bugCategory];
-  for (const c of candidates) {
-    if (typeof c === 'string' && c.trim()) return c.trim();
+  return pickVrtVariantForSearch(report);
+}
+
+function buildCategoryMatchClause(variant: string): any {
+  if (!variant) return null;
+
+  return {
+    compound: {
+      should: [
+        { text: { path: 'vrtVariant', query: variant } },
+        { text: { path: 'vulnerabilityCategory', query: variant } },
+      ],
+      minimumShouldMatch: 1,
+    },
+  };
+}
+
+export type DuplicateSearchScope = {
+  companyId: string | null;
+  programIds: string[];
+};
+
+/** All program ids owned by the same company — duplicates span BBP/VDP siblings. */
+export async function resolveCompanyProgramScope(
+  programId: unknown,
+): Promise<DuplicateSearchScope> {
+  const raw = String(programId ?? '').trim();
+  if (!raw) return { companyId: null, programIds: [] };
+
+  const program = await Program.findById(raw).select('companyId').lean();
+  if (!program?.companyId) {
+    return { companyId: null, programIds: [raw] };
   }
-  return '';
+
+  const companyId = String(program.companyId);
+  const siblings = await Program.find({ companyId: program.companyId }).select('_id').lean();
+  const programIds = [...new Set(siblings.map((p) => String(p._id)))];
+
+  return { companyId, programIds: programIds.length ? programIds : [raw] };
+}
+
+function buildProgramIdMatchList(programIds: string[]): unknown[] {
+  const match: unknown[] = [];
+  for (const id of programIds) {
+    const normalized = String(id).trim();
+    if (!normalized) continue;
+    match.push(normalized);
+    try {
+      match.push(new mongoose.Types.ObjectId(normalized));
+    } catch {
+      /* skip invalid ids */
+    }
+  }
+  return match;
+}
+
+function candidateInCompanyScope(candidateProgramId: unknown, scope: DuplicateSearchScope): boolean {
+  const candidate = String(candidateProgramId ?? '').trim();
+  if (!candidate) return false;
+  if (scope.programIds.length > 0) {
+    return scope.programIds.some((id) => String(id).trim() === candidate);
+  }
+  return false;
 }
 
 /* -------------------------------------------------------------------------- */
@@ -134,16 +194,17 @@ function isAtlasSearchUnavailableError(error: unknown): boolean {
  *
  * Always filters out:
  *   - the report itself
- *   - reports from other programs
+ *   - reports from other companies (same-company programs only — BBP + VDP included)
  *   - reports already marked Duplicate / Spam
  *   - reports submitted at or after the new report (the report can only
  *     duplicate something that was filed *before* it)
  */
 export const searchDuplicateCandidates = async (
   report: any,
-  options: { topK?: number } = {}
+  options: { topK?: number; scope?: DuplicateSearchScope } = {},
 ): Promise<DuplicateMatch[]> => {
   const topK = Math.max(1, Math.min(10, options.topK || TOP_K));
+  const scope = options.scope ?? (await resolveCompanyProgramScope(report.programId));
   const selfObjectId = (() => {
     try {
       return new mongoose.Types.ObjectId(String(report._id));
@@ -152,18 +213,7 @@ export const searchDuplicateCandidates = async (
     }
   })();
 
-  const programIdRaw = report.programId ?? '';
-  const programIdObj = (() => {
-    if (programIdRaw instanceof mongoose.Types.ObjectId) return programIdRaw;
-    try {
-      return new mongoose.Types.ObjectId(String(programIdRaw));
-    } catch {
-      return null;
-    }
-  })();
-  const programIdMatch: any[] = [];
-  if (programIdRaw) programIdMatch.push(String(programIdRaw));
-  if (programIdObj) programIdMatch.push(programIdObj);
+  const programIdMatch = buildProgramIdMatchList(scope.programIds);
 
   const { raw: rawEndpoint, path: normalizedPath } = normalizeEndpoint(
     report.vulnerableEndpoint
@@ -192,6 +242,9 @@ export const searchDuplicateCandidates = async (
       reportId: 1,
       title: 1,
       vulnerabilityCategory: 1,
+      vrtParent: 1,
+      vrtCategory: 1,
+      vrtVariant: 1,
       vulnerableEndpoint: 1,
       pocSteps: 1,
       impact: 1,
@@ -204,6 +257,7 @@ export const searchDuplicateCandidates = async (
 
   /* ---- 1) Strict: endpoint + category --------------------------------- */
   if (rawEndpoint && bugCategory) {
+    const categoryClause = buildCategoryMatchClause(bugCategory);
     const strictPipeline: any[] = [
       {
         $search: {
@@ -211,7 +265,7 @@ export const searchDuplicateCandidates = async (
           compound: {
             must: [
               { text: { path: 'vulnerableEndpoint', query: rawEndpoint } },
-              { text: { path: 'vulnerabilityCategory', query: bugCategory } },
+              categoryClause,
             ],
           },
         },
@@ -308,6 +362,9 @@ interface HydratedCandidate {
   status?: string;
   title?: string;
   bug_category?: string;
+  vrt_parent?: string;
+  vrt_category?: string;
+  vrt_variant?: string;
   vulnerable_endpoint?: string;
   parameter?: string;
   steps_to_reproduce?: string;
@@ -320,10 +377,12 @@ interface HydratedCandidate {
 
 async function hydrateCandidatesFromMongo(
   matches: DuplicateMatch[],
-  selfReport: any
+  selfReport: any,
+  scope?: DuplicateSearchScope,
 ): Promise<HydratedCandidate[]> {
   if (!matches.length) return [];
 
+  const resolvedScope = scope ?? (await resolveCompanyProgramScope(selfReport.programId));
   // The $search pipeline already projected the contextual fields we need,
   // so most of the time we can build the hydrated payload directly from
   // `match.metadata`. Fall back to a re-fetch only if metadata is missing.
@@ -353,16 +412,15 @@ async function hydrateCandidatesFromMongo(
     const doc: any = m.metadata?.title ? m.metadata : metaById.get(m.report_id);
     if (!doc) continue;
     if (['Duplicate', 'Spam'].includes(doc.status)) continue;
-    if (
-      String(doc.programId ?? '').trim() !==
-      String(selfReport.programId ?? '').trim()
-    ) {
+    if (!candidateInCompanyScope(doc.programId, resolvedScope)) {
       continue;
     }
     const candidateMs = reportSubmittedAtMs(doc);
     if (candidateMs >= selfMs) continue;
 
     const { queryParams } = normalizeEndpoint(doc.vulnerableEndpoint);
+
+    const candidateVrt = extractVrtTaxonomy(doc);
 
     result.push({
       _id: doc._id,
@@ -371,7 +429,10 @@ async function hydrateCandidatesFromMongo(
       programId: doc.programId ? String(doc.programId) : undefined,
       status: doc.status,
       title: doc.title,
-      bug_category: doc.vulnerabilityCategory,
+      bug_category: candidateVrt.fullPath || candidateVrt.vrtVariant,
+      vrt_parent: candidateVrt.vrtParent || undefined,
+      vrt_category: candidateVrt.vrtCategory || undefined,
+      vrt_variant: candidateVrt.vrtVariant || undefined,
       vulnerable_endpoint: doc.vulnerableEndpoint,
       parameter: pickPrimaryParameter(doc, queryParams) || undefined,
       steps_to_reproduce: doc.pocSteps,
@@ -430,10 +491,14 @@ const reportSubmittedAtMs = (doc: any): number => {
 
 function newReportForLlm(report: any): Record<string, any> {
   const { raw, queryParams } = normalizeEndpoint(report.vulnerableEndpoint);
+  const vrt = extractVrtTaxonomy(report);
   return {
     report_id: String(report._id),
     title: report.title,
-    bug_category: pickBugCategory(report),
+    bug_category: vrt.fullPath || vrt.vrtVariant,
+    vrt_parent: vrt.vrtParent || undefined,
+    vrt_category: vrt.vrtCategory || undefined,
+    vrt_variant: vrt.vrtVariant || undefined,
     vulnerable_endpoint: raw,
     parameter: pickPrimaryParameter(report, queryParams),
     steps_to_reproduce: stripHtmlForEmbedding(report.pocSteps),
@@ -469,8 +534,9 @@ export const runInitialDuplicateScanForNewReport = async (
   });
 
   let matches: DuplicateMatch[] = [];
+  const scope = await resolveCompanyProgramScope(newReport.programId);
   try {
-    matches = await searchDuplicateCandidates(newReport, { topK: TOP_K });
+    matches = await searchDuplicateCandidates(newReport, { topK: TOP_K, scope });
   } catch (err) {
     console.error('[duplicate-detection] Atlas Search failed:', err);
     return failSafe({ error: 'Atlas Search unavailable' });
@@ -492,7 +558,7 @@ export const runInitialDuplicateScanForNewReport = async (
 
   let hydrated: HydratedCandidate[] = [];
   try {
-    hydrated = await hydrateCandidatesFromMongo(matches, newReport);
+    hydrated = await hydrateCandidatesFromMongo(matches, newReport, scope);
   } catch (err) {
     console.error('[duplicate-detection] mongo hydration failed:', err);
   }

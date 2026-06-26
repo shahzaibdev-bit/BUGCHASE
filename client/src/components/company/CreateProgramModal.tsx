@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { apiFetch } from '@/lib/api';
 import { motion, AnimatePresence } from 'framer-motion';
 import { 
@@ -34,35 +34,56 @@ interface CreateProgramModalProps {
   onSuccess?: () => void;
 }
 
+const createInitialFormData = () => ({
+  title: '',
+  type: 'VDP',
+  description: '',
+  isPrivate: false,
+  assetTags: ['Web', 'API'] as string[],
+  selectedAssets: [] as string[],
+  outOfScope: [] as { asset: string; reason: string }[],
+  rulesOfEngagement: '',
+  safeHarbor: '',
+  submissionGuidelines: '',
+  slas: {
+    firstResponse: 24,
+    triage: 48,
+    bounty: 168,
+    resolution: 360,
+  },
+  rewards: {
+    critical: { min: '', max: '' },
+    high: { min: '', max: '' },
+    medium: { min: '', max: '' },
+    low: { min: '', max: '' },
+  } as Record<string, { min: string; max: string }>,
+});
+
 export const CreateProgramModal = ({ isOpen, onClose, companyName, verifiedAssets, onSuccess }: CreateProgramModalProps) => {
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const [formKey, setFormKey] = useState(0);
   const [step, setStep] = useState(1);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [formData, setFormData] = useState({
-    title: '',
-    type: 'VDP', 
-    description: '',
-    isPrivate: false,
-    assetTags: ['Web', 'API'] as string[],
-    selectedAssets: [] as string[],
-    outOfScope: [] as { asset: string; reason: string }[],
-    rulesOfEngagement: '',
-    safeHarbor: '',
-    submissionGuidelines: '',
-    slas: {
-        firstResponse: 24,
-        triage: 48,
-        bounty: 168,
-        resolution: 360
-    },
-    rewards: {
-        critical: { min: '', max: '' },
-        high: { min: '', max: '' },
-        medium: { min: '', max: '' },
-        low: { min: '', max: '' }
-    } as Record<string, { min: string; max: string }>
-  });
+  const [formData, setFormData] = useState(createInitialFormData);
 
   const [assetDropdownOpen, setAssetDropdownOpen] = useState(false);
+
+  const resetForm = useCallback(() => {
+    setFormData(createInitialFormData());
+    setStep(1);
+    setAssetDropdownOpen(false);
+    setIsSubmitting(false);
+    setFormKey((k) => k + 1);
+    scrollRef.current?.scrollTo({ top: 0 });
+  }, []);
+
+  useEffect(() => {
+    if (!isOpen) {
+      resetForm();
+    } else {
+      scrollRef.current?.scrollTo({ top: 0 });
+    }
+  }, [isOpen, resetForm]);
 
   // Helper to toggle asset
   const toggleAsset = (assetId: string) => {
@@ -139,7 +160,8 @@ export const CreateProgramModal = ({ isOpen, onClose, companyName, verifiedAsset
           });
 
           if(res.ok) {
-              if(onSuccess) onSuccess();
+              resetForm();
+              onSuccess?.();
               onClose();
           } else {
               // Handle error
@@ -212,7 +234,7 @@ export const CreateProgramModal = ({ isOpen, onClose, companyName, verifiedAsset
   const prevStep = () => setStep(s => Math.max(s - 1, 1));
 
   return (
-    <Dialog open={isOpen} onOpenChange={onClose}>
+    <Dialog open={isOpen} onOpenChange={(open) => { if (!open) onClose(); }}>
       <DialogContent className="max-w-4xl p-0 overflow-hidden bg-background border-border text-foreground font-sans gap-0 [&>button]:hidden">
         
         {/* Modal Header / Progress */}
@@ -238,7 +260,7 @@ export const CreateProgramModal = ({ isOpen, onClose, companyName, verifiedAsset
         </div>
 
         {/* Content Area */}
-        <div className="min-h-[500px] max-h-[70vh] flex flex-col items-center overflow-y-auto w-full bg-background/50 scrollbar-hide">
+        <div ref={scrollRef} className="min-h-[500px] max-h-[70vh] flex flex-col items-center overflow-y-auto w-full bg-background/50 scrollbar-hide">
           <AnimatePresence mode="wait">
              <motion.div
                key={step}
@@ -318,7 +340,8 @@ export const CreateProgramModal = ({ isOpen, onClose, companyName, verifiedAsset
                      <div className="space-y-2">
                         <label className="text-xs font-mono text-muted-foreground uppercase">Program Description</label>
                         <div className="border border-border rounded-md overflow-hidden">
-                           <CyberpunkEditor 
+                           <CyberpunkEditor
+                              key={`description-${formKey}`}
                               content={formData.description}
                               onChange={(html) => setFormData({...formData, description: html})}
                            />
@@ -499,7 +522,8 @@ export const CreateProgramModal = ({ isOpen, onClose, companyName, verifiedAsset
                         </label>
                         <p className="text-xs text-muted-foreground mb-2">Define what researchers are allowed to do and what is strictly prohibited.</p>
                         <div className="border border-border rounded-md overflow-hidden h-40">
-                           <CyberpunkEditor 
+                           <CyberpunkEditor
+                               key={`rules-${formKey}`}
                                content={formData.rulesOfEngagement}
                                onChange={(html) => setFormData({...formData, rulesOfEngagement: html})}
                            />
@@ -512,7 +536,8 @@ export const CreateProgramModal = ({ isOpen, onClose, companyName, verifiedAsset
                         </label>
                         <p className="text-xs text-muted-foreground mb-2">Provide legal protection for researchers acting in good faith.</p>
                         <div className="border border-border rounded-md overflow-hidden h-40">
-                           <CyberpunkEditor 
+                           <CyberpunkEditor
+                               key={`safe-harbor-${formKey}`}
                                content={formData.safeHarbor}
                                onChange={(html) => setFormData({...formData, safeHarbor: html})}
                            />
@@ -525,7 +550,8 @@ export const CreateProgramModal = ({ isOpen, onClose, companyName, verifiedAsset
                         </label>
                         <p className="text-xs text-muted-foreground mb-2">Instructions on how to write a good report (e.g., PoC, steps to reproduce).</p>
                         <div className="border border-border rounded-md overflow-hidden h-40">
-                           <CyberpunkEditor 
+                           <CyberpunkEditor
+                               key={`guidelines-${formKey}`}
                                content={formData.submissionGuidelines}
                                onChange={(html) => setFormData({...formData, submissionGuidelines: html})}
                            />

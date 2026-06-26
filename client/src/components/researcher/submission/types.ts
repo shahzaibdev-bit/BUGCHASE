@@ -1,9 +1,9 @@
 export type SubmissionData = {
   target: string | null;
   assetType: 'Web' | 'API' | 'Contract' | null;
-  category: string | null;
-  bugType: string | null;
-  cwe: string | null;
+  vrtParent: string | null;
+  vrtCategory: string | null;
+  vrtVariant: string | null;
   severityMode: 'manual' | 'calculator';
   severity: 'None' | 'Low' | 'Medium' | 'High' | 'Critical';
   cvssVector: Record<string, string>; // Store individual metrics

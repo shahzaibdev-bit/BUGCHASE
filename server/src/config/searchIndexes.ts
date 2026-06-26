@@ -21,7 +21,10 @@ export const REPORTS_COLLECTION_NAME = 'reports';
  *   spec name              actual Report schema field
  *   --------------------   ---------------------------
  *   vulnerable_endpoint  → vulnerableEndpoint
- *   bug_category         → vulnerabilityCategory
+ *   bug_category         → vrtVariant (preferred) / vulnerabilityCategory (legacy)
+ *   vrt_parent           → vrtParent
+ *   vrt_category         → vrtCategory
+ *   vrt_variant          → vrtVariant
  *   title                → title
  *
  * `dynamic: false` keeps the index small and predictable.
@@ -32,7 +35,8 @@ export const REPORTS_COLLECTION_NAME = 'reports';
  *   - vulnerableEndpoint.standard (tokens)  → broad fallback text matching
  * Atlas Search rejects the array-of-types form, hence the `multi` block.
  *
- * `vulnerabilityCategory` is keyword-only for strict category match.
+ * `vrtVariant` and `vulnerabilityCategory` are keyword-only for strict category match.
+ * `vrtParent` / `vrtCategory` support hierarchical filtering when needed.
  * `title` uses the default analyzer for fuzzy fallback text matching.
  */
 const DUPLICATE_SEARCH_INDEX_DEFINITION = {
@@ -52,6 +56,21 @@ const DUPLICATE_SEARCH_INDEX_DEFINITION = {
         },
       },
       vulnerabilityCategory: {
+        type: 'string',
+        analyzer: 'lucene.keyword',
+        searchAnalyzer: 'lucene.keyword',
+      },
+      vrtParent: {
+        type: 'string',
+        analyzer: 'lucene.keyword',
+        searchAnalyzer: 'lucene.keyword',
+      },
+      vrtCategory: {
+        type: 'string',
+        analyzer: 'lucene.keyword',
+        searchAnalyzer: 'lucene.keyword',
+      },
+      vrtVariant: {
         type: 'string',
         analyzer: 'lucene.keyword',
         searchAnalyzer: 'lucene.keyword',

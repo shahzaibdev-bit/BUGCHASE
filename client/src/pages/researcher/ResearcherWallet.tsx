@@ -1,6 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { apiFetch } from '@/lib/api';
-import { loadStripe } from '@stripe/stripe-js';
 import {
   Elements,
   PaymentElement,
@@ -27,9 +26,9 @@ import { InvertedTiltCard } from '@/components/InvertedTiltCard';
 import { InverseSpotlightCard } from '@/components/InverseSpotlightCard';
 import { toast } from '@/hooks/use-toast';
 import { useTheme } from 'next-themes';
+import { ensureStripeReady, getStripePromise, STRIPE_PAYMENT_ELEMENT_OPTIONS } from '@/lib/stripe';
 
 const API_URL = import.meta.env.VITE_API_URL || '/api';
-const stripePromise = loadStripe(import.meta.env.VITE_STRIPE_PUBLIC_KEY || '');
 
 interface Transaction {
     id: string;
@@ -95,7 +94,7 @@ function SetupForm({
   return (
     <form onSubmit={handleSubmit} className="space-y-4">
       <div className="p-4 bg-zinc-50 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-xl">
-        <PaymentElement />
+        <PaymentElement options={STRIPE_PAYMENT_ELEMENT_OPTIONS} />
       </div>
       {error && <p className="text-red-500 text-sm px-1">{error}</p>}
       <div className="flex justify-end gap-3 pt-2">
@@ -125,6 +124,7 @@ export default function ResearcherWallet() {
   const [clientSecret, setClientSecret] = useState('');
   const [isAddingMethod, setIsAddingMethod] = useState(false);
   const [isWithdrawing, setIsWithdrawing] = useState(false);
+  const [stripePromise, setStripePromise] = useState<ReturnType<typeof getStripePromise> | null>(null);
 
   const stripeAppearance = {
     theme: theme === 'dark' ? 'night' : 'stripe',
@@ -171,10 +171,21 @@ export default function ResearcherWallet() {
   useEffect(() => {
       fetchWalletData();
       fetchPaymentMethods();
+      setStripePromise(getStripePromise());
   }, []);
 
   const handleLinkNewMethod = async () => {
     try {
+      const stripe = await ensureStripeReady();
+      if (!stripe) {
+        toast({
+          title: 'Stripe not configured',
+          description: 'Add VITE_STRIPE_PUBLIC_KEY to client/.env or STRIPE_PUBLIC_KEY to server/.env.',
+          variant: 'destructive',
+        });
+        return;
+      }
+      setStripePromise(getStripePromise());
       setIsAddingMethod(true);
       const res = await apiFetch(`/users/payout-setup`, {
         method: 'POST',
@@ -682,6 +693,7 @@ export default function ResearcherWallet() {
                     </Button>
                 </div>
                 <div className="p-6">
+                    {stripePromise ? (
                     <Elements stripe={stripePromise} options={{ clientSecret, appearance: stripeAppearance }}>
                         <SetupForm 
                             onSuccess={() => {
@@ -696,6 +708,12 @@ export default function ResearcherWallet() {
                             }}
                         />
                     </Elements>
+                    ) : (
+                      <div className="flex items-center justify-center py-8 text-muted-foreground">
+                        <Loader2 className="h-5 w-5 animate-spin mr-2" />
+                        <span className="text-sm font-mono">Loading secure form…</span>
+                      </div>
+                    )}
                 </div>
             </div>
           </div>

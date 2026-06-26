@@ -3,20 +3,15 @@
 Runs on **port 9000** by default. The main app exposes `POST /initiate-scan`.  
 The BugChase **Node API** proxies company requests to this service via `ASSET_DISCOVERY_URL` (see server `.env`).
 
-## Redis (Upstash or local)
+## Redis (Upstash)
 
-This stack needs **Redis over the Redis protocol** (not the Upstash REST API only):
+This service is **standalone** — configure Redis only in **`Asset-Discovery/.env`** (not `server/.env`).
 
-1. In [Upstash](https://upstash.com) → your database → **Connect** → copy the **`rediss://...`** URL (TLS).
-2. Set the same URL in your environment for both the API and Celery:
+1. Copy `.env.example` to `.env` on each deployment.
+2. In [Upstash](https://upstash.com) → your database → **Connect** → copy the **`rediss://...`** URL (TLS).
+3. Set `REDIS_URL=...` in `Asset-Discovery/.env`.
 
-```bash
-export REDIS_URL="rediss://default:YOUR_PASSWORD@YOUR_ENDPOINT.upstash.io:6379"
-```
-
-Or create `Asset-Discovery/.env` from `.env.example` (`python-dotenv` loads it).
-
-**Celery worker** must run with the same `REDIS_URL` so tasks are consumed.
+Do **not** use local `redis://127.0.0.1:6379`.
 
 ### Redis keys (what you see in Upstash)
 
@@ -42,10 +37,19 @@ Local Redis (optional): `sudo apt install redis-server` — only if you are **no
 
 **Terminal 1 — Celery worker**
 
+You must run Celery from the `Asset-Discovery` folder (or use the helper script below).  
+Running `celery -A task` from the **repo root** fails with `The module task was not found`.
+
 ```bash
 cd Asset-Discovery
-export REDIS_URL="rediss://..."   # or rely on .env
+# Ensure Asset-Discovery/.env has REDIS_URL=rediss://...
 C_FORCE_ROOT=1 celery -A task worker --loglevel=info -c 4
+```
+
+From the **repo root** (WSL/Linux):
+
+```bash
+./Asset-Discovery/start-worker.sh
 ```
 
 On **Windows**, use a solo pool (prefork is not supported):
@@ -55,13 +59,18 @@ cd Asset-Discovery
 celery -A task worker --loglevel=info --pool=solo
 ```
 
+Or from repo root:
+
+```powershell
+.\Asset-Discovery\start-worker.ps1
+```
+
 **Terminal 2 — API**
 
 ```bash
 cd Asset-Discovery
-export REDIS_URL="rediss://..."   # or rely on .env
+# Ensure Asset-Discovery/.env has REDIS_URL=rediss://...
 python main.py
-# Listening on 0.0.0.0:9000
 ```
 
 ## Node API

@@ -28,12 +28,13 @@ import {
 } from "@/components/ui/dialog";
 import { getReportTimelineConfig } from '@/lib/reportTimeline';
 import {
-  isReportThreadLocked,
+  isResearcherReportThreadLocked,
+  getResearcherThreadLockedMessage,
   isSystemDisputeStatusEvent,
-  REPORT_THREAD_LOCKED_MESSAGE,
 } from '@/lib/reportThread';
 import { BugChaseSystemActor, ThreadStatusChangeLine } from '@/components/reports/ThreadSystemUI';
 import { Lock } from 'lucide-react';
+import { formatReportVrt } from '@/lib/vrtTaxonomy';
 
 const Timeline = ({
   status,
@@ -235,6 +236,14 @@ export default function ReportDetails() {
   const handlePostComment = async () => {
       const content = commentContent.trim();
       if (!content) return;
+      if (isResearcherReportThreadLocked(report?.status)) {
+        toast({
+          title: 'Thread closed',
+          description: getResearcherThreadLockedMessage(report?.status),
+          variant: 'destructive',
+        });
+        return;
+      }
 
       setIsSubmitting(true);
 
@@ -301,7 +310,8 @@ export default function ReportDetails() {
   // Calculate status step for timeline
   const timelineStatus = report.status;
   const timelineBeforeDispute = report.statusBeforeDispute;
-  const threadLocked = isReportThreadLocked(report.status);
+  const threadLocked = isResearcherReportThreadLocked(report.status);
+  const threadLockedMessage = getResearcherThreadLockedMessage(report.status);
 
   // Participants logic
   const participants = [
@@ -315,7 +325,7 @@ export default function ReportDetails() {
   ];
 
   return (
-    <div className="min-h-screen bg-transparent text-zinc-900 dark:text-zinc-100 p-8 pt-6 font-sans selection:bg-emerald-500/20 transition-colors duration-300">
+    <div className="min-h-screen bg-transparent text-zinc-900 dark:text-zinc-100 p-8 pt-6 font-sans transition-colors duration-300">
       
       {/* 1. Header & Timeline */}
       <div className="mb-12">
@@ -761,7 +771,7 @@ export default function ReportDetails() {
                     {threadLocked ? (
                       <div className="flex items-start gap-3 rounded-lg border border-amber-200 dark:border-amber-500/30 bg-amber-50 dark:bg-amber-500/10 px-4 py-3">
                         <Lock className="w-4 h-4 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
-                        <p className="text-sm text-amber-800 dark:text-amber-200">{REPORT_THREAD_LOCKED_MESSAGE}</p>
+                        <p className="text-sm text-amber-800 dark:text-amber-200">{threadLockedMessage}</p>
                       </div>
                     ) : (
                     <>
@@ -987,10 +997,25 @@ export default function ReportDetails() {
                         <span className="text-sm font-bold text-pink-600 dark:text-pink-500">{report.severity}</span>
                      </div>
                      <div className="pt-2 border-t border-zinc-200 dark:border-zinc-800/50">
-                        <span className="text-xs text-zinc-500 block mb-1">Vulnerability Category</span>
-                        <span className="text-sm text-zinc-900 dark:text-white font-medium block truncate" title={report.vulnerabilityCategory}>
-                            {report.vulnerabilityCategory || 'N/A'}
-                        </span>
+                        <span className="text-xs text-zinc-500 block mb-1">Vulnerability Type</span>
+                        {(() => {
+                          const vrt = formatReportVrt(report);
+                          return (
+                            <>
+                              <span
+                                className="text-sm text-zinc-900 dark:text-white font-medium block truncate"
+                                title={vrt.label}
+                              >
+                                {vrt.label}
+                              </span>
+                              {vrt.breadcrumb && (
+                                <span className="text-xs text-zinc-500 block truncate mt-0.5" title={vrt.breadcrumb}>
+                                  {vrt.breadcrumb}
+                                </span>
+                              )}
+                            </>
+                          );
+                        })()}
                      </div>
                 </div>
             </div>

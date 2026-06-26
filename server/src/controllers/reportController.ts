@@ -13,9 +13,10 @@ import {
   formatDuplicateClosureMarkdown,
   duplicateClosureTimelineSummary,
 } from '../utils/duplicateClosureNotice';
-import { syncReportDisputeStatus, syncReportsDisputeStatus, isReportThreadLocked, REPORT_THREAD_LOCKED_MESSAGE } from '../services/disputeReportLinkService';
+import { syncReportDisputeStatus, syncReportsDisputeStatus, isReportThreadLocked, isResearcherReportThreadLocked, getResearcherThreadLockedMessage, REPORT_THREAD_LOCKED_MESSAGE } from '../services/disputeReportLinkService';
 import { applyResearcherReputationOnStatusTransition } from '../services/researcherReputationService';
 import { enqueueReportProcessing, getQueueSnapshot } from '../services/reportProcessingQueue';
+import { extractVrtTaxonomy } from '../utils/vrtTaxonomy';
 
 const randomAlphaNum = (length: number) => {
   const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
@@ -57,10 +58,13 @@ const generateUniqueReportId = async (companyName: string, programTitle: string)
 
 // Create a new report
 export const createReport = catchAsync(async (req: Request, res: Response, next: NextFunction) => {
-  const { 
-    programId, 
-    title, 
+  const {
+    programId,
+    title,
     vulnerabilityCategory,
+    vrtParent,
+    vrtCategory,
+    vrtVariant,
     severity,
     cvssVector,
     cvssScore,
@@ -75,6 +79,18 @@ export const createReport = catchAsync(async (req: Request, res: Response, next:
   if (!programId) {
     return next(new AppError('Program ID is required', 400));
   }
+
+  const variantInput = String(vrtVariant ?? vulnerabilityCategory ?? '').trim();
+  if (!variantInput) {
+    return next(new AppError('VRT variant is required', 400));
+  }
+
+  const vrt = extractVrtTaxonomy({
+    vrtParent,
+    vrtCategory,
+    vrtVariant: variantInput,
+    vulnerabilityCategory: variantInput,
+  });
 
   const program = await Program.findById(programId).select('title companyName');
   if (!program) {
@@ -104,7 +120,10 @@ export const createReport = catchAsync(async (req: Request, res: Response, next:
     title,
     vulnerableEndpoint,
     assetType: assetType ? String(assetType).trim() : undefined,
-    vulnerabilityCategory,
+    vulnerabilityCategory: vrt.vrtVariant,
+    vrtParent: vrt.vrtParent || undefined,
+    vrtCategory: vrt.vrtCategory || undefined,
+    vrtVariant: vrt.vrtVariant,
     severity,
     researcherSeverity: severity,
     cvssVector,
@@ -130,7 +149,7 @@ export const createReport = catchAsync(async (req: Request, res: Response, next:
   };
 
   // Single database write — Atlas Search automatically syncs the indexed
-  // fields (vulnerableEndpoint / vulnerabilityCategory / title) inside the
+  // fields (vulnerableEndpoint / vrtVariant / vulnerabilityCategory / title) inside the
   // cluster, so we no longer need a second external indexing call.
   const newReport = await Report.create(reportData);
 
@@ -272,7 +291,15 @@ export const addComment = catchAsync(async (req: Request, res: Response, next: N
     return next(new AppError('Report not found', 404));
   }
 
-  if (isReportThreadLocked(report.status)) {
+  const isOwnerResearcher =
+    req.user!.role === 'researcher' &&
+    report.researcherId.toString() === req.user!.id;
+
+  if (isOwnerResearcher && isResearcherReportThreadLocked(report.status)) {
+    return next(new AppError(getResearcherThreadLockedMessage(report.status), 403));
+  }
+
+  if (!isOwnerResearcher && isReportThreadLocked(report.status)) {
     return next(new AppError(REPORT_THREAD_LOCKED_MESSAGE, 403));
   }
   

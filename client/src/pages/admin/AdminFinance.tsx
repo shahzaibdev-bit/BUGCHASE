@@ -1,18 +1,28 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { apiFetch } from '@/lib/api';
-import { DollarSign, TrendingUp, AlertTriangle, Building2, ArrowUpRight, ArrowDownRight, RefreshCw } from 'lucide-react';
+import { DollarSign, TrendingUp, AlertTriangle, Building2, ArrowUpRight, ArrowDownRight } from 'lucide-react';
 import { GlassCard } from '@/components/ui/glass-card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { InvertedTiltCard } from '@/components/InvertedTiltCard';
 import { InverseSpotlightCard } from '@/components/InverseSpotlightCard';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
-import { API_URL } from '@/config';
 import { toast } from 'sonner';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Input } from '@/components/ui/input';
 import CyberpunkEditor from '@/components/ui/CyberpunkEditor';
+
+type CompanyAccount = {
+  id: string;
+  name: string;
+  email: string;
+  status: 'Active' | 'Suspended' | 'Banned';
+  balance: number;
+  totalFunded: number;
+  activePrograms: number;
+  pendingPayouts: number;
+};
 
 type FinanceData = {
   stats: {
@@ -20,20 +30,15 @@ type FinanceData = {
     monthlyGrowth: number;
     pendingPayouts: number;
     totalRevenueYtd: number;
+    totalPlatformFeesYtd?: number;
+    totalCompanyFundingYtd?: number;
   };
   charts: {
     monthlyRevenue: Array<{ month: string; revenue: number; payouts: number }>;
     revenueBreakdown: Array<{ name: string; value: number }>;
   };
-  lowBalanceCompanies: Array<{
-    id: string;
-    name: string;
-    email: string;
-    status: 'Active' | 'Suspended' | 'Banned';
-    balance: number;
-    activePrograms: number;
-    pendingPayouts: number;
-  }>;
+  companyAccounts: CompanyAccount[];
+  lowBalanceCompanies: CompanyAccount[];
 };
 
 const BREAKDOWN_COLORS = ['hsl(var(--primary))', '#22c55e', '#ef4444', '#f97316'];
@@ -81,7 +86,7 @@ const EMAIL_TEMPLATES = {
 export default function AdminFinance() {
   const [data, setData] = useState<FinanceData | null>(null);
   const [isLoading, setIsLoading] = useState(true);
-  const [selectedCompany, setSelectedCompany] = useState<FinanceData['lowBalanceCompanies'][number] | null>(null);
+  const [selectedCompany, setSelectedCompany] = useState<CompanyAccount | null>(null);
   const [manageOpen, setManageOpen] = useState(false);
   const [manageAction, setManageAction] = useState<(typeof COMPANY_ACTIONS)[number]>('Suspend');
   const [manageReasonChoice, setManageReasonChoice] = useState<string>(SUSPEND_REASONS[0]);
@@ -122,6 +127,7 @@ export default function AdminFinance() {
     [data?.charts.revenueBreakdown]
   );
   const lowBalanceCompanies = data?.lowBalanceCompanies || [];
+
   const editorHtmlToText = (html: string) => {
     if (!html) return '';
     const container = document.createElement('div');
@@ -129,7 +135,7 @@ export default function AdminFinance() {
     return (container.textContent || container.innerText || '').replace(/\u00a0/g, ' ').trim();
   };
 
-  const openManageModal = (company: FinanceData['lowBalanceCompanies'][number]) => {
+  const openManageModal = (company: CompanyAccount) => {
     setSelectedCompany(company);
     if (company.status === 'Suspended' || company.status === 'Banned') {
       setManageAction('Activate');
@@ -143,7 +149,7 @@ export default function AdminFinance() {
     setManageOpen(true);
   };
 
-  const openEmailModal = (company: FinanceData['lowBalanceCompanies'][number]) => {
+  const openEmailModal = (company: CompanyAccount) => {
     setSelectedCompany(company);
     setEmailTemplate('low_balance_warning');
     setEmailSubject(EMAIL_TEMPLATES.low_balance_warning.subject);
@@ -214,15 +220,9 @@ export default function AdminFinance() {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
-        <div>
-          <h1 className="text-2xl font-bold text-foreground font-mono">Financial Health</h1>
-          <p className="text-muted-foreground text-sm">Platform financial overview and escrow management</p>
-        </div>
-        <Button variant="outline" onClick={fetchFinanceData} disabled={isLoading}>
-          <RefreshCw className={`h-4 w-4 mr-2 ${isLoading ? 'animate-spin' : ''}`} />
-          Refresh
-        </Button>
+      <div>
+        <h1 className="text-2xl font-bold text-foreground font-mono">Financial Overview</h1>
+        <p className="text-muted-foreground text-sm">Platform-wide liquidity, revenue trends, and low-balance alerts</p>
       </div>
 
       {/* Stats Grid */}
@@ -382,7 +382,7 @@ export default function AdminFinance() {
         <div className="flex items-center justify-between mb-4">
           <h3 className="text-lg font-semibold text-foreground flex items-center gap-2">
             <AlertTriangle className="h-5 w-5 text-yellow-500" />
-            Low Balance Companies (Below $1,000)
+            Low Balance Companies (Below PKR 100,000)
           </h3>
         </div>
 

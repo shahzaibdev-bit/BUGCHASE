@@ -729,16 +729,29 @@
   @apply bg-foreground/20 rounded-full hover:bg-foreground/30 transition-colors;
 }
 
-/* Selection */
-/* Selection - High Contrast */
-::selection {
-  background-color: #09090b; /* zinc-950 */
-  color: #ffffff;
+/* Text selection — light: black bg / white text; dark: white bg / black text */
+html ::selection,
+html *::selection {
+  background-color: #000000 !important;
+  color: #ffffff !important;
 }
 
-.dark ::selection {
-  background-color: #ffffff;
-  color: #000000;
+html.dark ::selection,
+html.dark *::selection {
+  background-color: #ffffff !important;
+  color: #000000 !important;
+}
+
+html ::-moz-selection,
+html *::-moz-selection {
+  background-color: #000000 !important;
+  color: #ffffff !important;
+}
+
+html.dark ::-moz-selection,
+html.dark *::-moz-selection {
+  background-color: #ffffff !important;
+  color: #000000 !important;
 }
 
 /* Theme Transition Effects */

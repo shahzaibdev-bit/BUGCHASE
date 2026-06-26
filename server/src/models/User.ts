@@ -15,6 +15,8 @@ export interface IUser extends Document {
   showPayouts?: boolean;
   reputationScore: number;
   walletBalance: number;
+  /** Lifetime PKR credited via Stripe top-ups and admin manual credits. */
+  walletTotalFunded?: number;
   country?: string;
   bio?: string;
   bioUpdated?: boolean;
@@ -139,6 +141,7 @@ const userSchema = new mongoose.Schema<IUser>({
   // Researcher Specific
   reputationScore: { type: Number, default: 0 },
   walletBalance: { type: Number, default: 0 },
+  walletTotalFunded: { type: Number, default: 0 },
   country: String,
   bio: { 
       type: String, 

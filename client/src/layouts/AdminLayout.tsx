@@ -38,7 +38,9 @@ const navItems = [
     label: 'FINANCE', 
     icon: CreditCard,
     items: [
-      { label: 'FINANCIAL HEALTH', path: '/admin/finance' }
+      { label: 'OVERVIEW', path: '/admin/finance' },
+      { label: 'COMPANY FUNDS', path: '/admin/finance/companies' },
+      { label: 'PLATFORM ACCOUNT', path: '/admin/finance/platform' },
     ]
   }
 ];

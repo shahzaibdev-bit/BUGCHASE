@@ -15,6 +15,14 @@ import {
   updateProgramByAdmin,
   getDashboardAnalytics,
   getFinanceAnalytics,
+  creditCompanyWallet,
+  getCompanyFinanceDetail,
+  getPlatformFinanceSettings,
+  updatePlatformFinanceSettings,
+  createPlatformSetupIntent,
+  getPlatformPaymentMethods,
+  detachPlatformPaymentMethod,
+  getPlatformTreasuryTransactions,
   sendUserEmailByAdmin,
   getUserDetails,
   updateUserDetails,
@@ -37,6 +45,14 @@ router.use(restrictTo('admin'));
 router.post('/announcements/broadcast', broadcastAnnouncement);
 router.get('/dashboard/analytics', getDashboardAnalytics);
 router.get('/finance/analytics', getFinanceAnalytics);
+router.get('/finance/platform-settings', getPlatformFinanceSettings);
+router.put('/finance/platform-settings', updatePlatformFinanceSettings);
+router.post('/finance/platform/setup-intent', createPlatformSetupIntent);
+router.get('/finance/platform/payment-methods', getPlatformPaymentMethods);
+router.delete('/finance/platform/payment-methods/:paymentMethodId', detachPlatformPaymentMethod);
+router.get('/finance/platform/transactions', getPlatformTreasuryTransactions);
+router.get('/finance/companies/:companyId', getCompanyFinanceDetail);
+router.post('/finance/companies/:companyId/credit', creditCompanyWallet);
 router.get('/users', getAllUsers);
 router.get('/users/check-username', checkUsernameAvailability);
 router.get('/users/:id', getUserDetails);

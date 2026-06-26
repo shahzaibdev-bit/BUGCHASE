@@ -186,13 +186,18 @@ export function SupportReportDetails() {
                   </div>
                 )}
                 <div className="pt-2 border-t border-zinc-200 dark:border-zinc-800/50">
-                  <span className="text-xs text-zinc-500 block mb-1">Vulnerability Category</span>
+                  <span className="text-xs text-zinc-500 block mb-1">Vulnerability Type</span>
                   <span
                     className="text-sm text-zinc-900 dark:text-white font-medium block truncate"
-                    title={report.vulnerabilityCategory}
+                    title={report.vrtVariant || report.vulnerabilityCategory}
                   >
-                    {report.vulnerabilityCategory || 'N/A'}
+                    {report.vrtVariant || report.vulnerabilityCategory || 'N/A'}
                   </span>
+                  {(report.vrtParent || report.vrtCategory) && (
+                    <span className="text-xs text-zinc-500 block truncate mt-0.5">
+                      {[report.vrtParent, report.vrtCategory].filter(Boolean).join(' → ')}
+                    </span>
+                  )}
                 </div>
               </div>
             </div>

@@ -42,9 +42,13 @@ export const StepReview = ({ data, updateData }: StepReviewProps) => {
                 {/* Category & Severity */}
                 <div className="p-6 grid grid-cols-1 md:grid-cols-2 gap-6">
                      <div>
-                         <h4 className="text-xs font-mono font-bold text-zinc-500 uppercase mb-1">Category</h4>
-                         <p className="text-zinc-900 dark:text-white font-medium">{data.bugType || data.category || '-'}</p>
-                         {data.cwe && <span className="text-xs text-zinc-500 font-mono mt-1 block">{data.cwe}</span>}
+                         <h4 className="text-xs font-mono font-bold text-zinc-500 uppercase mb-1">Vulnerability Type</h4>
+                         <p className="text-zinc-900 dark:text-white font-medium">{data.vrtVariant || '-'}</p>
+                         {(data.vrtParent || data.vrtCategory) && (
+                           <span className="text-xs text-zinc-500 mt-1 block">
+                             {[data.vrtParent, data.vrtCategory].filter(Boolean).join(' → ')}
+                           </span>
+                         )}
                     </div>
                     <div>
                          <h4 className="text-xs font-mono font-bold text-zinc-500 uppercase mb-1">Severity</h4>

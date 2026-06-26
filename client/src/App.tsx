@@ -83,6 +83,8 @@ import { ProtectedRoute } from "./components/ProtectedRoute";
 const AdminDashboard = lazy(() => import("./pages/admin/AdminDashboard"));
 const AdminUsers = lazy(() => import("./pages/admin/AdminUsers"));
 const AdminFinance = lazy(() => import("./pages/admin/AdminFinance"));
+const AdminFinanceCompanies = lazy(() => import("./pages/admin/AdminFinanceCompanies"));
+const AdminFinancePlatform = lazy(() => import("./pages/admin/AdminFinancePlatform"));
 const AdminLogs = lazy(() => import("./pages/admin/AdminLogs"));
 const AdminPrograms = lazy(() => import("./pages/admin/AdminPrograms"));
 const AdminProgramDetails = lazy(() => import("./pages/admin/AdminProgramDetails"));
@@ -228,6 +230,8 @@ const App = () => (
                       <Route path="support/:id" element={<AdminSupportDetails />} />
                       <Route path="reports/:id" element={<AdminReportDetails />} />
                       <Route path="finance" element={<AdminFinance />} />
+                      <Route path="finance/companies" element={<AdminFinanceCompanies />} />
+                      <Route path="finance/platform" element={<AdminFinancePlatform />} />
                       <Route path="logs" element={<AdminLogs />} />
                       <Route path="announcements" element={<AdminAnnouncements />} />
                     </Route>

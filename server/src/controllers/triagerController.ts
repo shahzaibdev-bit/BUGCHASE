@@ -23,6 +23,80 @@ import {
   clearReputationMilestonesForReTriage,
 } from '../services/researcherReputationService';
 
+type TriagerProfile = {
+  _id: string;
+  username?: string;
+  name?: string;
+  avatar?: string;
+};
+
+const hasTriagerProfile = (user: any): user is TriagerProfile =>
+  !!user && !!(user.username || user.name);
+
+const pickUserId = (value: any): string | null => {
+  if (!value) return null;
+  if (typeof value === 'string') return value;
+  if (value._id) return String(value._id);
+  try {
+    return String(value);
+  } catch {
+    return null;
+  }
+};
+
+/** Resolve assigned triager even when populate returns only a bare ObjectId. */
+async function resolveAssignedTriager(report: any): Promise<TriagerProfile | null> {
+  const fromDoc = (user: any): TriagerProfile | null => {
+    if (!hasTriagerProfile(user)) return null;
+    return {
+      _id: String(user._id || pickUserId(user)),
+      username: user.username,
+      name: user.name,
+      avatar: user.avatar,
+    };
+  };
+
+  const direct = fromDoc(report.triagerId);
+  if (direct) return direct;
+
+  const triagerId = pickUserId(report.triagerId);
+  if (triagerId) {
+    const user = await User.findById(triagerId).select('username name avatar').lean();
+    const resolved = fromDoc(user);
+    if (resolved) return resolved;
+  }
+
+  const participants = Array.isArray(report.triagerParticipants) ? report.triagerParticipants : [];
+  const primary =
+    participants.find((p: any) => p?.role === 'primary') || participants[0];
+  if (primary?.triagerId) {
+    const participantResolved = fromDoc(primary.triagerId);
+    if (participantResolved) return participantResolved;
+    const participantId = pickUserId(primary.triagerId);
+    if (participantId) {
+      const user = await User.findById(participantId).select('username name avatar').lean();
+      const resolved = fromDoc(user);
+      if (resolved) return resolved;
+    }
+  }
+
+  const assignmentComment = [...(report.comments || [])]
+    .reverse()
+    .find((c: any) => c?.type === 'assignment' && c.sender);
+  if (assignmentComment?.sender) {
+    const senderResolved = fromDoc(assignmentComment.sender);
+    if (senderResolved) return senderResolved;
+    const senderId = pickUserId(assignmentComment.sender);
+    if (senderId) {
+      const user = await User.findById(senderId).select('username name avatar').lean();
+      const resolved = fromDoc(user);
+      if (resolved) return resolved;
+    }
+  }
+
+  return null;
+}
+
 const duplicateReviewBlocksPromoteOrResolve = (report: any, nextStatus: string) => {
   if (
     report.duplicateReviewStatus === 'pending' &&
@@ -361,6 +435,8 @@ export const getReportDetails = catchAsync(async (req: Request, res: Response, n
     const loadPopulated = () =>
         Report.findById(id)
             .populate('researcherId', 'username name email avatar')
+            .populate('triagerId', 'username name avatar')
+            .populate('triagerParticipants.triagerId', 'username name avatar')
             .populate('comments.sender', 'username name role avatar')
             .populate({
                 path: 'programId',
@@ -434,8 +510,11 @@ export const getReportDetails = catchAsync(async (req: Request, res: Response, n
     res.status(200).json({
         status: 'success',
         data: {
-            report
-        }
+            report: {
+                ...(report.toObject ? report.toObject() : report),
+                triagerId: await resolveAssignedTriager(report),
+            },
+        },
     });
 });
 

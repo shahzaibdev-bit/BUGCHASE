@@ -104,13 +104,28 @@
   @apply bg-foreground/20 rounded-full hover:bg-foreground/30 transition-colors;
 }
 
-::selection {
-  background-color: #09090b;
-  color: #ffffff;
+html ::selection,
+html *::selection {
+  background-color: #000000 !important;
+  color: #ffffff !important;
 }
-.dark ::selection {
-  background-color: #ffffff;
-  color: #000000;
+
+html.dark ::selection,
+html.dark *::selection {
+  background-color: #ffffff !important;
+  color: #000000 !important;
+}
+
+html ::-moz-selection,
+html *::-moz-selection {
+  background-color: #000000 !important;
+  color: #ffffff !important;
+}
+
+html.dark ::-moz-selection,
+html.dark *::-moz-selection {
+  background-color: #ffffff !important;
+  color: #000000 !important;
 }
 
 /* Theme transition (circular reveal) — matches the main app */

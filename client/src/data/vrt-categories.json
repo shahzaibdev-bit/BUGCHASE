@@ -1,0 +1,1812 @@
+[
+  {
+    "parent_category": "AI Application Security",
+    "vrt_category": "Adversarial Example Injection",
+    "children": [
+      "AI Misclassification Attacks"
+    ]
+  },
+  {
+    "parent_category": "AI Application Security",
+    "vrt_category": "AI Safety",
+    "children": [
+      "Misinformation / Wrong Factual Data"
+    ]
+  },
+  {
+    "parent_category": "AI Application Security",
+    "vrt_category": "Denial-of-Service (DoS)",
+    "children": [
+      "Application-Wide",
+      "Tenant-Scoped"
+    ]
+  },
+  {
+    "parent_category": "AI Application Security",
+    "vrt_category": "Improper Input Handling",
+    "children": [
+      "ANSI Escape Codes",
+      "RTL Overrides",
+      "Unicode Confusables"
+    ]
+  },
+  {
+    "parent_category": "AI Application Security",
+    "vrt_category": "Improper Output Handling",
+    "children": [
+      "Cross-Site Scripting (XSS)",
+      "Markdown/HTML Injection"
+    ]
+  },
+  {
+    "parent_category": "AI Application Security",
+    "vrt_category": "Insufficient Rate Limiting",
+    "children": [
+      "Query Flooding / API Token Abuse"
+    ]
+  },
+  {
+    "parent_category": "AI Application Security",
+    "vrt_category": "Model Extraction",
+    "children": [
+      "API Query-Based Model Reconstruction"
+    ]
+  },
+  {
+    "parent_category": "AI Application Security",
+    "vrt_category": "Prompt Injection",
+    "children": [
+      "System Prompt Leakage"
+    ]
+  },
+  {
+    "parent_category": "AI Application Security",
+    "vrt_category": "Remote Code Execution",
+    "children": [
+      "Full System Compromise",
+      "Sandboxed Container Code Execution"
+    ]
+  },
+  {
+    "parent_category": "AI Application Security",
+    "vrt_category": "Sensitive Information Disclosure",
+    "children": [
+      "Cross-Tenant PII Leakage/Exposure",
+      "Key Leak"
+    ]
+  },
+  {
+    "parent_category": "AI Application Security",
+    "vrt_category": "Training Data Poisoning",
+    "children": [
+      "Backdoor Injection / Bias Manipulation"
+    ]
+  },
+  {
+    "parent_category": "AI Application Security",
+    "vrt_category": "Vector and Embedding Weaknesses",
+    "children": [
+      "Embedding Exfiltration / Model Extraction",
+      "Semantic Indexing"
+    ]
+  },
+  {
+    "parent_category": "Algorithmic Biases",
+    "vrt_category": "Aggregation Bias",
+    "children": [
+      "Aggregation Bias"
+    ]
+  },
+  {
+    "parent_category": "Algorithmic Biases",
+    "vrt_category": "Processing Bias",
+    "children": [
+      "Processing Bias"
+    ]
+  },
+  {
+    "parent_category": "Application-Level Denial-of-Service (DoS)",
+    "vrt_category": "App Crash",
+    "children": [
+      "Malformed Android Intents",
+      "Malformed iOS URL Schemes"
+    ]
+  },
+  {
+    "parent_category": "Application-Level Denial-of-Service (DoS)",
+    "vrt_category": "Critical Impact and/or Easy Difficulty",
+    "children": [
+      "Critical Impact and/or Easy Difficulty"
+    ]
+  },
+  {
+    "parent_category": "Application-Level Denial-of-Service (DoS)",
+    "vrt_category": "Excessive Resource Consumption",
+    "children": [
+      "Injection (Prompt)"
+    ]
+  },
+  {
+    "parent_category": "Application-Level Denial-of-Service (DoS)",
+    "vrt_category": "High Impact and/or Medium Difficulty",
+    "children": [
+      "High Impact and/or Medium Difficulty"
+    ]
+  },
+  {
+    "parent_category": "Automotive Security Misconfiguration",
+    "vrt_category": "Automatic Braking System (ABS)",
+    "children": [
+      "Unintended Acceleration / Brake"
+    ]
+  },
+  {
+    "parent_category": "Automotive Security Misconfiguration",
+    "vrt_category": "Battery Management System",
+    "children": [
+      "Firmware Dump",
+      "Fraudulent Interface"
+    ]
+  },
+  {
+    "parent_category": "Automotive Security Misconfiguration",
+    "vrt_category": "CAN",
+    "children": [
+      "Injection (Basic Safety Message)",
+      "Injection (Battery Management System)",
+      "Injection (Disallowed Messages)",
+      "Injection (DoS)",
+      "Injection (Headlights)",
+      "Injection (Powertrain)",
+      "Injection (Pyrotechnical Device Deployment Tool)",
+      "Injection (Sensors)",
+      "Injection (Steering Control)",
+      "Injection (Vehicle Anti-theft Systems)"
+    ]
+  },
+  {
+    "parent_category": "Automotive Security Misconfiguration",
+    "vrt_category": "GNSS / GPS",
+    "children": [
+      "Spoofing"
+    ]
+  },
+  {
+    "parent_category": "Automotive Security Misconfiguration",
+    "vrt_category": "Immobilizer",
+    "children": [
+      "Engine Start"
+    ]
+  },
+  {
+    "parent_category": "Automotive Security Misconfiguration",
+    "vrt_category": "Infotainment, Radio Head Unit",
+    "children": [
+      "Code Execution (CAN Bus Pivot)",
+      "Code Execution (No CAN Bus Pivot)",
+      "Default Credentials",
+      "Denial of Service (DoS / Brick)",
+      "OTA Firmware Manipulation",
+      "Sensitive data Leakage/Exposure",
+      "Source Code Dump",
+      "Unauthorized Access to Services (API / Endpoints)"
+    ]
+  },
+  {
+    "parent_category": "Automotive Security Misconfiguration",
+    "vrt_category": "RF Hub",
+    "children": [
+      "CAN Injection / Interaction",
+      "Data Leakage / Pull Encryption Mechanism",
+      "Key Fob Cloning",
+      "Relay",
+      "Replay",
+      "Roll Jam",
+      "Unauthorized Access / Turn On"
+    ]
+  },
+  {
+    "parent_category": "Automotive Security Misconfiguration",
+    "vrt_category": "Roadside Unit (RSU)",
+    "children": [
+      "Sybil Attack"
+    ]
+  },
+  {
+    "parent_category": "Blockchain Infrastructure Misconfiguration",
+    "vrt_category": "Improper Bridge Validation and Verification Logic",
+    "children": [
+      "Improper Bridge Validation and Verification Logic"
+    ]
+  },
+  {
+    "parent_category": "Broken Access Control (BAC)",
+    "vrt_category": "Bypass of Password Confirmation",
+    "children": [
+      "Change Password"
+    ]
+  },
+  {
+    "parent_category": "Broken Access Control (BAC)",
+    "vrt_category": "Exposed Sensitive Android Intent",
+    "children": [
+      "Exposed Sensitive Android Intent"
+    ]
+  },
+  {
+    "parent_category": "Broken Access Control (BAC)",
+    "vrt_category": "Exposed Sensitive iOS URL Scheme",
+    "children": [
+      "Exposed Sensitive iOS URL Scheme"
+    ]
+  },
+  {
+    "parent_category": "Broken Access Control (BAC)",
+    "vrt_category": "Insecure Direct Object References (IDOR)",
+    "children": [
+      "Modify Sensitive Information(Iterable Object Identifiers)",
+      "Modify/View Sensitive Information(Complex Object Identifiers GUID/UUID)",
+      "Modify/View Sensitive Information(Iterable Object Identifiers)",
+      "View Non-Sensitive Information",
+      "View Sensitive Information(Iterable Object Identifiers)"
+    ]
+  },
+  {
+    "parent_category": "Broken Access Control (BAC)",
+    "vrt_category": "Privilege Escalation",
+    "children": [
+      "Privilege Escalation"
+    ]
+  },
+  {
+    "parent_category": "Broken Access Control (BAC)",
+    "vrt_category": "Username/Email Enumeration",
+    "children": [
+      "Non-Brute Force"
+    ]
+  },
+  {
+    "parent_category": "Broken Authentication and Session Management",
+    "vrt_category": "Authentication Bypass",
+    "children": [
+      "Authentication Bypass"
+    ]
+  },
+  {
+    "parent_category": "Broken Authentication and Session Management",
+    "vrt_category": "Cleartext Transmission of Session Token",
+    "children": [
+      "Cleartext Transmission of Session Token"
+    ]
+  },
+  {
+    "parent_category": "Broken Authentication and Session Management",
+    "vrt_category": "Concurrent Logins",
+    "children": [
+      "Concurrent Logins"
+    ]
+  },
+  {
+    "parent_category": "Broken Authentication and Session Management",
+    "vrt_category": "Failure to Invalidate Session",
+    "children": [
+      "Concurrent Sessions On Logout",
+      "Long Timeout",
+      "On Email Change",
+      "On Logout (Client and Server-Side)",
+      "On Logout (Server-Side Only)",
+      "On Password Reset and/or Change",
+      "On 2FA Activation/Change",
+      "On Permission Change"
+    ]
+  },
+  {
+    "parent_category": "Broken Authentication and Session Management",
+    "vrt_category": "SAML Replay",
+    "children": [
+      "SAML Replay"
+    ]
+  },
+  {
+    "parent_category": "Broken Authentication and Session Management",
+    "vrt_category": "Session Fixation",
+    "children": [
+      "Local Attack Vector",
+      "Remote Attack Vector"
+    ]
+  },
+  {
+    "parent_category": "Broken Authentication and Session Management",
+    "vrt_category": "Second Factor Authentication (2FA) Bypass",
+    "children": [
+      "Second Factor Authentication (2FA) Bypass"
+    ]
+  },
+  {
+    "parent_category": "Broken Authentication and Session Management",
+    "vrt_category": "Weak Login Function",
+    "children": [
+      "Not Operational or Intended Public Access",
+      "Other Plaintext Protocol with no Secure Alternative",
+      "Over HTTP"
+    ]
+  },
+  {
+    "parent_category": "Broken Authentication and Session Management",
+    "vrt_category": "Weak Registration Implementation",
+    "children": [
+      "Over HTTP"
+    ]
+  },
+  {
+    "parent_category": "Broken Authentication and Session Management",
+    "vrt_category": "Excessive JSON Web Token (JWT) Lifetime",
+    "children": [
+      "Excessive JSON Web Token (JWT) Lifetime"
+    ]
+  },
+  {
+    "parent_category": "Broken Authentication and Session Management",
+    "vrt_category": "Secret Questions Used for Account Verification",
+    "children": [
+      "Secret Questions Used for Account Verification"
+    ]
+  },
+  {
+    "parent_category": "Client-Side Injection",
+    "vrt_category": "Binary Planting",
+    "children": [
+      "No Privilege Escalation",
+      "Non-Default Folder Privilege Escalation",
+      "Default Folder Privilege Escalation"
+    ]
+  },
+  {
+    "parent_category": "Cloud Security",
+    "vrt_category": "Identity and Access Management (IAM) Misconfigurations",
+    "children": [
+      "Overly Permissive IAM Roles",
+      "Publicly Accessible IAM Credentials"
+    ]
+  },
+  {
+    "parent_category": "Cloud Security",
+    "vrt_category": "Logging and Monitoring Issues",
+    "children": [
+      "Disabled or Insufficient Logging"
+    ]
+  },
+  {
+    "parent_category": "Cloud Security",
+    "vrt_category": "Misconfigured Services and APIs",
+    "children": [
+      "Exposed Debug or Admin Interfaces",
+      "Insecure API Endpoints"
+    ]
+  },
+  {
+    "parent_category": "Cloud Security",
+    "vrt_category": "Network Configuration Issues",
+    "children": [
+      "Lack of Network Segmentation",
+      "Open Management Ports to the Internet"
+    ]
+  },
+  {
+    "parent_category": "Cloud Security",
+    "vrt_category": "Storage Misconfigurations",
+    "children": [
+      "Publicly Accessible Cloud Storage",
+      "Unencrypted Sensitive Data at Rest"
+    ]
+  },
+  {
+    "parent_category": "Cross-Site Request Forgery (CSRF)",
+    "vrt_category": "Action-Specific",
+    "children": [
+      "Authenticated Action",
+      "Logout",
+      "Unauthenticated Action"
+    ]
+  },
+  {
+    "parent_category": "Cross-Site Request Forgery (CSRF)",
+    "vrt_category": "Application-Wide",
+    "children": [
+      "Application-Wide"
+    ]
+  },
+  {
+    "parent_category": "Cross-Site Request Forgery (CSRF)",
+    "vrt_category": "CSRF Token Not Unique Per Request",
+    "children": [
+      "CSRF Token Not Unique Per Request"
+    ]
+  },
+  {
+    "parent_category": "Cross-Site Request Forgery (CSRF)",
+    "vrt_category": "Flash-Based",
+    "children": [
+      "Flash-Based"
+    ]
+  },
+  {
+    "parent_category": "Cross-Site Scripting (XSS)",
+    "vrt_category": "Cookie-Based",
+    "children": [
+      "Cookie-Based"
+    ]
+  },
+  {
+    "parent_category": "Cross-Site Scripting (XSS)",
+    "vrt_category": "Flash-Based",
+    "children": [
+      "Flash-Based"
+    ]
+  },
+  {
+    "parent_category": "Cross-Site Scripting (XSS)",
+    "vrt_category": "IE-Only",
+    "children": [
+      "IE-Only"
+    ]
+  },
+  {
+    "parent_category": "Cross-Site Scripting (XSS)",
+    "vrt_category": "Off-Domain",
+    "children": [
+      "Data URI"
+    ]
+  },
+  {
+    "parent_category": "Cross-Site Scripting (XSS)",
+    "vrt_category": "Referer",
+    "children": [
+      "Referer"
+    ]
+  },
+  {
+    "parent_category": "Cross-Site Scripting (XSS)",
+    "vrt_category": "Reflected",
+    "children": [
+      "Non-Self",
+      "Self"
+    ]
+  },
+  {
+    "parent_category": "Cross-Site Scripting (XSS)",
+    "vrt_category": "Stored",
+    "children": [
+      "Non-Privileged User to Anyone",
+      "Privileged User to No Privilege Elevation",
+      "Privileged User to Privilege Elevation",
+      "Self",
+      "CSRF/URL-Based"
+    ]
+  },
+  {
+    "parent_category": "Cross-Site Scripting (XSS)",
+    "vrt_category": "TRACE Method",
+    "children": [
+      "TRACE Method"
+    ]
+  },
+  {
+    "parent_category": "Cross-Site Scripting (XSS)",
+    "vrt_category": "Universal (UXSS)",
+    "children": [
+      "Universal (UXSS)"
+    ]
+  },
+  {
+    "parent_category": "Cryptographic Weakness",
+    "vrt_category": "Broken Cryptography",
+    "children": [
+      "Use of Broken Cryptographic Primitive",
+      "Use of Vulnerable Cryptographic Library"
+    ]
+  },
+  {
+    "parent_category": "Cryptographic Weakness",
+    "vrt_category": "Incomplete Cleanup of Keying Material",
+    "children": [
+      "Incomplete Cleanup of Keying Material"
+    ]
+  },
+  {
+    "parent_category": "Cryptographic Weakness",
+    "vrt_category": "Insecure Implementation",
+    "children": [
+      "Improper Following of Specification (Other)",
+      "Missing Cryptographic Step"
+    ]
+  },
+  {
+    "parent_category": "Cryptographic Weakness",
+    "vrt_category": "Insecure Key Generation",
+    "children": [
+      "Improper Asymmetric Exponent Selection",
+      "Improper Asymmetric Prime Selection",
+      "Insufficient Key Space",
+      "Insufficient Key Stretching",
+      "Key Exchage Without Entity Authentication"
+    ]
+  },
+  {
+    "parent_category": "Cryptographic Weakness",
+    "vrt_category": "Insufficient Entropy",
+    "children": [
+      "Initialization Vector (IV) Reuse",
+      "Limited Random Number Generator (RNG) Entropy Source",
+      "Predictable Initialization Vector (IV)",
+      "Predictable Pseudo-Random Number Generator (PRNG) Seed",
+      "Pseudo-Random Number Generator (PRNG) Seed Reuse",
+      "Small Seed Space in Pseudo-Random Number Generator (PRNG)",
+      "Use of True Random Number Generator (TRNG) for Non-Security Purpose"
+    ]
+  },
+  {
+    "parent_category": "Cryptographic Weakness",
+    "vrt_category": "Insufficient Verification of Data Authenticity",
+    "children": [
+      "Cryptographic Signature",
+      "Integrity Check Value (ICV)"
+    ]
+  },
+  {
+    "parent_category": "Cryptographic Weakness",
+    "vrt_category": "Key Reuse",
+    "children": [
+      "Inter-Environment",
+      "Intra-Environment",
+      "Lack of Perfect Forward Secrecy"
+    ]
+  },
+  {
+    "parent_category": "Cryptographic Weakness",
+    "vrt_category": "Side-Channel Attack",
+    "children": [
+      "Differential Fault Analysis",
+      "Emanations Attack",
+      "Padding Oracle Attack",
+      "Power Analysis Attack",
+      "Timing Attack"
+    ]
+  },
+  {
+    "parent_category": "Cryptographic Weakness",
+    "vrt_category": "Use of Expired Cryptographic Key (or Certificate)",
+    "children": [
+      "Use of Expired Cryptographic Key (or Certificate)"
+    ]
+  },
+  {
+    "parent_category": "Cryptographic Weakness",
+    "vrt_category": "Weak Hash",
+    "children": [
+      "Lack of Salt",
+      "Predictable Hash Collision",
+      "Use of Predictable Salt"
+    ]
+  },
+  {
+    "parent_category": "Data Biases",
+    "vrt_category": "Pre-existing Bias",
+    "children": [
+      "Pre-existing Bias"
+    ]
+  },
+  {
+    "parent_category": "Data Biases",
+    "vrt_category": "Representation Bias",
+    "children": [
+      "Representation Bias"
+    ]
+  },
+  {
+    "parent_category": "Decentralized Application Misconfiguration",
+    "vrt_category": "DeFi Security",
+    "children": [
+      "Flash Loan Attack",
+      "Function-Level Accounting Error",
+      "Improper Implementation of Governance",
+      "Pricing Oracle Manipulation"
+    ]
+  },
+  {
+    "parent_category": "Decentralized Application Misconfiguration",
+    "vrt_category": "Improper Authorization",
+    "children": [
+      "Insufficient Signature Validation"
+    ]
+  },
+  {
+    "parent_category": "Decentralized Application Misconfiguration",
+    "vrt_category": "Insecure Data Storage",
+    "children": [
+      "Plaintext Private Key",
+      "Sensitive Information Exposure"
+    ]
+  },
+  {
+    "parent_category": "Decentralized Application Misconfiguration",
+    "vrt_category": "Marketplace Security",
+    "children": [
+      "Denial of Service",
+      "Improper Validation and Checks For Deposits and Withdrawals",
+      "Malicious Order Offer",
+      "Miscalculated Accounting Logic",
+      "OFAC Bypass",
+      "Orderbook Manipulation",
+      "Price or Fee Manipulation",
+      "Signer Account Takeover",
+      "Unauthorized Asset Transfer"
+    ]
+  },
+  {
+    "parent_category": "Decentralized Application Misconfiguration",
+    "vrt_category": "Protocol Security Misconfiguration",
+    "children": [
+      "Node-level Denial of Service"
+    ]
+  },
+  {
+    "parent_category": "Developer Biases",
+    "vrt_category": "Implicit Bias",
+    "children": [
+      "Implicit Bias"
+    ]
+  },
+  {
+    "parent_category": "External Behavior",
+    "vrt_category": "Browser Feature",
+    "children": [
+      "Aggressive Offline Caching",
+      "Autocomplete Enabled",
+      "Autocorrect Enabled",
+      "Plaintext Password Field",
+      "Save Password"
+    ]
+  },
+  {
+    "parent_category": "External Behavior",
+    "vrt_category": "Captcha Bypass",
+    "children": [
+      "Crowdsourcing"
+    ]
+  },
+  {
+    "parent_category": "External Behavior",
+    "vrt_category": "CSV Injection",
+    "children": [
+      "CSV Injection"
+    ]
+  },
+  {
+    "parent_category": "External Behavior",
+    "vrt_category": "System Clipboard Leak",
+    "children": [
+      "Shared Links"
+    ]
+  },
+  {
+    "parent_category": "External Behavior",
+    "vrt_category": "User Password Persisted in Memory",
+    "children": [
+      "User Password Persisted in Memory"
+    ]
+  },
+  {
+    "parent_category": "Insecure Data Storage",
+    "vrt_category": "Non-Sensitive Application Data Stored Unencrypted",
+    "children": [
+      "Non-Sensitive Application Data Stored Unencrypted"
+    ]
+  },
+  {
+    "parent_category": "Insecure Data Storage",
+    "vrt_category": "Screen Caching Enabled",
+    "children": [
+      "Screen Caching Enabled"
+    ]
+  },
+  {
+    "parent_category": "Insecure Data Storage",
+    "vrt_category": "Sensitive Application Data Stored Unencrypted",
+    "children": [
+      "On External Storage",
+      "On Internal Storage"
+    ]
+  },
+  {
+    "parent_category": "Insecure Data Storage",
+    "vrt_category": "Server-Side Credentials Storage",
+    "children": [
+      "Plaintext"
+    ]
+  },
+  {
+    "parent_category": "Insecure Data Transport",
+    "vrt_category": "Cleartext Transmission of Sensitive Data",
+    "children": [
+      "Cleartext Transmission of Sensitive Data"
+    ]
+  },
+  {
+    "parent_category": "Insecure Data Transport",
+    "vrt_category": "Executable Download",
+    "children": [
+      "No Secure Integrity Check",
+      "Secure Integrity Check"
+    ]
+  },
+  {
+    "parent_category": "Insecure OS/Firmware",
+    "vrt_category": "Command Injection",
+    "children": [
+      "Command Injection"
+    ]
+  },
+  {
+    "parent_category": "Insecure OS/Firmware",
+    "vrt_category": "Data not encrypted at rest",
+    "children": [
+      "Non sensitive",
+      "Sensitive"
+    ]
+  },
+  {
+    "parent_category": "Insecure OS/Firmware",
+    "vrt_category": "Failure to Remove Sensitive Artifacts from Disk",
+    "children": [
+      "Failure to Remove Sensitive Artifacts from Disk"
+    ]
+  },
+  {
+    "parent_category": "Insecure OS/Firmware",
+    "vrt_category": "Hardcoded Password",
+    "children": [
+      "Non-Privileged User",
+      "Privileged User"
+    ]
+  },
+  {
+    "parent_category": "Insecure OS/Firmware",
+    "vrt_category": "Kiosk Escape or Breakout",
+    "children": [
+      "Kiosk Escape or Breakout"
+    ]
+  },
+  {
+    "parent_category": "Insecure OS/Firmware",
+    "vrt_category": "Local Administrator on default environment",
+    "children": [
+      "Local Administrator on default environment"
+    ]
+  },
+  {
+    "parent_category": "Insecure OS/Firmware",
+    "vrt_category": "Over-Permissioned Credentials on Storage",
+    "children": [
+      "Over-Permissioned Credentials on Storage"
+    ]
+  },
+  {
+    "parent_category": "Insecure OS/Firmware",
+    "vrt_category": "Poorly Configured Disk Encryption",
+    "children": [
+      "Poorly Configured Disk Encryption"
+    ]
+  },
+  {
+    "parent_category": "Insecure OS/Firmware",
+    "vrt_category": "Poorly Configured Operating System Security",
+    "children": [
+      "Poorly Configured Operating System Security"
+    ]
+  },
+  {
+    "parent_category": "Insecure OS/Firmware",
+    "vrt_category": "Recovery of Disk Contains Sensitive Material",
+    "children": [
+      "Recovery of Disk Contains Sensitive Material"
+    ]
+  },
+  {
+    "parent_category": "Insecure OS/Firmware",
+    "vrt_category": "Shared Credentials on Storage",
+    "children": [
+      "Shared Credentials on Storage"
+    ]
+  },
+  {
+    "parent_category": "Insecure OS/Firmware",
+    "vrt_category": "Weakness in Firmware Updates",
+    "children": [
+      "Firmware cannot be updated",
+      "Firmware does not validate update integrity",
+      "Firmware is not encrypted"
+    ]
+  },
+  {
+    "parent_category": "Insufficient Security Configurability",
+    "vrt_category": "Lack of Notification Email",
+    "children": [
+      "Lack of Notification Email"
+    ]
+  },
+  {
+    "parent_category": "Insufficient Security Configurability",
+    "vrt_category": "No Password Policy",
+    "children": [
+      "No Password Policy"
+    ]
+  },
+  {
+    "parent_category": "Insufficient Security Configurability",
+    "vrt_category": "Password Policy Bypass",
+    "children": [
+      "Password Policy Bypass"
+    ]
+  },
+  {
+    "parent_category": "Insufficient Security Configurability",
+    "vrt_category": "Verification of Contact Method not Required",
+    "children": [
+      "Verification of Contact Method not Required"
+    ]
+  },
+  {
+    "parent_category": "Insufficient Security Configurability",
+    "vrt_category": "Weak Password Policy",
+    "children": [
+      "Weak Password Policy"
+    ]
+  },
+  {
+    "parent_category": "Insufficient Security Configurability",
+    "vrt_category": "Weak Password Reset Implementation",
+    "children": [
+      "Token Has Long Timed Expiry",
+      "Token is Not Invalidated After Email Change",
+      "Token is Not Invalidated After Login",
+      "Token is Not Invalidated After New Token is Requested",
+      "Token is Not Invalidated After Password Change",
+      "Token is Not Invalidated After Use"
+    ]
+  },
+  {
+    "parent_category": "Insufficient Security Configurability",
+    "vrt_category": "Weak Registration Implementation",
+    "children": [
+      "Allows Disposable Email Addresses"
+    ]
+  },
+  {
+    "parent_category": "Insufficient Security Configurability",
+    "vrt_category": "Weak 2FA Implementation",
+    "children": [
+      "Missing Failsafe",
+      "Old 2FA Code is Not Invalidated After New Code is Generated",
+      "2FA Code is Not Updated After New Code is Requested",
+      "2FA Secret Cannot be Rotated",
+      "2FA Secret Remains Obtainable After 2FA is Enabled"
+    ]
+  },
+  {
+    "parent_category": "Insufficient Security Configurability",
+    "vrt_category": "No 2FA Implementation",
+    "children": [
+      "No 2FA Implementation"
+    ]
+  },
+  {
+    "parent_category": "Insufficient Security Configurability",
+    "vrt_category": "No Account Lockout",
+    "children": [
+      "No Account Lockout"
+    ]
+  },
+  {
+    "parent_category": "Insufficient Security Configurability",
+    "vrt_category": "Weak JSON Web Token (JWT) Hashing Algorithm",
+    "children": [
+      "Weak JSON Web Token (JWT) Hashing Algorithm"
+    ]
+  },
+  {
+    "parent_category": "Lack of Binary Hardening",
+    "vrt_category": "Lack of Exploit Mitigations",
+    "children": [
+      "Lack of Exploit Mitigations"
+    ]
+  },
+  {
+    "parent_category": "Lack of Binary Hardening",
+    "vrt_category": "Lack of Jailbreak Detection",
+    "children": [
+      "Lack of Jailbreak Detection"
+    ]
+  },
+  {
+    "parent_category": "Lack of Binary Hardening",
+    "vrt_category": "Lack of Obfuscation",
+    "children": [
+      "Lack of Obfuscation"
+    ]
+  },
+  {
+    "parent_category": "Lack of Binary Hardening",
+    "vrt_category": "Runtime Instrumentation-Based",
+    "children": [
+      "Runtime Instrumentation-Based"
+    ]
+  },
+  {
+    "parent_category": "Misinterpretation Biases",
+    "vrt_category": "Context Ignorance",
+    "children": [
+      "Context Ignorance"
+    ]
+  },
+  {
+    "parent_category": "Mobile Security Misconfiguration",
+    "vrt_category": "Auto Backup Allowed by Default",
+    "children": [
+      "Auto Backup Allowed by Default"
+    ]
+  },
+  {
+    "parent_category": "Mobile Security Misconfiguration",
+    "vrt_category": "Clipboard Enabled",
+    "children": [
+      "Clipboard Enabled"
+    ]
+  },
+  {
+    "parent_category": "Mobile Security Misconfiguration",
+    "vrt_category": "SSL Certificate Pinning",
+    "children": [
+      "Absent",
+      "Defeatable"
+    ]
+  },
+  {
+    "parent_category": "Mobile Security Misconfiguration",
+    "vrt_category": "Tapjacking",
+    "children": [
+      "Tapjacking"
+    ]
+  },
+  {
+    "parent_category": "Network Security Misconfiguration",
+    "vrt_category": "Telnet Enabled",
+    "children": [
+      "Telnet Enabled"
+    ]
+  },
+  {
+    "parent_category": "Physical Security Issues",
+    "vrt_category": "Bypass of physical access control",
+    "children": [
+      "Bypass of physical access control"
+    ]
+  },
+  {
+    "parent_category": "Physical Security Issues",
+    "vrt_category": "Weakness in physical access control",
+    "children": [
+      "Cloneable Key",
+      "Commonly Keyed System",
+      "Master Key Identification"
+    ]
+  },
+  {
+    "parent_category": "Privacy Concerns",
+    "vrt_category": "Unnecessary Data Collection",
+    "children": [
+      "WiFi SSID+Password"
+    ]
+  },
+  {
+    "parent_category": "Protocol Specific Misconfiguration",
+    "vrt_category": "Frontrunning-Enabled Attack",
+    "children": [
+      "Frontrunning-Enabled Attack"
+    ]
+  },
+  {
+    "parent_category": "Protocol Specific Misconfiguration",
+    "vrt_category": "Improper Validation and Finalization Logic",
+    "children": [
+      "Improper Validation and Finalization Logic"
+    ]
+  },
+  {
+    "parent_category": "Protocol Specific Misconfiguration",
+    "vrt_category": "Misconfigured Staking Logic",
+    "children": [
+      "Misconfigured Staking Logic"
+    ]
+  },
+  {
+    "parent_category": "Protocol Specific Misconfiguration",
+    "vrt_category": "Sandwich-Enabled Attack",
+    "children": [
+      "Sandwich-Enabled Attack"
+    ]
+  },
+  {
+    "parent_category": "Sensitive Data Exposure",
+    "vrt_category": "Disclosure of Known Public Information",
+    "children": [
+      "Disclosure of Known Public Information"
+    ]
+  },
+  {
+    "parent_category": "Sensitive Data Exposure",
+    "vrt_category": "Disclosure of Secrets",
+    "children": [
+      "Data/Traffic Spam",
+      "For Internal Asset",
+      "For Publicly Accessible Asset",
+      "Intentionally Public, Sample or Invalid",
+      "Non-Corporate User",
+      "Pay-Per-Use Abuse",
+      "PII Leakage/Exposure",
+      "Sensitive Information Disclosed in JSON Web Token (JWT)",
+      "Publicly accessible Robots.txt"
+    ]
+  },
+  {
+    "parent_category": "Sensitive Data Exposure",
+    "vrt_category": "EXIF Geolocation Data Not Stripped From Uploaded Images",
+    "children": [
+      "Automatic User Enumeration",
+      "Manual User Enumeration"
+    ]
+  },
+  {
+    "parent_category": "Sensitive Data Exposure",
+    "vrt_category": "GraphQL Introspection Enabled",
+    "children": [
+      "GraphQL Introspection Enabled"
+    ]
+  },
+  {
+    "parent_category": "Sensitive Data Exposure",
+    "vrt_category": "Internal IP Disclosure",
+    "children": [
+      "Internal IP Disclosure"
+    ]
+  },
+  {
+    "parent_category": "Sensitive Data Exposure",
+    "vrt_category": "JSON Hijacking",
+    "children": [
+      "JSON Hijacking"
+    ]
+  },
+  {
+    "parent_category": "Sensitive Data Exposure",
+    "vrt_category": "Mixed Content (HTTPS Sourcing HTTP)",
+    "children": [
+      "Mixed Content (HTTPS Sourcing HTTP)"
+    ]
+  },
+  {
+    "parent_category": "Sensitive Data Exposure",
+    "vrt_category": "Non-Sensitive Token in URL",
+    "children": [
+      "Non-Sensitive Token in URL"
+    ]
+  },
+  {
+    "parent_category": "Sensitive Data Exposure",
+    "vrt_category": "Sensitive Data Hardcoded",
+    "children": [
+      "File Paths",
+      "OAuth Secret"
+    ]
+  },
+  {
+    "parent_category": "Sensitive Data Exposure",
+    "vrt_category": "Sensitive Token in URL",
+    "children": [
+      "In the Background",
+      "On Password Reset",
+      "User Facing"
+    ]
+  },
+  {
+    "parent_category": "Sensitive Data Exposure",
+    "vrt_category": "Token Leakage via Referer",
+    "children": [
+      "Over HTTP",
+      "Password Reset Token",
+      "Trusted 3rd Party",
+      "Untrusted 3rd Party"
+    ]
+  },
+  {
+    "parent_category": "Sensitive Data Exposure",
+    "vrt_category": "Via localStorage/sessionStorage",
+    "children": [
+      "Non-Sensitive Token",
+      "Sensitive Token"
+    ]
+  },
+  {
+    "parent_category": "Sensitive Data Exposure",
+    "vrt_category": "Visible Detailed Error/Debug Page",
+    "children": [
+      "Descriptive Stack Trace",
+      "Detailed Server Configuration",
+      "Full Path Disclosure"
+    ]
+  },
+  {
+    "parent_category": "Sensitive Data Exposure",
+    "vrt_category": "Weak Password Reset Implementation",
+    "children": [
+      "Password Reset Token Sent Over HTTP",
+      "Token Leakage via Host Header Poisoning"
+    ]
+  },
+  {
+    "parent_category": "Sensitive Data Exposure",
+    "vrt_category": "Cross Site Script Inclusion (XSSI)",
+    "children": [
+      "Cross Site Script Inclusion (XSSI)"
+    ]
+  },
+  {
+    "parent_category": "Server Security Misconfiguration",
+    "vrt_category": "Bitsquatting",
+    "children": [
+      "Bitsquatting"
+    ]
+  },
+  {
+    "parent_category": "Server Security Misconfiguration",
+    "vrt_category": "Cache Deception",
+    "children": [
+      "Cache Deception"
+    ]
+  },
+  {
+    "parent_category": "Server Security Misconfiguration",
+    "vrt_category": "Cache Poisoning",
+    "children": [
+      "Cache Poisoning"
+    ]
+  },
+  {
+    "parent_category": "Server Security Misconfiguration",
+    "vrt_category": "CAPTCHA",
+    "children": [
+      "Brute Force",
+      "Implementation Vulnerability",
+      "Missing"
+    ]
+  },
+  {
+    "parent_category": "Server Security Misconfiguration",
+    "vrt_category": "Clickjacking",
+    "children": [
+      "Form Input",
+      "Non-Sensitive Action",
+      "Sensitive Click-Based Action"
+    ]
+  },
+  {
+    "parent_category": "Server Security Misconfiguration",
+    "vrt_category": "Cookie Scoped to Parent Domain",
+    "children": [
+      "Cookie Scoped to Parent Domain"
+    ]
+  },
+  {
+    "parent_category": "Server Security Misconfiguration",
+    "vrt_category": "Database Management System (DBMS) Misconfiguration",
+    "children": [
+      "Excessively Privileged User / DBA"
+    ]
+  },
+  {
+    "parent_category": "Server Security Misconfiguration",
+    "vrt_category": "Directory Listing Enabled",
+    "children": [
+      "Non-Sensitive Data Exposure",
+      "Sensitive Data Exposure"
+    ]
+  },
+  {
+    "parent_category": "Server Security Misconfiguration",
+    "vrt_category": "Email Verification Bypass",
+    "children": [
+      "Email Verification Bypass"
+    ]
+  },
+  {
+    "parent_category": "Server Security Misconfiguration",
+    "vrt_category": "Exposed Portal",
+    "children": [
+      "Admin Portal",
+      "Non-Admin Portal",
+      "Protected"
+    ]
+  },
+  {
+    "parent_category": "Server Security Misconfiguration",
+    "vrt_category": "Fingerprinting/Banner Disclosure",
+    "children": [
+      "Software Versions Disclosed in Response Headers"
+    ]
+  },
+  {
+    "parent_category": "Server Security Misconfiguration",
+    "vrt_category": "Insecure SSL",
+    "children": [
+      "Certificate Error",
+      "Insecure Cipher Suite",
+      "Lack of Forward Secrecy"
+    ]
+  },
+  {
+    "parent_category": "Server Security Misconfiguration",
+    "vrt_category": "Lack of Password Confirmation",
+    "children": [
+      "Change Email Address",
+      "Change Password",
+      "Delete Account",
+      "Manage 2FA"
+    ]
+  },
+  {
+    "parent_category": "Server Security Misconfiguration",
+    "vrt_category": "Lack of Security Headers",
+    "children": [
+      "Cache-Control for a Non-Sensitive Page",
+      "Cache-Control for a Sensitive Page",
+      "Content-Security-Policy",
+      "Content-Security-Policy-Report-Only",
+      "Public-Key-Pins",
+      "Strict-Transport-Security",
+      "X-Content-Security-Policy",
+      "X-Content-Type-Options",
+      "X-Frame-Options",
+      "X-Webkit-CSP",
+      "X-XSS-Protection"
+    ]
+  },
+  {
+    "parent_category": "Server Security Misconfiguration",
+    "vrt_category": "Mail Server Misconfiguration",
+    "children": [
+      "Email Spoofing on Non-Email Domain",
+      "Email Spoofing to Inbox due to Missing or Misconfigured DMARC on Email Domain",
+      "Email Spoofing to Spam Folder",
+      "Missing or Misconfigured SPF and/or DKIM",
+      "No Spoofing Protection on Email Domain"
+    ]
+  },
+  {
+    "parent_category": "Server Security Misconfiguration",
+    "vrt_category": "Misconfigured DNS",
+    "children": [
+      "Missing Certification Authority Authorization (CAA) Record",
+      "Subdomain Takeover",
+      "Zone Transfer"
+    ]
+  },
+  {
+    "parent_category": "Server Security Misconfiguration",
+    "vrt_category": "Missing DNSSEC",
+    "children": [
+      "Missing DNSSEC"
+    ]
+  },
+  {
+    "parent_category": "Server Security Misconfiguration",
+    "vrt_category": "Missing Secure or HTTPOnly Cookie Flag",
+    "children": [
+      "Non-Session Cookie",
+      "Session Token"
+    ]
+  },
+  {
+    "parent_category": "Server Security Misconfiguration",
+    "vrt_category": "Missing Subresource Integrity",
+    "children": [
+      "Missing Subresource Integrity"
+    ]
+  },
+  {
+    "parent_category": "Server Security Misconfiguration",
+    "vrt_category": "No Rate Limiting on Form",
+    "children": [
+      "Change Password",
+      "Email-Triggering",
+      "Login",
+      "Registration",
+      "SMS-Triggering"
+    ]
+  },
+  {
+    "parent_category": "Server Security Misconfiguration",
+    "vrt_category": "OAuth Misconfiguration",
+    "children": [
+      "Account Squatting",
+      "Account Takeover",
+      "Insecure Redirect URI",
+      "Missing/Broken State Parameter"
+    ]
+  },
+  {
+    "parent_category": "Server Security Misconfiguration",
+    "vrt_category": "Path Traversal",
+    "children": [
+      "Path Traversal"
+    ]
+  },
+  {
+    "parent_category": "Server Security Misconfiguration",
+    "vrt_category": "Potentially Unsafe HTTP Method Enabled",
+    "children": [
+      "OPTIONS",
+      "TRACE"
+    ]
+  },
+  {
+    "parent_category": "Server Security Misconfiguration",
+    "vrt_category": "Race Condition",
+    "children": [
+      "Race Condition"
+    ]
+  },
+  {
+    "parent_category": "Server Security Misconfiguration",
+    "vrt_category": "HTTP Request Smuggling",
+    "children": [
+      "HTTP Request Smuggling"
+    ]
+  },
+  {
+    "parent_category": "Server Security Misconfiguration",
+    "vrt_category": "Reflected File Download (RFD)",
+    "children": [
+      "Reflected File Download (RFD)"
+    ]
+  },
+  {
+    "parent_category": "Server Security Misconfiguration",
+    "vrt_category": "Same-Site Scripting",
+    "children": [
+      "Same-Site Scripting"
+    ]
+  },
+  {
+    "parent_category": "Server Security Misconfiguration",
+    "vrt_category": "Server-Side Request Forgery (SSRF)",
+    "children": [
+      "External - DNS Query Only",
+      "External - Low impact",
+      "Internal Secrets Exposure",
+      "Internal Data Exposure",
+      "Internal Port Service Scan",
+      "Internal Exposure of the Presence of Data/Secrets",
+      "Internal Port Scan Only"
+    ]
+  },
+  {
+    "parent_category": "Server Security Misconfiguration",
+    "vrt_category": "Software Package Takeover",
+    "children": [
+      "Software Package Takeover"
+    ]
+  },
+  {
+    "parent_category": "Server Security Misconfiguration",
+    "vrt_category": "SSL Attack (BREACH, POODLE etc.)",
+    "children": [
+      "SSL Attack (BREACH, POODLE etc.)"
+    ]
+  },
+  {
+    "parent_category": "Server Security Misconfiguration",
+    "vrt_category": "Unsafe Cross-Origin Resource Sharing",
+    "children": [
+      "Unsafe Cross-Origin Resource Sharing"
+    ]
+  },
+  {
+    "parent_category": "Server Security Misconfiguration",
+    "vrt_category": "Unsafe File Upload",
+    "children": [
+      "File Extension Filter Bypass",
+      "No Antivirus",
+      "No Size Limit"
+    ]
+  },
+  {
+    "parent_category": "Server Security Misconfiguration",
+    "vrt_category": "Username/Email Enumeration",
+    "children": [
+      "Brute Force"
+    ]
+  },
+  {
+    "parent_category": "Server Security Misconfiguration",
+    "vrt_category": "Using Default Credentials",
+    "children": [
+      "Using Default Credentials"
+    ]
+  },
+  {
+    "parent_category": "Server Security Misconfiguration",
+    "vrt_category": "Web Application Firewall (WAF) Bypass",
+    "children": [
+      "Direct Server Access"
+    ]
+  },
+  {
+    "parent_category": "Server Security Misconfiguration",
+    "vrt_category": "Misconfigured File Share",
+    "children": [
+      "Anonymous FTP Enabled",
+      "Anonymous SMB Enabled",
+      "Non-Sensitive Data Exposure via Anonymous FTP/SMB Enabled"
+    ]
+  },
+  {
+    "parent_category": "Server Security Misconfiguration",
+    "vrt_category": "Misconfigured Security Headers ",
+    "children": [
+      "Insecure Content-Security-Policy"
+    ]
+  },
+  {
+    "parent_category": "Server-Side Injection",
+    "vrt_category": "Content Spoofing",
+    "children": [
+      "Email HTML Injection",
+      "Email Hyperlink Injection Based on Email Provider",
+      "External Authentication Injection",
+      "Flash Based External Authentication Injection",
+      "Homograph/IDN-Based",
+      "HTML Content Injection",
+      "iframe Injection",
+      "Impersonation via Broken Link Hijacking",
+      "Right-to-Left Override (RTLO)",
+      "Text Injection",
+      "Self Email HTML Injection"
+    ]
+  },
+  {
+    "parent_category": "Server-Side Injection",
+    "vrt_category": "Exposed Data",
+    "children": [
+      "Non Sensitive Data",
+      "Sensitive Data"
+    ]
+  },
+  {
+    "parent_category": "Server-Side Injection",
+    "vrt_category": "File Inclusion",
+    "children": [
+      "Local"
+    ]
+  },
+  {
+    "parent_category": "Server-Side Injection",
+    "vrt_category": "HTTP Response Manipulation",
+    "children": [
+      "Response Splitting (CRLF)"
+    ]
+  },
+  {
+    "parent_category": "Server-Side Injection",
+    "vrt_category": "LDAP Injection",
+    "children": [
+      "LDAP Injection"
+    ]
+  },
+  {
+    "parent_category": "Server-Side Injection",
+    "vrt_category": "Parameter Pollution",
+    "children": [
+      "Social Media Sharing Buttons"
+    ]
+  },
+  {
+    "parent_category": "Server-Side Injection",
+    "vrt_category": "Remote Code Execution (RCE)",
+    "children": [
+      "Remote Code Execution (RCE)"
+    ]
+  },
+  {
+    "parent_category": "Server-Side Injection",
+    "vrt_category": "SQL Injection",
+    "children": [
+      "SQL Injection"
+    ]
+  },
+  {
+    "parent_category": "Server-Side Injection",
+    "vrt_category": "Server-Side Template Injection (SSTI)",
+    "children": [
+      "Basic",
+      "Custom"
+    ]
+  },
+  {
+    "parent_category": "Server-Side Injection",
+    "vrt_category": "XML External Entity Injection (XXE)",
+    "children": [
+      "XML External Entity Injection (XXE)"
+    ]
+  },
+  {
+    "parent_category": "Smart Contract Misconfiguration",
+    "vrt_category": "Bypass of Function Modifiers and Checks",
+    "children": [
+      "Bypass of Function Modifiers and Checks"
+    ]
+  },
+  {
+    "parent_category": "Smart Contract Misconfiguration",
+    "vrt_category": "Function-level Denial of Service",
+    "children": [
+      "Function-level Denial of Service"
+    ]
+  },
+  {
+    "parent_category": "Smart Contract Misconfiguration",
+    "vrt_category": "Improper Decimals Implementation",
+    "children": [
+      "Improper Decimals Implementation"
+    ]
+  },
+  {
+    "parent_category": "Smart Contract Misconfiguration",
+    "vrt_category": "Improper Fee Implementation",
+    "children": [
+      "Improper Fee Implementation"
+    ]
+  },
+  {
+    "parent_category": "Smart Contract Misconfiguration",
+    "vrt_category": "Improper Use of Modifier",
+    "children": [
+      "Improper Use of Modifier"
+    ]
+  },
+  {
+    "parent_category": "Smart Contract Misconfiguration",
+    "vrt_category": "Inaccurate Rounding Calculation",
+    "children": [
+      "Inaccurate Rounding Calculation"
+    ]
+  },
+  {
+    "parent_category": "Smart Contract Misconfiguration",
+    "vrt_category": "Integer Overflow / Underflow",
+    "children": [
+      "Integer Overflow / Underflow"
+    ]
+  },
+  {
+    "parent_category": "Smart Contract Misconfiguration",
+    "vrt_category": "Irreversible Function Call",
+    "children": [
+      "Irreversible Function Call"
+    ]
+  },
+  {
+    "parent_category": "Smart Contract Misconfiguration",
+    "vrt_category": "Malicious Superuser Risk",
+    "children": [
+      "Malicious Superuser Risk"
+    ]
+  },
+  {
+    "parent_category": "Smart Contract Misconfiguration",
+    "vrt_category": "Reentrancy Attack",
+    "children": [
+      "Reentrancy Attack"
+    ]
+  },
+  {
+    "parent_category": "Smart Contract Misconfiguration",
+    "vrt_category": "Smart Contract Owner Takeover",
+    "children": [
+      "Smart Contract Owner Takeover"
+    ]
+  },
+  {
+    "parent_category": "Smart Contract Misconfiguration",
+    "vrt_category": "Unauthorized Smart Contract Approval",
+    "children": [
+      "Unauthorized Smart Contract Approval"
+    ]
+  },
+  {
+    "parent_category": "Smart Contract Misconfiguration",
+    "vrt_category": "Unauthorized Transfer of Funds",
+    "children": [
+      "Unauthorized Transfer of Funds"
+    ]
+  },
+  {
+    "parent_category": "Smart Contract Misconfiguration",
+    "vrt_category": "Uninitialized Variables",
+    "children": [
+      "Uninitialized Variables"
+    ]
+  },
+  {
+    "parent_category": "Societal Biases",
+    "vrt_category": "Confirmation Bias",
+    "children": [
+      "Confirmation Bias"
+    ]
+  },
+  {
+    "parent_category": "Societal Biases",
+    "vrt_category": "Systemic Bias",
+    "children": [
+      "Systemic Bias"
+    ]
+  },
+  {
+    "parent_category": "Unvalidated Redirects and Forwards",
+    "vrt_category": "Lack of Security Speed Bump Page",
+    "children": [
+      "Lack of Security Speed Bump Page"
+    ]
+  },
+  {
+    "parent_category": "Unvalidated Redirects and Forwards",
+    "vrt_category": "Open Redirect",
+    "children": [
+      "Flash-Based",
+      "GET-Based",
+      "Header-Based",
+      "POST-Based"
+    ]
+  },
+  {
+    "parent_category": "Unvalidated Redirects and Forwards",
+    "vrt_category": "Tabnabbing",
+    "children": [
+      "Tabnabbing"
+    ]
+  },
+  {
+    "parent_category": "Using Components with Known Vulnerabilities",
+    "vrt_category": "Captcha Bypass",
+    "children": [
+      "OCR (Optical Character Recognition)"
+    ]
+  },
+  {
+    "parent_category": "Using Components with Known Vulnerabilities",
+    "vrt_category": "Outdated Software Version",
+    "children": [
+      "Outdated Software Version"
+    ]
+  },
+  {
+    "parent_category": "Using Components with Known Vulnerabilities",
+    "vrt_category": "Rosetta Flash",
+    "children": [
+      "Rosetta Flash"
+    ]
+  },
+  {
+    "parent_category": "Using Components with Known Vulnerabilities",
+    "vrt_category": "Unpatched Javascript Libraries",
+    "children": [
+      "Unpatched Javascript Libraries"
+    ]
+  },
+  {
+    "parent_category": "Zero Knowledge Security Misconfiguration",
+    "vrt_category": "Deanonymization of Data",
+    "children": [
+      "Deanonymization of Data"
+    ]
+  },
+  {
+    "parent_category": "Zero Knowledge Security Misconfiguration",
+    "vrt_category": "Improper Proof Validation and Finalization Logic",
+    "children": [
+      "Improper Proof Validation and Finalization Logic"
+    ]
+  },
+  {
+    "parent_category": "Zero Knowledge Security Misconfiguration",
+    "vrt_category": "Misconfigured Trusted Setup",
+    "children": [
+      "Misconfigured Trusted Setup"
+    ]
+  },
+  {
+    "parent_category": "Zero Knowledge Security Misconfiguration",
+    "vrt_category": "Mismatching Bit Lengths",
+    "children": [
+      "Mismatching Bit Lengths"
+    ]
+  },
+  {
+    "parent_category": "Zero Knowledge Security Misconfiguration",
+    "vrt_category": "Missing Constraint",
+    "children": [
+      "Missing Constraint"
+    ]
+  },
+  {
+    "parent_category": "Zero Knowledge Security Misconfiguration",
+    "vrt_category": "Missing Range Check",
+    "children": [
+      "Missing Range Check"
+    ]
+  },
+  {
+    "parent_category": "Active Directory (AD)",
+    "vrt_category": "SCCM Abuse",
+    "children": [
+      "PXE Boot Media Theft",
+      "Distribution Point Permits Anonymous Access",
+      "Automatic Device Approval Enabled",
+      "NTLM Relay From Management Point to Site Database",
+      "NTLM Relay From Site Server To Site Systems",
+      "NTLM Relay Via Automatic Client Push Installation",
+      "Privileged Credentials Exposed In Task Sequences, Collection Variables or Network Access Account"
+    ]
+  },
+  {
+    "parent_category": "Active Directory (AD)",
+    "vrt_category": "Kerberos Abuse",
+    "children": [
+      "Domain Compromise via Unconstrained Delegated",
+      "Insecure Service Account Management (Kerberoasting)",
+      "User Does Not Require Pre-authentication (ASREPRoasting)"
+    ]
+  },
+  {
+    "parent_category": "Active Directory (AD)",
+    "vrt_category": "Misconfigured Active Directory Certificate Services (ADCS)",
+    "children": [
+      "Misconfigured Active Directory Certificate Services (ADCS)"
+    ]
+  },
+  {
+    "parent_category": "Active Directory (AD)",
+    "vrt_category": "Configuration Weaknesses",
+    "children": [
+      "Passwords Found within Domain User Account Description",
+      "Weak Domain Password Policy",
+      "Shared Administrator Passwords",
+      "Excessive Domain Admin Membership",
+      "Dormant / Inactive User Accounts Enabled in the Domain"
+    ]
+  },
+  {
+    "parent_category": "Active Directory (AD)",
+    "vrt_category": "Sensitive Data Exposure",
+    "children": [
+      "LDAP Anonymous Bind Enabled",
+      "Sensitive Data in Open File Shares"
+    ]
+  },
+  {
+    "parent_category": "Active Directory (AD)",
+    "vrt_category": "DACL Abuse",
+    "children": [
+      "DACL Abuse"
+    ]
+  }
+]

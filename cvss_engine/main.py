@@ -66,6 +66,16 @@ DEFAULT_MODEL_KEY = "foundation-sec"
 # external tooling still see the default model name.
 OLLAMA_MODEL = AVAILABLE_MODELS[DEFAULT_MODEL_KEY]["tag"]
 
+# Structured output schema — reasoning models ignore plain format="json" and return prose.
+CVSS_JSON_FORMAT = {
+    "type": "object",
+    "properties": {
+        "cvss_vector": {"type": "string"},
+        "reasoning_breakdown": {"type": "string"},
+    },
+    "required": ["cvss_vector", "reasoning_breakdown"],
+}
+
 # -----------------------------------------------------------------------------
 # FastAPI app + CORS
 # -----------------------------------------------------------------------------
@@ -207,6 +217,22 @@ def extract_json_object(text: str) -> dict:
     raise ValueError("Model response did not contain a parseable JSON object.")
 
 
+def parse_model_cvss_output(text: str) -> dict:
+    """Parse CVSS JSON from the model; fall back to vector extraction from prose."""
+    try:
+        return extract_json_object(text)
+    except ValueError:
+        pass
+
+    vector_match = _VECTOR_REGEX.search((text or "").upper())
+    if not vector_match:
+        raise ValueError("Model response did not contain a parseable JSON object.")
+
+    return {
+        "cvss_vector": vector_match.group(0),
+        "reasoning_breakdown": (text or "").strip()[:4000],
+    }
+
 def normalise_vector(raw: str) -> str:
     """Locate and return a canonical CVSS:3.1 vector inside any string."""
     if not raw:
@@ -310,13 +336,14 @@ async def analyze_cvss(report: BugReport):
             {"role": "user", "content": build_user_prompt(report)},
         ],
         "stream": False,
-        "format": "json",
+        "think": False,
+        "format": CVSS_JSON_FORMAT,
         "keep_alive": "10m",
         "options": {
             "temperature": 0.0,
             "top_p": 0.1,
             "num_ctx": 4096,
-            "num_predict": 512,
+            "num_predict": 1024,
             "seed": secrets.randbits(31),
         },
     }
@@ -332,9 +359,13 @@ async def analyze_cvss(report: BugReport):
     content = (data.get("message") or {}).get("content", "")
 
     try:
-        ai_output = extract_json_object(content)
-    except Exception:
-        raise HTTPException(status_code=502, detail="Model output was not valid JSON.")
+        ai_output = parse_model_cvss_output(content)
+    except Exception as exc:
+        snippet = (content or "").strip().replace("\n", " ")[:240]
+        raise HTTPException(
+            status_code=502,
+            detail=f"Model output was not valid JSON. Snippet: {snippet or '<empty>'}",
+        ) from exc
 
     raw_vector = str(ai_output.get("cvss_vector", "")).strip()
     reasoning = str(ai_output.get("reasoning_breakdown", "")).strip()

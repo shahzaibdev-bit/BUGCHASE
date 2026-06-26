@@ -22,6 +22,7 @@ import { SupportOnboardingModal } from '@/components/admin/SupportOnboardingModa
 import { InverseSpotlightCard } from '@/components/InverseSpotlightCard';
 import { API_URL } from '@/config';
 import { useNavigate } from 'react-router-dom';
+import { formatLastActive } from '@/lib/formatLastActive';
 
 const SPECIALIZATION_ICONS: Record<string, React.ReactNode> = {
     disputes: <Scale className="h-3 w-3" />,
@@ -163,8 +164,14 @@ export default function AdminSupport() {
                          ))}
                      </div>
 
-                     {/* Actions */}
+                     {/* Stats & Actions */}
                      <div className="flex items-center gap-6 md:pl-6 md:border-l border-zinc-200 dark:border-zinc-800/50 w-full md:w-auto justify-between md:justify-start">
+                         <div className="text-right">
+                             <div className="text-xs text-muted-foreground font-mono uppercase">Disputes Closed</div>
+                             <div className="font-bold text-xl text-foreground font-mono">
+                               {member.disputesClosed ?? member.reportsProcessed ?? 0}
+                             </div>
+                         </div>
                          <Button
                            variant="ghost"
                            size="icon"
@@ -181,7 +188,7 @@ export default function AdminSupport() {
 
                  {/* Footer Status Bar */}
                  <div className="bg-zinc-50 dark:bg-zinc-900/50 px-4 py-2 flex items-center justify-between text-[10px] font-mono uppercase tracking-widest text-zinc-500 border-t border-zinc-200 dark:border-zinc-800">
-                     <span>Last Active: {member.lastActive ? new Date(member.lastActive).toLocaleDateString() : 'Never'}</span>
+                     <span>Last Active: {formatLastActive(member.lastActive)}</span>
                      <span className="flex items-center gap-1">
                          <UserCheck className="h-3 w-3" />
                          Verified Personnel

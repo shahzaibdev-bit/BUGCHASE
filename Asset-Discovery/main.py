@@ -3,11 +3,8 @@ from typing import List, Optional
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 import uvicorn
-from dotenv import load_dotenv
 from redis_client import get_redis
 from task import execute_scan
-
-load_dotenv()
 
 app = FastAPI(title="BugChase Asset Discovery Engine")
 

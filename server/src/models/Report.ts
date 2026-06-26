@@ -32,7 +32,11 @@ const reportSchema = new mongoose.Schema({
     type: String,
     enum: ['Critical', 'High', 'Medium', 'Low', 'None'],
   },
-  vulnerabilityCategory: { type: String }, // e.g. RCE, XSS
+  vulnerabilityCategory: { type: String }, // legacy leaf label; mirrors vrtVariant for older rows
+  /** Bugcrowd VRT taxonomy captured at submission time. */
+  vrtParent: { type: String, trim: true },
+  vrtCategory: { type: String, trim: true },
+  vrtVariant: { type: String, trim: true },
   cvssVector: String,
   cvssScore: Number,
   impact: { type: String }, 

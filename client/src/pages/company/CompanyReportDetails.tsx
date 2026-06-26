@@ -39,12 +39,14 @@ import { GlassCard } from '@/components/ui/glass-card';
 import ContactSupportButton from '@/components/support/ContactSupportButton';
 import { isReportThreadLocked, isSystemDisputeStatusEvent, REPORT_THREAD_LOCKED_MESSAGE } from '@/lib/reportThread';
 import { BugChaseSystemActor, ThreadStatusChangeLine, BUGCHASE_SYSTEM_LABEL } from '@/components/reports/ThreadSystemUI';
+import { ReportTimelineNode, type ReportTimelineEvent } from '@/components/reports/ReportTimelineNode';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Separator } from '@/components/ui/separator';
 import CyberpunkEditor from '@/components/ui/CyberpunkEditor';
 import { CvssInteractiveModal } from '@/components/CvssInteractiveModal';
+import { useAuth } from '@/contexts/AuthContext';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -121,18 +123,6 @@ const BOUNTY_MESSAGES = [
 // --- Types ---
 type ReportStatus = 'Submitted' | 'Under Review' | 'Needs Info' | 'Triaged' | 'Spam' | 'Duplicate' | 'Out-of-Scope' | 'Resolved' | 'NA';
 
-interface TimelineEvent {
-  id: string;
-  type: 'comment' | 'status_change' | 'action' | 'severity_update' | 'bounty_awarded';
-  author: string;
-  authorAvatar?: string;
-  role: 'Triager' | 'Researcher' | 'Company' | 'Admin' | 'System';
-  content: string;
-  attachments?: string[];
-  timestamp: string;
-  metadata?: any;
-}
-
 interface ReportState {
   status: ReportStatus;
   severity: {
@@ -140,7 +130,7 @@ interface ReportState {
     vector: string;
     level: 'Critical' | 'High' | 'Medium' | 'Low' | 'Info';
   };
-  timeline: TimelineEvent[];
+  timeline: ReportTimelineEvent[];
   isLocked: boolean;
   bounty?: number;
 }
@@ -156,15 +146,24 @@ const mapSeverityLevel = (sev: string): ReportState['severity']['level'] => {
   return 'Info';
 };
 
+const getLastSeverityVector = (comments: any[] | undefined, role: string): string => {
+  const updates = (comments || []).filter(
+    (c) => c.type === 'severity_update' && c.sender?.role === role,
+  );
+  const last = updates[updates.length - 1];
+  const vector = last?.metadata?.cvssVector;
+  return vector && String(vector).startsWith('CVSS:') ? String(vector) : '';
+};
+
 // Map a backend comment/timeline entry to our TimelineEvent shape
-const mapComment = (c: any): TimelineEvent => {
+const mapComment = (c: any): ReportTimelineEvent => {
   const sender = c.sender;
   const isSystemEvent =
     c.metadata?.systemAction ||
     c.metadata?.kind === 'dispute_opened' ||
     c.metadata?.kind === 'dispute_closed';
 
-  const role: TimelineEvent['role'] = isSystemEvent
+  const role: ReportTimelineEvent['role'] = isSystemEvent
     ? 'System'
     : sender?.role === 'company'
       ? 'Company'
@@ -174,17 +173,25 @@ const mapComment = (c: any): TimelineEvent => {
           ? 'Admin'
           : 'Researcher';
 
+  const type: ReportTimelineEvent['type'] =
+    c.type === 'status_change'
+      ? 'status_change'
+      : c.type === 'bounty_awarded'
+        ? 'bounty_awarded'
+        : c.type === 'severity_update'
+          ? 'severity_update'
+          : c.type === 'ai_triage'
+            ? 'ai_triage'
+            : 'comment';
+
   return {
     id: c._id?.toString() || Date.now().toString(),
-    type: c.type === 'status_change' ? 'status_change'
-        : c.type === 'bounty_awarded' ? 'bounty_awarded'
-        : c.type === 'severity_update' ? 'severity_update'
-        : 'comment',
+    type,
     author: isSystemEvent
       ? BUGCHASE_SYSTEM_LABEL
       : role === 'Researcher' || role === 'Admin'
-      ? (sender?.username || sender?.name || (role === 'Admin' ? 'admin' : 'Researcher'))
-      : (sender?.name || sender?.username || 'User'),
+        ? (sender?.username || sender?.name || (role === 'Admin' ? 'admin' : 'Researcher'))
+        : (sender?.name || sender?.username || 'User'),
     authorAvatar: sender?.avatar,
     role,
     content: c.content || '',
@@ -197,6 +204,7 @@ const mapComment = (c: any): TimelineEvent => {
 export default function CompanyReportDetails() {
   const navigate = useNavigate();
   const { id } = useParams();
+  const { user } = useAuth();
 
   // -- Raw report from API
   const [report, setReport] = useState<any>(null);
@@ -492,7 +500,7 @@ export default function CompanyReportDetails() {
       setReport(r);
 
       // Build timeline from comments array
-      const timeline: TimelineEvent[] = (r.comments || []).map(mapComment);
+      const timeline: ReportTimelineEvent[] = (r.comments || []).map(mapComment);
 
       setReportState({
         status: r.status || 'Submitted',
@@ -681,6 +689,25 @@ export default function CompanyReportDetails() {
 
   const researcher = report.researcherId;
   const triager = report.triagerId;
+  const companyAvatar =
+    (user?.avatar && user.avatar !== 'default.jpg' ? user.avatar : null) ||
+    report?.programId?.companyId?.avatar ||
+    null;
+  const companyInitials = (user?.name || report?.programId?.companyName || 'Company')
+    .split(/\s+/)
+    .filter(Boolean)
+    .map((part: string) => part[0])
+    .join('')
+    .slice(0, 2)
+    .toUpperCase() || 'CO';
+
+  const normalizedStatus = String(reportState.status || '').trim().toLowerCase();
+  const isResolved = ['resolved', 'paid', 'closed'].includes(normalizedStatus);
+  const bountyAwarded =
+    Number(reportState.bounty) > 0 ||
+    reportState.timeline.some((event) => event.type === 'bounty_awarded');
+  const isRejected = ['spam', 'duplicate', 'na', 'out-of-scope'].includes(normalizedStatus);
+  const isVdp = report?.programId?.type?.toUpperCase() === 'VDP';
 
   return (
     <div className="flex flex-col h-[calc(100vh-100px)] animate-fade-in font-sans">
@@ -837,32 +864,38 @@ export default function CompanyReportDetails() {
                                 <h1 className="text-[20px] md:text-2xl font-bold tracking-tight text-foreground break-words leading-tight">{report.title}</h1>
                             </div>
                             <div className="flex gap-2 shrink-0 flex-wrap justify-start lg:justify-end max-w-sm">
-                                <Button 
-                                    variant="outline" 
-                                    size="sm"
-                                    className="border-zinc-300 dark:border-zinc-700 text-zinc-900 dark:text-zinc-100 hover:bg-zinc-100 dark:hover:bg-zinc-800"
-                                    onClick={() => setRejectModalOpen(true)}
-                                >
-                                    <XCircle className="w-4 h-4 mr-2" /> Reject Report
-                                </Button>
-                                {report?.programId?.type?.toUpperCase() === 'VDP' ? (
+                                {!isResolved && !isRejected && (
                                     <Button 
+                                        variant="outline" 
                                         size="sm"
-                                        className="bg-zinc-900 text-white dark:bg-white dark:text-black hover:bg-zinc-800 dark:hover:bg-zinc-200"
-                                        onClick={() => setVdpResolveModalOpen(true)}
+                                        className="border-zinc-300 dark:border-zinc-700 text-zinc-900 dark:text-zinc-100 hover:bg-zinc-100 dark:hover:bg-zinc-800"
+                                        onClick={() => setRejectModalOpen(true)}
                                     >
-                                        <CheckCircle className="w-4 h-4 mr-2" /> Resolve Report
+                                        <XCircle className="w-4 h-4 mr-2" /> Reject Report
                                     </Button>
-                                ) : (
-                                    <>
+                                )}
+                                {isVdp ? (
+                                    !isResolved && (
                                         <Button 
                                             size="sm"
                                             className="bg-zinc-900 text-white dark:bg-white dark:text-black hover:bg-zinc-800 dark:hover:bg-zinc-200"
-                                            onClick={() => setResolveModalOpen(true)}
+                                            onClick={() => setVdpResolveModalOpen(true)}
                                         >
-                                            <CheckCircle className="w-4 h-4 mr-2" /> Mark Resolved
+                                            <CheckCircle className="w-4 h-4 mr-2" /> Resolve Report
                                         </Button>
-                                        {String(reportState.status).trim().toLowerCase() === 'resolved' && (
+                                    )
+                                ) : (
+                                    <>
+                                        {!isResolved && (
+                                            <Button 
+                                                size="sm"
+                                                className="bg-zinc-900 text-white dark:bg-white dark:text-black hover:bg-zinc-800 dark:hover:bg-zinc-200"
+                                                onClick={() => setResolveModalOpen(true)}
+                                            >
+                                                <CheckCircle className="w-4 h-4 mr-2" /> Mark Resolved
+                                            </Button>
+                                        )}
+                                        {normalizedStatus === 'resolved' && !bountyAwarded && (
                                             <div className="w-full flex justify-start lg:justify-end mt-1">
                                                 <Button 
                                                     size="sm"
@@ -870,7 +903,7 @@ export default function CompanyReportDetails() {
                                                     onClick={() => setBountyModalOpen(true)}
                                                 >
                                                     <DollarSign className="w-4 h-4 mr-2" /> 
-                                                    {Number(reportState.bounty) > 0 ? 'Bounty Awarded' : 'Initiate Bounty'}
+                                                    Initiate Bounty
                                                 </Button>
                                             </div>
                                         )}
@@ -1000,174 +1033,23 @@ export default function CompanyReportDetails() {
                     (mobileTab === 'details') && "hidden lg:flex"
                 )}>
                     <h3 className="text-lg font-bold text-foreground mb-6">Activity</h3>
-                    <div className="pl-2 space-y-6">
-                        {/* Timeline Events */}
-                        <div className="space-y-6 relative">
-                            <div className="absolute left-[15px] top-2 bottom-2 w-0.5 bg-zinc-200 dark:bg-zinc-800" />
-                            {reportState.timeline.length === 0 && (
-                                <p className="pl-10 text-sm text-muted-foreground">No activity yet.</p>
-                            )}
-                            {reportState.timeline.map((event, index) => {
-                                const isConsecutive = index > 0 && reportState.timeline[index - 1].author === event.author && event.type !== 'status_change' && reportState.timeline[index - 1].type !== 'status_change';
-                                
-                                return (
-                                <div key={event.id} className="relative pl-10 group">
-                                    {!isConsecutive ? (
-                                        <div className={cn(
-                                            "absolute left-0 top-0 w-8 h-8 rounded-full border-4 border-background flex items-center justify-center font-bold text-[10px] overflow-hidden text-white bg-blue-600 z-10"
-                                        )}>
-                                            {event.authorAvatar ? (
-                                                <img src={event.authorAvatar} alt={event.author} className="w-full h-full object-cover" />
-                                            ) : (
-                                                event.author[0]?.toUpperCase() || '?'
-                                            )}
-                                        </div>
-                                    ) : (
-                                        <div className="absolute left-[10px] top-4 w-3 h-3 rounded-full border-2 border-zinc-300 dark:border-zinc-700 bg-background z-10" />
-                                    )}
-                                    
-                                    <div className="space-y-1 w-full">
-                                        <div className="flex items-center gap-2 flex-wrap">
-                                            {event.role === 'System' ? (
-                                                <BugChaseSystemActor />
-                                            ) : event.role === 'Researcher' ? (
-                                                <div className="flex items-center gap-2">
-                                                    <HoverCard>
-                                                        <HoverCardTrigger asChild>
-                                                            <a href={`/h/${event.author}`} target="_blank" rel="noopener noreferrer" className="text-sm font-bold text-blue-600 dark:text-blue-400 hover:underline cursor-pointer">
-                                                                @{event.author}
-                                                            </a>
-                                                        </HoverCardTrigger>
-                                                        <HoverCardContent className="w-80">
-                                                            <div className="flex justify-between space-x-4">
-                                                                <Avatar>
-                                                                    <AvatarImage src={event.authorAvatar} />
-                                                                    <AvatarFallback>{event.author[0]?.toUpperCase()}</AvatarFallback>
-                                                                </Avatar>
-                                                                <div className="space-y-1 flex-1">
-                                                                    <h4 className="text-sm font-semibold">@{event.author}</h4>
-                                                                    <p className="text-sm text-muted-foreground">Security Researcher</p>
-                                                                </div>
-                                                            </div>
-                                                        </HoverCardContent>
-                                                    </HoverCard>
-                                                    <Badge variant="outline" className="text-[10px] px-1 py-0 border-zinc-200 dark:border-zinc-800 text-zinc-500 font-normal">Security Researcher</Badge>
-                                                </div>
-                                            ) : (
-                                                <div className="flex items-center gap-2">
-                                                    <span className="text-sm font-bold text-zinc-900 dark:text-zinc-100">
-                                                        {event.role === 'Triager'
-                                                          ? `@${event.author}`
-                                                          : event.role === 'Admin'
-                                                            ? `Platform Admin @${event.author}`
-                                                            : event.author}
-                                                    </span>
-                                                    <Badge variant="outline" className="text-[10px] px-1 py-0 border-zinc-200 dark:border-zinc-800 text-zinc-500 font-normal">
-                                                        {event.role === 'Triager'
-                                                          ? 'Bugchase Triage'
-                                                          : event.role === 'Admin'
-                                                            ? 'Platform Admin'
-                                                            : 'Company'}
-                                                    </Badge>
-                                                </div>
-                                            )}
-                                            {event.type === 'status_change' && (
-                                                <ThreadStatusChangeLine
-                                                  newStatus={event.metadata?.newStatus}
-                                                  content={event.content}
-                                                />
-                                            )}
-                                            {event.type === 'bounty_awarded' && (
-                                                <span className="text-zinc-800 dark:text-zinc-200 text-[14px] flex flex-wrap items-center gap-1 font-medium tracking-tight">
-                                                     rewarded {researcher?.username || researcher?.name || 'researcher'} with a PKR {event.metadata?.bountyAwarded?.toLocaleString()} bounty.
-                                                </span>
-                                            )}
-                                            <span className="text-zinc-400 text-[10px] ml-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                                                {new Date(event.timestamp).toLocaleString(undefined, {
-                                                    day: '2-digit', month: '2-digit', year: 'numeric',
-                                                    hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: true
-                                                })}
-                                            </span>
-                                        </div>
-
-                                        {event.type === 'status_change' ? (
-                                            <div className="mt-1 flex flex-col items-start w-full gap-2">
-                                                {event.metadata?.reason && !isSystemDisputeStatusEvent(event.metadata) && (
-                                                    <div className="mt-1 bg-white dark:bg-zinc-900/50 rounded-lg p-3 px-4 text-sm text-zinc-800 dark:text-zinc-200 border border-zinc-300 dark:border-zinc-700 w-full max-w-[85%] font-inter leading-relaxed relative text-left">
-                                                        <div className="relative z-10 prose prose-sm prose-zinc dark:prose-invert max-w-none">
-                                                            <ReactMarkdown rehypePlugins={[rehypeRaw]} remarkPlugins={[remarkGfm]}>{event.metadata.reason}</ReactMarkdown>
-                                                        </div>
-                                                    </div>
-                                                )}
-                                            </div>
-                                        ) : event.type === 'bounty_awarded' ? (
-                                            <div className="mt-1 flex flex-col items-start w-full gap-2">
-                                                {event.content && (
-                                                    <div className="mt-1 bg-white dark:bg-zinc-900/50 rounded-lg p-3 px-4 text-sm text-zinc-800 dark:text-zinc-200 border border-zinc-300 dark:border-zinc-700 w-full max-w-[85%] font-inter leading-relaxed relative text-left">
-                                                        <div className="relative z-10 prose prose-sm prose-zinc dark:prose-invert max-w-none">
-                                                            <ReactMarkdown rehypePlugins={[rehypeRaw]} remarkPlugins={[remarkGfm]}>{event.content}</ReactMarkdown>
-                                                        </div>
-                                                    </div>
-                                                )}
-                                            </div>
-                                        ) : event.type === 'severity_update' ? (
-                                            <div className="flex items-center gap-1 mt-1 text-sm text-zinc-500 dark:text-zinc-400">
-                                                <span>updated severity —</span>
-                                                <span className="font-bold" dangerouslySetInnerHTML={{ __html: event.content }} />
-                                            </div>
-                                        ) : (
-                                            <div className="mt-1 bg-white dark:bg-zinc-900/50 rounded-xl p-3 px-4 text-sm text-zinc-800 dark:text-zinc-200 border border-zinc-200 dark:border-zinc-800 shadow-sm inline-block max-w-full font-inter leading-relaxed">
-                                                <div className="prose prose-sm prose-zinc dark:prose-invert max-w-none focus:outline-none break-words prose-p:m-0 prose-ul:m-0 prose-ol:m-0 [&>*:not(:last-child)]:mb-2" dangerouslySetInnerHTML={{ __html: event.content }} />
-                                            </div>
-                                        )}
-                                        {event.attachments && event.attachments.length > 0 && (
-                                            <div className="mt-3 grid grid-cols-2 sm:grid-cols-3 gap-2">
-                                                {event.attachments.map((url: string, fileIdx: number) => {
-                                                    const isVideo = url.includes('/video/') || /\.(mp4|webm|ogg)$/i.test(url);
-                                                    const isPdf = url.includes('/raw/') || /\.pdf$/i.test(url);
-                                                    
-                                                    return (
-                                                        <div key={fileIdx} className="group/att relative aspect-square bg-zinc-100 dark:bg-zinc-800 rounded-md overflow-hidden border border-zinc-200 dark:border-zinc-700 flex items-center justify-center">
-                                                            {isVideo ? (
-                                                                <div 
-                                                                    className="w-full h-full cursor-pointer relative block"
-                                                                    onClick={() => setPreviewMedia({ url, type: 'video' })}
-                                                                >
-                                                                    <video src={url} className="w-full h-full object-cover bg-black pointer-events-none" />
-                                                                    <div className="absolute inset-0 bg-black/20 group-hover/att:bg-black/40 transition-colors flex items-center justify-center">
-                                                                        <div className="w-8 h-8 rounded-full bg-white/90 flex items-center justify-center backdrop-blur-sm">
-                                                                            <div className="w-0 h-0 border-t-[5px] border-t-transparent border-l-[8px] border-l-black border-b-[5px] border-b-transparent ml-1" />
-                                                                        </div>
-                                                                    </div>
-                                                                </div>
-                                                            ) : isPdf ? (
-                                                                <a
-                                                                    href={url}
-                                                                    target="_blank"
-                                                                    rel="noopener noreferrer"
-                                                                    className="w-full h-full cursor-pointer relative flex flex-col items-center justify-center bg-zinc-50 dark:bg-zinc-900 group-hover/att:bg-zinc-200 dark:group-hover/att:bg-zinc-700 transition-colors p-2"
-                                                                >
-                                                                    <svg className="w-8 h-8 text-red-500 mb-2" fill="currentColor" viewBox="0 0 24 24"><path d="M19 3H5C3.89 3 3 3.9 3 5V19C3 20.1 3.89 21 5 21H19C20.1 21 21 20.1 21 19V5C21 3.9 20.1 3 19 3ZM9.5 11.5C9.5 12.3 8.8 13 8 13H7V15H5.5V9H8C8.8 9 9.5 9.7 9.5 10.5V11.5ZM14.5 13.5C14.5 14.3 13.8 15 13 15H10.5V9H13C13.8 9 14.5 9.7 14.5 10.5V13.5ZM18.5 10.5H17V11.5H18.5V13H17V15H15.5V9H18.5V10.5ZM7 10.5H8V11.5H7V10.5ZM12 10.5H13V13.5H12V10.5Z"/></svg>
-                                                                    <span className="text-[10px] font-mono font-bold text-zinc-600 dark:text-zinc-400">PDF Document</span>
-                                                                </a>
-                                                            ) : (
-                                                                <img 
-                                                                    src={url} 
-                                                                    alt={`Attachment ${fileIdx + 1}`} 
-                                                                    className="w-full h-full object-cover cursor-pointer hover:scale-105 transition-transform duration-300"
-                                                                    onClick={() => setPreviewMedia({ url, type: 'image' })}
-                                                                />
-                                                            )}
-                                                        </div>
-                                                    );
-                                                })}
-                                            </div>
-                                        )}
-                                    </div>
-                                </div>
-                                );
-                            })}
-                        </div>
+                    <div className="pl-2 space-y-2">
+                        {reportState.timeline.length === 0 && (
+                            <p className="text-sm text-muted-foreground">No activity yet.</p>
+                        )}
+                        {reportState.timeline.map((event, index) => (
+                            <ReportTimelineNode
+                                key={event.id}
+                                event={event}
+                                isConsecutive={
+                                    index > 0 &&
+                                    reportState.timeline[index - 1].author === event.author &&
+                                    event.type !== 'status_change' &&
+                                    reportState.timeline[index - 1].type !== 'status_change'
+                                }
+                                onPreviewMedia={(media) => setPreviewMedia(media)}
+                            />
+                        ))}
 
                         {/* Editor Area */}
                         {isReportThreadLocked(reportState.status) ? (
@@ -1177,7 +1059,12 @@ export default function CompanyReportDetails() {
                           </div>
                         ) : (
                         <div className="flex gap-4 pt-4">
-                            <div className="h-8 w-8 rounded-full bg-emerald-500 text-black flex items-center justify-center font-bold text-xs shrink-0 mt-2">CO</div>
+                            <Avatar className="h-8 w-8 shrink-0 mt-2 border border-zinc-200 dark:border-zinc-700">
+                                <AvatarImage src={companyAvatar || undefined} alt={user?.name || 'Company'} className="object-cover" />
+                                <AvatarFallback className="bg-emerald-500 text-black text-xs font-bold">
+                                    {companyInitials}
+                                </AvatarFallback>
+                            </Avatar>
                             <div className="flex-1">
                                 <div className="rounded-lg bg-white dark:bg-white/5 shadow-sm border border-zinc-200 dark:border-white/10 focus-within:ring-1 focus-within:ring-zinc-400 dark:focus-within:ring-white/20 transition-all overflow-hidden">
                                     <CyberpunkEditor 
@@ -1679,10 +1566,14 @@ export default function CompanyReportDetails() {
             <CvssInteractiveModal 
                 isOpen={cvssModalOpen}
                 onClose={() => setCvssModalOpen(false)}
-                aiVector="CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H" 
+                aiVector={report?.aiTriage?.cvssVector || ''}
                 researcherVector=""
-                researcherSeverity={reportState.severity.level}
-                currentVector={reportState.severity.vector || "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:N/I:N/A:N"}
+                researcherSeverity={report?.researcherSeverity || ''}
+                triagerVector={
+                  getLastSeverityVector(report?.comments, 'triager') ||
+                  (report?.cvssVector?.startsWith('CVSS:') ? report.cvssVector : '')
+                }
+                currentVector={getLastSeverityVector(report?.comments, 'company')}
                 onSave={handleSeverityUpdate}
             />
 

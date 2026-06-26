@@ -2,7 +2,7 @@ import mongoose, { Document, Model } from 'mongoose';
 
 export interface ITransaction extends Document {
   user: mongoose.Types.ObjectId;
-  type: 'topup' | 'bounty_payment' | 'bounty_earned' | 'platform_fee' | 'withdrawal';
+  type: 'topup' | 'admin_credit' | 'bounty_payment' | 'bounty_earned' | 'platform_fee' | 'withdrawal' | 'treasury_withdrawal';
   amount: number;
   currency: string;
   stripePaymentIntentId?: string;
@@ -22,7 +22,7 @@ const transactionSchema = new mongoose.Schema<ITransaction>({
   },
   type: {
     type: String,
-    enum: ['topup', 'bounty_payment', 'bounty_earned', 'platform_fee', 'withdrawal'],
+    enum: ['topup', 'admin_credit', 'bounty_payment', 'bounty_earned', 'platform_fee', 'withdrawal', 'treasury_withdrawal'],
     required: true,
   },
   amount: {

@@ -57,7 +57,10 @@ export default function NavDropdown({ label, items }: NavDropdownProps) {
         <div className="absolute left-0 top-full pt-4 w-56 animate-in fade-in slide-in-from-top-1 duration-200">
           <div className="bg-white dark:bg-zinc-950/95 border border-zinc-200 dark:border-zinc-800 rounded-lg shadow-2xl overflow-hidden backdrop-blur-xl p-1">
             {items.map((item) => {
-              const isItemActive = location.pathname === item.path;
+              const isItemActive =
+                item.path === '/admin/finance'
+                  ? location.pathname === item.path
+                  : location.pathname === item.path || location.pathname.startsWith(`${item.path}/`);
               return (
                  <Link
                     key={item.path}

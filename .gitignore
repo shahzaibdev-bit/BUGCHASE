@@ -131,7 +131,7 @@ server/build/
 *.swp
 
 # ---------------------------------------------------------------------------
-# Python (ai-service, Asset-Discovery, cvss_engine, duplicate_engine, kyc_engine)
+# Python (Asset-Discovery, cvss_engine, duplicate_engine, kyc_engine)
 # ---------------------------------------------------------------------------
 # Virtual environments
 .venv/

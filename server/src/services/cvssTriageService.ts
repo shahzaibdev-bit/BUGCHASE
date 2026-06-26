@@ -4,6 +4,7 @@ import Report from '../models/Report';
 import User from '../models/User';
 import { getIO } from './socketService';
 import { sendEmail, reportEmailTemplate } from './emailService';
+import { extractVrtTaxonomy } from '../utils/vrtTaxonomy';
 
 /**
  * Result from POST /analyze-cvss on the cvss_engine FastAPI service.
@@ -168,13 +169,15 @@ function buildTriagePayload(report: any) {
   const allowedSeverities = ['Low', 'Medium', 'High', 'Critical'];
   const researcherSeverity = allowedSeverities.includes(severity) ? severity : 'Medium';
 
+  const vrt = extractVrtTaxonomy(report);
+
   return {
     title: String(report.title || 'Untitled report'),
     vulnerable_endpoint: String(report.vulnerableEndpoint || 'n/a'),
     description: stripHtml(report.description) || 'n/a',
     steps_to_reproduce: stripHtml(report.pocSteps) || 'n/a',
     impact: stripHtml(report.impact) || 'n/a',
-    category: String(report.vulnerabilityCategory || report.assetType || 'General'),
+    category: vrt.fullPath || vrt.vrtVariant || String(report.assetType || 'General'),
     researcher_severity: researcherSeverity,
     model: process.env.CVSS_TRIAGE_MODEL_KEY || undefined,
   };
@@ -215,9 +218,9 @@ export async function runCvssTriageForReport(reportId: string | mongoose.Types.O
     { $set: { 'aiTriage.status': 'processing' } }
   );
 
-    let report: any;
+  let report: any;
   try {
-    report = await Report.findById(reportId).populate('researcher', 'name email');
+    report = await Report.findById(reportId).populate('researcherId', 'name email username');
     if (!report) return;
 
     const url = `${triageBaseUrl()}/analyze-cvss`;
@@ -316,7 +319,7 @@ export async function runCvssTriageForReport(reportId: string | mongoose.Types.O
     // only: never let SMTP problems fail the triage pipeline.
     if (severityChanged) {
       try {
-        const researcher: any = (report as any).researcher;
+        const researcher: any = (report as any).researcherId;
         const recipientEmail: string | undefined = researcher?.email;
         const recipientName: string =
           researcher?.name || researcher?.username || 'Security Researcher';

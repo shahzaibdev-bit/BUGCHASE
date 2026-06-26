@@ -25,9 +25,9 @@ export const SubmissionWizard = () => {
     const [data, setData] = useState<SubmissionData>({
         target: null, 
         assetType: null,
-        category: null,
-        bugType: null,
-        cwe: null,
+        vrtParent: null,
+        vrtCategory: null,
+        vrtVariant: null,
         severityMode: 'manual',
         severity: 'None',
         cvssVector: { AV: 'N', AC: 'L', PR: 'N', UI: 'N', S: 'U', C: 'N', I: 'N', A: 'N' },
@@ -71,7 +71,7 @@ export const SubmissionWizard = () => {
     const prevStep = () => setCurrentStep(prev => Math.max(prev - 1, 1));
 
     const canProceed = () => {
-        if (currentStep === 1) return data.target && data.category;
+        if (currentStep === 1) return data.target && data.vrtVariant;
         if (currentStep === 2) return data.severity !== 'None';
         if (currentStep === 3) {
             // Strip HTML tags to ensure it's not just `<p></p>`
@@ -109,9 +109,12 @@ export const SubmissionWizard = () => {
             if (programId) formData.append('programId', programId);
             if (data.target) formData.append('target', data.target);
             if (data.assetType) formData.append('assetType', data.assetType);
-            if (data.category) formData.append('vulnerabilityCategory', data.category);
-            if (data.bugType) formData.append('bugType', data.bugType);
-            if (data.cwe) formData.append('cwe', data.cwe);
+            if (data.vrtVariant) {
+              formData.append('vrtVariant', data.vrtVariant);
+              formData.append('vulnerabilityCategory', data.vrtVariant);
+            }
+            if (data.vrtParent) formData.append('vrtParent', data.vrtParent);
+            if (data.vrtCategory) formData.append('vrtCategory', data.vrtCategory);
             formData.append('severityMode', data.severityMode);
             formData.append('severity', data.severity);
             formData.append('cvssVector', cvssString);

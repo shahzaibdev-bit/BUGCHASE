@@ -871,28 +871,23 @@ export const getReportDetails = catchAsync(async (req: Request, res: Response, n
 });
 
 export const getCompanyReports = catchAsync(async (req: Request, res: Response, next: NextFunction) => {
-    // 1. Get Programs owned by this company
     const Program = (await import('../models/Program')).default;
-    const programs = await Program.find({ companyId: req.user!.id });
-    
-    // 2. Get Program IDs
-    // Note: Report.programId is currently a String, but ideally matches Program._id
-    // We need to cast ObjectIds to strings for comparison or $in query if stored as strings
+    const companyId = req.user!.parentCompany || req.user!.id;
+    const programs = await Program.find({ companyId });
+
     const programIds = programs.map(p => p._id.toString());
-    
-    // 3. Find Reports for these programs
+
     const Report = (await import('../models/Report')).default;
     const reports = await Report.find({ programId: { $in: programIds } })
-        .populate('researcherId', 'username rank') // reduced populated fields for list view
+        .populate('researcherId', 'username rank')
         .sort({ createdAt: -1 });
 
-    // 4. Map to frontend expected structure (if needed) or just return
-    // Frontend expects: id, title, severity, status, program (name), researcher (name), submittedAt, bounty
-    
     const formattedReports = reports.map((r: any) => {
-        // Find program name
         const prog = programs.find(p => p._id.toString() === r.programId);
-        
+        const hasBountyAwarded =
+            (r.bounty || 0) > 0 ||
+            (Array.isArray(r.comments) && r.comments.some((c: { type?: string }) => c.type === 'bounty_awarded'));
+
         return {
             id: r._id,
             reportId: r.reportId || String(r._id),
@@ -900,9 +895,13 @@ export const getCompanyReports = catchAsync(async (req: Request, res: Response, 
             severity: r.severity?.toLowerCase() || 'low',
             status: r.status?.toLowerCase() || 'submitted',
             program: prog?.title || 'Unknown Program',
+            programType: prog?.type || 'BBP',
+            isPrivate: Boolean(prog?.isPrivate),
             researcher: r.researcherId?.username || 'Unknown',
             submittedAt: r.createdAt,
-            bounty: r.bounty || 0
+            bounty: r.bounty || 0,
+            certificateId: r.certificateId || null,
+            hasBountyAwarded,
         };
     });
 
@@ -1361,14 +1360,18 @@ export const awardBounty = catchAsync(async (req: Request, res: Response, next: 
         return next(new AppError('Invalid bounty amount', 400));
     }
 
-    const fee = bountyAmount * 0.05;
+    const { default: PlatformFinanceSettings, getPlatformFinanceSettingsDoc } = await import('../models/PlatformFinanceSettings');
+    const platformSettings = await getPlatformFinanceSettingsDoc();
+    const feeRate = (platformSettings.platformFeePercent ?? 5) / 100;
+
+    const fee = bountyAmount * feeRate;
     const totalCost = bountyAmount + fee;
 
     const company = await User.findById(req.user!.id);
     if (!company) return next(new AppError('Company not found', 404));
 
     if ((company.walletBalance || 0) < totalCost) {
-        return next(new AppError(`Insufficient balance. You need PKR ${totalCost.toFixed(2)} (bounty + 5% platform fee). Please top up your wallet.`, 400));
+        return next(new AppError(`Insufficient balance. You need PKR ${totalCost.toFixed(2)} (bounty + ${(feeRate * 100).toFixed(1)}% platform fee). Please top up your wallet.`, 400));
     }
 
     company.walletBalance = (company.walletBalance || 0) - totalCost;
@@ -1385,6 +1388,12 @@ export const awardBounty = catchAsync(async (req: Request, res: Response, next: 
         { user: company._id, type: 'platform_fee', amount: fee, relatedReport: report._id, status: 'completed' },
         { user: report.researcherId, type: 'bounty_earned', amount: bountyAmount, relatedReport: report._id, status: 'completed' }
     ]);
+
+    await PlatformFinanceSettings.findOneAndUpdate(
+        {},
+        { $inc: { treasuryBalance: fee } },
+        { upsert: true },
+    );
 
     // Add Timeline Event
     const newComment = {
@@ -1486,7 +1495,11 @@ export const createTopUpIntent = catchAsync(async (req: Request, res: Response, 
 
     let newBalance;
     if (paymentIntent.status === 'succeeded') {
-        const updatedUser = await User.findByIdAndUpdate(req.user!.id, { $inc: { walletBalance: pkrAmount } }, { new: true });
+        const updatedUser = await User.findByIdAndUpdate(
+            req.user!.id,
+            { $inc: { walletBalance: pkrAmount, walletTotalFunded: pkrAmount } },
+            { new: true },
+        );
         newBalance = updatedUser?.walletBalance;
 
         await Transaction.create({
@@ -1527,7 +1540,11 @@ export const confirmTopUp = catchAsync(async (req: Request, res: Response, next:
 
     const pkrAmount = parseInt(paymentIntent.metadata?.pkrAmount || '0') || (paymentIntent.amount / 100);
 
-    const updatedUser = await User.findByIdAndUpdate(req.user!.id, { $inc: { walletBalance: pkrAmount } }, { new: true });
+    const updatedUser = await User.findByIdAndUpdate(
+        req.user!.id,
+        { $inc: { walletBalance: pkrAmount, walletTotalFunded: pkrAmount } },
+        { new: true },
+    );
 
     const transaction = await Transaction.create({
         user: req.user!.id,

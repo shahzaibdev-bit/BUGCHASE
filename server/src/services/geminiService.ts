@@ -1,204 +1,235 @@
-import { GoogleGenerativeAI } from "@google/generative-ai";
+import { GoogleGenerativeAI } from '@google/generative-ai';
+import AppError from '../utils/AppError';
 
-const API_KEY = "AIzaSyAhv7Kuim2F_yiM3aVKPpUF-mOx0EuJ8kE"; // Ideally move to process.env.GEMINI_API_KEY
-const genAI = new GoogleGenerativeAI(API_KEY);
+const stripHtml = (value: unknown): string =>
+  String(value ?? '')
+    .replace(/<[^>]*>/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+
+const resolveGeminiConfig = () => {
+  const apiKey = process.env.GEMINI_API_KEY?.trim();
+  if (!apiKey) {
+    throw new AppError(
+      'Gemini is not configured. Set GEMINI_API_KEY in server/.env (create a key at https://aistudio.google.com/apikey).',
+      503,
+    );
+  }
+  return {
+    apiKey,
+    model: process.env.GEMINI_MODEL?.trim() || 'gemini-2.5-flash',
+  };
+};
+
+const formatGeminiError = (error: any): AppError => {
+  const status = Number(error?.status ?? error?.statusCode ?? 500);
+  const message = String(error?.message || error || 'Unknown Gemini error');
+
+  if (status === 404 || message.includes('is not found')) {
+    return new AppError(
+      `Gemini model is unavailable (${process.env.GEMINI_MODEL || 'gemini-2.5-flash'}). Update GEMINI_MODEL in server/.env (e.g. gemini-2.5-flash).`,
+      502,
+    );
+  }
+  if (status === 403 && message.toLowerCase().includes('leaked')) {
+    return new AppError(
+      'Your Gemini API key was reported as leaked. Create a new key at https://aistudio.google.com/apikey and update GEMINI_API_KEY in server/.env.',
+      502,
+    );
+  }
+  if (status === 403 || message.toLowerCase().includes('api key')) {
+    return new AppError(
+      'Gemini rejected the API key. Verify GEMINI_API_KEY in server/.env.',
+      502,
+    );
+  }
+  if (status === 429 || message.includes('quota') || message.includes('Too Many Requests')) {
+    const model = process.env.GEMINI_MODEL || 'gemini-2.5-flash';
+    const hint =
+      model.includes('2.0-flash') && message.includes('limit: 0')
+        ? ' Your project has no free-tier quota for this model — set GEMINI_MODEL=gemini-2.5-flash in server/.env.'
+        : '';
+    return new AppError(
+      `Gemini rate limit or quota exceeded.${hint} Wait a minute and retry, or enable billing on your Google AI project.`,
+      429,
+    );
+  }
+
+  return new AppError(`Failed to generate AI summary: ${message.split('\n')[0]}`, 502);
+};
+
+const getJsonModel = () => {
+  const { apiKey, model } = resolveGeminiConfig();
+  const genAI = new GoogleGenerativeAI(apiKey);
+  return genAI.getGenerativeModel({
+    model,
+    generationConfig: {
+      responseMimeType: 'application/json',
+    },
+  });
+};
 
 const generateWithRetry = async (model: any, prompt: string, retries = 3, delay = 1000) => {
-    for (let i = 0; i < retries; i++) {
-        try {
-            return await model.generateContent(prompt);
-        } catch (error: any) {
-            const is503 = error.status === 503 || (error.message && error.message.includes('503'));
-            if (i === retries - 1 || !is503) {
-                throw error;
-            }
-            console.log(`Gemini API 503 error. Retrying in ${delay}ms... (Attempt ${i + 1} of ${retries})`);
-            await new Promise(resolve => setTimeout(resolve, delay));
-            delay *= 2; // Exponential backoff
-        }
+  for (let i = 0; i < retries; i++) {
+    try {
+      return await model.generateContent(prompt);
+    } catch (error: any) {
+      const status = Number(error?.status ?? 0);
+      const retryable = status === 503 || status === 429;
+      if (i === retries - 1 || !retryable) {
+        throw error;
+      }
+      console.log(`Gemini ${status} — retrying in ${delay}ms (${i + 1}/${retries})`);
+      await new Promise((resolve) => setTimeout(resolve, delay));
+      delay *= 2;
     }
+  }
+  throw new Error('Gemini request failed after retries');
 };
+
+const parseJsonResponse = (text: string) => {
+  const trimmed = text.trim();
+  try {
+    return JSON.parse(trimmed);
+  } catch {
+    const match = trimmed.match(/\{[\s\S]*\}/);
+    if (match) return JSON.parse(match[0]);
+    throw new Error('Gemini returned non-JSON output');
+  }
+};
+
+const mapTimeline = (timeline: any[]) =>
+  (timeline || []).map((e) => ({
+    author: e.sender?.username || e.sender?.name || e.author || 'System',
+    role: e.sender?.role || e.role,
+    content: stripHtml(e.content).slice(0, 2000),
+    type: e.type,
+    timestamp: e.createdAt || e.timestamp,
+  }));
+
+const reportContext = (report: any) => ({
+  title: report.title,
+  severity: report.severity,
+  assetType: report.assetType,
+  category: report.vulnerabilityCategory || report.vrtVariant,
+  endpoint: report.vulnerableEndpoint,
+  description: stripHtml(report.description).slice(0, 4000),
+  impact: stripHtml(report.impact).slice(0, 2000),
+  pocSteps: stripHtml(report.pocSteps).slice(0, 4000),
+  cvssScore: report.cvssScore,
+  cvssVector: report.cvssVector,
+});
 
 export const generateReportSummary = async (report: any, timeline: any[]) => {
-    try {
-        const model = genAI.getGenerativeModel({ 
-            model: "gemini-1.5-flash",
-            generationConfig: {
-                responseMimeType: "application/json"
-            }
-        });
+  try {
+    const model = getJsonModel();
+    const ctx = reportContext(report);
+    const relevantEvents = mapTimeline(timeline);
 
-        // Filter relevant timeline events (comments, status changes)
-        const relevantEvents = timeline.map(e => ({
-            author: e.sender?.name || e.author || 'System',
-            role: e.sender?.role || e.role,
-            content: e.content,
-            timestamp: e.createdAt || e.timestamp
-        }));
+    const prompt = `
+You are a professional security analyst. Generate an executive summary for a vulnerability report being promoted to "Triaged".
 
-        const prompt = `
-        You are a professional security analyst. Your task is to generate an executive summary for a vulnerability report that is being promoted to "Triaged" (validated).
-        This summary will be sent to the company's security team.
+Report:
+${JSON.stringify(ctx, null, 2)}
 
-        **Report Details:**
-        - Title: ${report.title}
-        - Type: ${report.type}
-        - Asset: ${report.asset}
-        - Description: ${report.description}
-        - Steps to Reproduce: ${report.stepsToReproduce}
+Communication history:
+${JSON.stringify(relevantEvents, null, 2)}
 
-        **Communication History:**
-        ${JSON.stringify(relevantEvents, null, 2)}
+Return JSON only:
+{
+  "title": "concise professional title",
+  "technical_summary": "markdown — vulnerability, impact, validation",
+  "remediation": "markdown — numbered remediation steps"
+}
+`;
 
-        **Instructions:**
-        1. Analyze the report and the communication history.
-        2. Generate a professional summary in JSON format with the following fields:
-           - "title": A concise, professional title for the issue (refine if necessary).
-           - "technical_summary": A detailed technical explanation of the vulnerability, its impact, and how it was validated. Use **Bold** for key concepts and bullet points for lists. Format as Markdown.
-           - "remediation": Clear, actionable steps to remediate the vulnerability. Use numbered lists and code blocks if applicable. Format as Markdown.
-
-        **Output Format (JSON):**
-        {
-            "title": "...",
-            "technical_summary": "...",
-            "remediation": "..."
-        }
-        `;
-
-        const result = await generateWithRetry(model, prompt);
-        const response = await result.response;
-        const text = response.text();
-
-        // console.log("Gemini Raw Output:", text);
-
-        return JSON.parse(text);
-
-    } catch (error: any) {
-        console.error("Gemini Generation Error:", error);
-        throw new Error(`Failed to generate AI summary: ${error.message}`);
-    }
+    const result = await generateWithRetry(model, prompt);
+    const text = result.response.text();
+    return parseJsonResponse(text);
+  } catch (error: any) {
+    if (error instanceof AppError) throw error;
+    console.error('Gemini Generation Error:', error);
+    throw formatGeminiError(error);
+  }
 };
 
-export const suggestBountyAmount = async (report: any, timeline: any[], rewardRange: { min: number, max: number }) => {
-    try {
-        const model = genAI.getGenerativeModel({ 
-            model: "gemini-1.5-flash",
-            generationConfig: {
-                responseMimeType: "application/json"
-            }
-        });
+export const suggestBountyAmount = async (
+  report: any,
+  timeline: any[],
+  rewardRange: { min: number; max: number },
+) => {
+  try {
+    const model = getJsonModel();
+    const ctx = reportContext(report);
+    const relevantEvents = mapTimeline(timeline);
 
-        const relevantEvents = timeline.map(e => ({
-            author: e.sender?.name || e.author || 'System',
-            role: e.sender?.role || e.role,
-            content: e.content,
-            type: e.type,
-            timestamp: e.createdAt || e.timestamp
-        }));
+    const prompt = `
+You are a Bug Bounty Program Manager determining the final reward payout.
 
-        const prompt = `
-        You are a Bug Bounty Program Manager determining the final reward payout for a vulnerability report.
-        
-        **Program Constraints for this Severity (${report.severity}):**
-        - Minimum Reward: PKR ${rewardRange.min}
-        - Maximum Reward: PKR ${rewardRange.max}
-        
-        **Report Details:**
-        - Title: ${report.title}
-        - Asset: ${report.asset}
-        - Type: ${report.type}
-        - Description: ${report.description}
-        - Impact Details: ${report.impact || "N/A"}
-        - CVSS Score: ${report.cvssScore} (${report.cvssVector || "N/A"})
-        - Triager Note: ${report.triagerNote || "N/A"}
+Program constraints for severity (${report.severity}):
+- Minimum: PKR ${rewardRange.min}
+- Maximum: PKR ${rewardRange.max}
 
-        **Communication History:**
-        ${JSON.stringify(relevantEvents, null, 2)}
+Report:
+${JSON.stringify(ctx, null, 2)}
 
-        **Instructions:**
-        1. Evaluate the report's quality, completeness, impact, and how helpful the researcher was in the communication timeline.
-        2. Propose a specific integer PKR amount for the bounty. It MUST be between the Minimum Reward (PKR ${rewardRange.min}) and Maximum Reward (PKR ${rewardRange.max}) inclusive.
-        3. If the minimum and maximum are 0, return 0.
-        4. Provide a brief 1-2 sentence reasoning explaining why this specific amount was chosen.
+Communication history:
+${JSON.stringify(relevantEvents, null, 2)}
 
-        **Output Format (JSON):**
-        {
-            "suggestedAmount": 500,
-            "reasoning": "..."
-        }
-        `;
+Return JSON only:
+{
+  "suggestedAmount": <integer between min and max, or 0 if both are 0>,
+  "reasoning": "1-2 sentences"
+}
+`;
 
-        const result = await generateWithRetry(model, prompt);
-        const response = await result.response;
-        const text = response.text();
-
-        return JSON.parse(text);
-
-    } catch (error: any) {
-        console.error("Gemini Bounty Suggestion Error:", error);
-        throw new Error(`Failed to suggest bounty: ${error.message}`);
-    }
+    const result = await generateWithRetry(model, prompt);
+    return parseJsonResponse(result.response.text());
+  } catch (error: any) {
+    if (error instanceof AppError) throw error;
+    console.error('Gemini Bounty Suggestion Error:', error);
+    throw formatGeminiError(error);
+  }
 };
 
-export const generateReportMessage = async (report: any, timeline: any[], type: 'resolve' | 'bounty', bountyAmount?: number) => {
-    try {
-        const model = genAI.getGenerativeModel({ 
-            model: "gemini-1.5-flash",
-            generationConfig: {
-                responseMimeType: "application/json"
-            }
-        });
+export const generateReportMessage = async (
+  report: any,
+  timeline: any[],
+  type: 'resolve' | 'bounty',
+  bountyAmount?: number,
+) => {
+  try {
+    const model = getJsonModel();
+    const ctx = reportContext(report);
+    const relevantEvents = mapTimeline(timeline).slice(-10);
 
-        const relevantEvents = timeline.map(e => ({
-            author: e.sender?.name || e.author || 'System',
-            role: e.sender?.role || e.role,
-            content: e.content,
-            type: e.type,
-            timestamp: e.createdAt || e.timestamp
-        })).slice(-10); // Last 10 events for context
+    const taskPrompt =
+      type === 'resolve'
+        ? `Write a friendly closing message: the issue was patched. Thank the researcher. 2-3 short paragraphs.`
+        : `Write a friendly message awarding PKR ${bountyAmount} bounty. Thank the researcher. 2-3 short paragraphs.`;
 
-        const BasePrompt = `
-        You are a Bug Bounty Program Manager communicating directly with a security researcher who submitted a vulnerability.
-        
-        **Report Details:**
-        - Title: ${report.title}
-        - Asset: ${report.asset}
-        - Type: ${report.type}
-        - Severity/CVSS: ${report.severity} (${report.cvssScore})
+    const prompt = `
+You are a Bug Bounty Program Manager writing to a security researcher.
 
-        **Recent Communication Context:**
-        ${JSON.stringify(relevantEvents, null, 2)}
-        `;
+Report:
+${JSON.stringify(ctx, null, 2)}
 
-        const TypePrompt = type === 'resolve' 
-            ? `
-            **Task:** Write a friendly, professional closing message acknowledging the researcher's report. Inform them that the engineering team has reviewed and successfully patched the issue. Thank them for their contribution to the program's security. Keep it concise (2-3 short paragraphs).
-            `
-            : `
-            **Task:** Write a friendly, professional message informing the researcher that they are being awarded a bounty of PKR ${bountyAmount}. Acknowledge their specific finding by name and thank them for their responsible disclosure. Keep it concise (2-3 short paragraphs).
-            `;
+Recent thread:
+${JSON.stringify(relevantEvents, null, 2)}
 
-        const finalPrompt = `
-        ${BasePrompt}
-        ${TypePrompt}
+Task: ${taskPrompt}
 
-        **Crucial Formatting Requirement:**
-        The message MUST be formatted strictly as **HTML string** (e.g., using <p>, <strong>, <ul>, <li>, <br/>). Do NOT use any Markdown symbols (no **asterisks**, no ## hashtags). Please add good spacing.
+Format the message as basic HTML only (<p>, <strong>, <ul>, <li>, <br/>). No Markdown.
 
-        **Output Format (JSON):**
-        {
-            "message": "The written message formatted purely in basic HTML, addressing the researcher directly."
-        }
-        `;
+Return JSON only:
+{ "message": "..." }
+`;
 
-        const result = await generateWithRetry(model, finalPrompt);
-        const response = await result.response;
-        const text = response.text();
-
-        return JSON.parse(text);
-
-    } catch (error: any) {
-        console.error("Gemini Message Generation Error:", error);
-        throw new Error(`Failed to generate message: ${error.message}`);
-    }
+    const result = await generateWithRetry(model, prompt);
+    return parseJsonResponse(result.response.text());
+  } catch (error: any) {
+    if (error instanceof AppError) throw error;
+    console.error('Gemini Message Generation Error:', error);
+    throw formatGeminiError(error);
+  }
 };

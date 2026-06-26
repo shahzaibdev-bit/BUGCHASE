@@ -378,8 +378,9 @@ export const replyToMyDispute = catchAsync(
 
 /** GET /api/disputes — list with optional filters (support view). */
 export const listDisputes = catchAsync(async (req: Request, res: Response) => {
-  const { status, priority, search } = req.query as Record<string, string>;
+  const { status, priority, search, queue } = req.query as Record<string, string>;
   const query: any = {};
+  const agentId = req.user!._id;
 
   if (status && VALID_STATUS.includes(status)) query.status = status;
   if (priority && VALID_PRIORITY.includes(priority)) query.priority = priority;
@@ -388,12 +389,77 @@ export const listDisputes = catchAsync(async (req: Request, res: Response) => {
     query.$or = [{ subject: rx }, { disputeId: rx }, { raisedByName: rx }, { reportLabel: rx }];
   }
 
-  const disputes = await Dispute.find(query).sort({ createdAt: -1 }).lean();
+  if (queue === 'working') {
+    query.assignedTo = agentId;
+    query.status = { $in: ['open', 'in_review'] };
+  } else if (queue === 'worked') {
+    query.$and = [
+      {
+        $or: [
+          { 'resolution.resolvedBy': agentId },
+          {
+            status: { $in: ['resolved', 'rejected'] },
+            messages: { $elemMatch: { senderId: agentId } },
+          },
+        ],
+      },
+      {
+        $nor: [{ assignedTo: agentId, status: { $in: ['open', 'in_review'] } }],
+      },
+    ];
+  } else if (queue === 'available') {
+    query.status = 'open';
+    query.$or = [{ assignedTo: { $exists: false } }, { assignedTo: null }];
+  }
+
+  const disputes = await Dispute.find(query).sort({ updatedAt: -1 }).lean();
 
   res.status(200).json({
     status: 'success',
     results: disputes.length,
     data: { disputes },
+  });
+});
+
+/** GET /api/disputes/stats/me — personal queue counts for the signed-in agent. */
+export const getMyDisputeStats = catchAsync(async (req: Request, res: Response) => {
+  const agentId = req.user!._id;
+
+  const [working, worked, awaitingReply, available] = await Promise.all([
+    Dispute.countDocuments({
+      assignedTo: agentId,
+      status: { $in: ['open', 'in_review'] },
+    }),
+    Dispute.countDocuments({
+      $and: [
+        {
+          $or: [
+            { 'resolution.resolvedBy': agentId },
+            {
+              status: { $in: ['resolved', 'rejected'] },
+              messages: { $elemMatch: { senderId: agentId } },
+            },
+          ],
+        },
+        {
+          $nor: [{ assignedTo: agentId, status: { $in: ['open', 'in_review'] } }],
+        },
+      ],
+    }),
+    Dispute.countDocuments({
+      assignedTo: agentId,
+      status: { $in: ['open', 'in_review'] },
+      awaitingReplyFrom: 'support',
+    }),
+    Dispute.countDocuments({
+      status: 'open',
+      $or: [{ assignedTo: { $exists: false } }, { assignedTo: null }],
+    }),
+  ]);
+
+  res.status(200).json({
+    status: 'success',
+    data: { working, worked, awaitingReply, available },
   });
 });
 

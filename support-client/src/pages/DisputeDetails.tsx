@@ -99,7 +99,7 @@ export function DisputeDetails() {
       <div className="p-10 text-center text-zinc-500 font-mono text-sm">
         Dispute not found.
         <div className="mt-4">
-          <Button variant="outline" onClick={() => navigate('/')}>
+          <Button variant="outline" onClick={() => navigate('/disputes')}>
             <ArrowLeft className="w-4 h-4" /> Back to dashboard
           </Button>
         </div>
@@ -121,7 +121,7 @@ export function DisputeDetails() {
   return (
     <div className="space-y-6">
       <button
-        onClick={() => navigate('/')}
+        onClick={() => navigate('/disputes')}
         className="inline-flex items-center gap-2 text-sm font-mono text-zinc-500 hover:text-zinc-900 dark:hover:text-white transition-colors"
       >
         <ArrowLeft className="w-4 h-4" /> Back to disputes

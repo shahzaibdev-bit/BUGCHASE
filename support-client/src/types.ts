@@ -66,6 +66,7 @@ export interface Dispute {
   resolution?: {
     outcome?: string;
     note?: string;
+    resolvedBy?: string;
     resolvedByName?: string;
     resolvedAt?: string;
   };
@@ -111,6 +112,9 @@ export interface SupportReport {
   severity: string;
   status: string;
   vulnerabilityCategory?: string;
+  vrtParent?: string;
+  vrtCategory?: string;
+  vrtVariant?: string;
   vulnerableEndpoint?: string;
   assets?: string[];
   researcherId?: SupportReportUser | string;
@@ -128,4 +132,11 @@ export interface DisputeStats {
   inReview: number;
   resolved: number;
   rejected: number;
+}
+
+export interface AgentDisputeStats {
+  working: number;
+  worked: number;
+  awaitingReply: number;
+  available: number;
 }

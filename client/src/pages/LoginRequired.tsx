@@ -12,7 +12,7 @@ export default function LoginRequired() {
   const from = location.state?.from?.pathname || '/';
 
   return (
-    <div className="min-h-screen w-full flex items-center justify-center p-4 relative overflow-hidden bg-background selection:bg-emerald-500/30 transition-colors duration-300">
+    <div className="min-h-screen w-full flex items-center justify-center p-4 relative overflow-hidden bg-background transition-colors duration-300">
         {/* Background Gradients */}
         <div className="absolute top-0 left-0 w-[500px] h-[500px] bg-emerald-500/10 dark:bg-emerald-500/10 rounded-full blur-[120px] pointer-events-none mix-blend-multiply dark:mix-blend-screen" />
         <div className="absolute bottom-0 right-0 w-[500px] h-[500px] bg-blue-500/10 dark:bg-blue-500/10 rounded-full blur-[120px] pointer-events-none mix-blend-multiply dark:mix-blend-screen" />

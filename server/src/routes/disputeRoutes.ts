@@ -3,6 +3,7 @@ import { protect, restrictTo } from '../middlewares/authMiddleware';
 import {
   listDisputes,
   getDisputeStats,
+  getMyDisputeStats,
   getDispute,
   getLinkedReportForSupport,
   listMyDisputes,
@@ -35,6 +36,7 @@ router.use(restrictTo('support', 'admin'));
 
 router.get('/', listDisputes);
 router.get('/stats', getDisputeStats);
+router.get('/stats/me', getMyDisputeStats);
 router.get('/reports/:reportId', getLinkedReportForSupport);
 router.get('/:id/triager-candidates', getTriagerCandidatesForDispute);
 router.post('/:id/triager-invites', sendTriagerReassignmentInvite);

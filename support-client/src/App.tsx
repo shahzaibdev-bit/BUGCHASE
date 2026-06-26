@@ -2,6 +2,7 @@ import { Routes, Route, Navigate } from 'react-router-dom';
 import { LoginPage } from '@/pages/LoginPage';
 import { SupportLayout } from '@/layouts/SupportLayout';
 import { SupportDashboard } from '@/pages/SupportDashboard';
+import { SupportDisputes } from '@/pages/SupportDisputes';
 import { DisputeDetails } from '@/pages/DisputeDetails';
 import { SupportReportDetails } from '@/pages/SupportReportDetails';
 import { Profile } from '@/pages/Profile';
@@ -29,7 +30,7 @@ export default function App() {
         }
       >
         <Route path="/" element={<SupportDashboard />} />
-        <Route path="/disputes" element={<SupportDashboard />} />
+        <Route path="/disputes" element={<SupportDisputes />} />
         <Route path="/disputes/:id" element={<DisputeDetails />} />
         <Route path="/profile" element={<Profile />} />
       </Route>

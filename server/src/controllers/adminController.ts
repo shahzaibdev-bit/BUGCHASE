@@ -12,6 +12,72 @@ import {
   applyResearcherReputationOnStatusTransition,
   clearReputationMilestonesForReTriage,
 } from '../services/researcherReputationService';
+import LoginEvent from '../models/LoginEvent';
+import Dispute from '../models/Dispute';
+import mongoose from 'mongoose';
+import { getStripeClient } from '../utils/stripeClient';
+import { getPlatformFinanceSettingsDoc } from '../models/PlatformFinanceSettings';
+
+const TRIAGER_CLOSED_STATUSES = [
+  'resolved',
+  'paid',
+  'closed',
+  'spam',
+  'duplicate',
+  'out-of-scope',
+  'na',
+];
+
+async function getLastActiveByUserIds(userIds: mongoose.Types.ObjectId[]) {
+  if (!userIds.length) return new Map<string, Date>();
+  const rows = await LoginEvent.aggregate([
+    { $match: { userId: { $in: userIds }, success: true } },
+    { $sort: { createdAt: -1 } },
+    { $group: { _id: '$userId', lastActive: { $first: '$createdAt' } } },
+  ]);
+  return new Map(rows.map((r) => [String(r._id), r.lastActive as Date]));
+}
+
+async function getTriagerReportsClosedCounts(userIds: mongoose.Types.ObjectId[]) {
+  if (!userIds.length) return new Map<string, number>();
+  const Report = (await import('../models/Report')).default;
+  const rows = await Report.aggregate([
+    { $match: { triagerId: { $in: userIds } } },
+    { $addFields: { statusLower: { $toLower: '$status' } } },
+    { $match: { statusLower: { $in: TRIAGER_CLOSED_STATUSES } } },
+    { $group: { _id: '$triagerId', count: { $sum: 1 } } },
+  ]);
+  return new Map(rows.map((r) => [String(r._id), r.count as number]));
+}
+
+async function getSupportDisputesClosedCounts(userIds: mongoose.Types.ObjectId[]) {
+  if (!userIds.length) return new Map<string, number>();
+  const rows = await Dispute.aggregate([
+    { $match: { 'resolution.resolvedBy': { $in: userIds } } },
+    { $group: { _id: '$resolution.resolvedBy', count: { $sum: 1 } } },
+  ]);
+  return new Map(rows.map((r) => [String(r._id), r.count as number]));
+}
+
+function mapStaffRosterRow(
+  user: { _id: mongoose.Types.ObjectId; name: string; email: string; expertise?: string[]; status?: string; avatar?: string; role: string },
+  lastActive: Date | undefined,
+  closedCount: number,
+  closedLabel: 'reportsClosed' | 'disputesClosed',
+) {
+  return {
+    _id: user._id,
+    name: user.name,
+    email: user.email,
+    expertise: user.expertise || [],
+    status: user.status,
+    avatar: user.avatar,
+    role: user.role,
+    lastActive: lastActive ? lastActive.toISOString() : null,
+    reportsProcessed: closedCount,
+    [closedLabel]: closedCount,
+  };
+}
 
 const toDisplay = (v: any) => {
     if (v === undefined || v === null || v === '') return '-';
@@ -85,18 +151,29 @@ export const createTriager = catchAsync(async (req: Request, res: Response, next
 });
 
 export const getTriagers = catchAsync(async (req: Request, res: Response, next: NextFunction) => {
-    const triagers = await User.find({ role: 'triager' }).select('name email expertise status lastActive avatar role _id');
-    
-    // We can compute "reportsProcessed" if we had a Report model linkage, 
-    // for now we might mock it or return 0, or add it to schema later.
-    // Let's send what we have.
+    const triagers = await User.find({ role: 'triager' }).select('name email expertise status avatar role _id');
+    const ids = triagers.map((t) => t._id);
+
+    const [lastActiveMap, closedMap] = await Promise.all([
+        getLastActiveByUserIds(ids),
+        getTriagerReportsClosedCounts(ids),
+    ]);
+
+    const enriched = triagers.map((triager) =>
+        mapStaffRosterRow(
+            triager,
+            lastActiveMap.get(String(triager._id)),
+            closedMap.get(String(triager._id)) ?? 0,
+            'reportsClosed',
+        ),
+    );
 
     res.status(200).json({
         status: 'success',
-        results: triagers.length,
+        results: enriched.length,
         data: {
-            triagers
-        }
+            triagers: enriched,
+        },
     });
 });
 
@@ -158,13 +235,28 @@ export const createSupport = catchAsync(async (req: Request, res: Response, next
 });
 
 export const getSupport = catchAsync(async (req: Request, res: Response, next: NextFunction) => {
-    const support = await User.find({ role: 'support' }).select('name email expertise status lastActive avatar role _id');
+    const support = await User.find({ role: 'support' }).select('name email expertise status avatar role _id');
+    const ids = support.map((m) => m._id);
+
+    const [lastActiveMap, closedMap] = await Promise.all([
+        getLastActiveByUserIds(ids),
+        getSupportDisputesClosedCounts(ids),
+    ]);
+
+    const enriched = support.map((member) =>
+        mapStaffRosterRow(
+            member,
+            lastActiveMap.get(String(member._id)),
+            closedMap.get(String(member._id)) ?? 0,
+            'disputesClosed',
+        ),
+    );
 
     res.status(200).json({
         status: 'success',
-        results: support.length,
+        results: enriched.length,
         data: {
-            support,
+            support: enriched,
         },
     });
 });
@@ -339,12 +431,12 @@ export const getFinanceAnalytics = catchAsync(async (req: Request, res: Response
     const startOfSixMonthWindow = new Date(now.getFullYear(), now.getMonth() - 5, 1);
 
     const companies = await User.find({ role: 'company' })
-        .select('_id name email companyName walletBalance status')
-        .sort({ walletBalance: 1 });
+        .select('_id name email companyName walletBalance walletTotalFunded status')
+        .sort({ companyName: 1 });
 
     const companyIds = companies.map((company: any) => company._id);
 
-    const [programs, recentTransactions, ytdTransactions] = await Promise.all([
+    const [programs, recentTransactions, ytdTransactions, fundingTotals] = await Promise.all([
         Program.find({ companyId: { $in: companyIds } }).select('companyId status'),
         Transaction.find({
             user: { $in: companyIds },
@@ -353,8 +445,25 @@ export const getFinanceAnalytics = catchAsync(async (req: Request, res: Response
         Transaction.find({
             user: { $in: companyIds },
             createdAt: { $gte: startOfYear }
-        }).select('type amount status')
+        }).select('type amount status'),
+        Transaction.aggregate([
+            {
+                $match: {
+                    user: { $in: companyIds },
+                    type: { $in: ['topup', 'admin_credit'] },
+                    status: 'completed',
+                },
+            },
+            { $group: { _id: '$user', total: { $sum: '$amount' } } },
+        ]),
     ]);
+
+    const fundedFromTransactions = new Map<string, number>(
+        fundingTotals.map((row: { _id: mongoose.Types.ObjectId; total: number }) => [
+            String(row._id),
+            Number(row.total || 0),
+        ]),
+    );
 
     const monthSeries = Array.from({ length: 6 }).map((_, index) => {
         const date = new Date(now.getFullYear(), now.getMonth() - (5 - index), 1);
@@ -369,6 +478,7 @@ export const getFinanceAnalytics = catchAsync(async (req: Request, res: Response
 
     const breakdownTotals: Record<string, number> = {
         topup: 0,
+        admin_credit: 0,
         platform_fee: 0,
         bounty_payment: 0,
         withdrawal: 0
@@ -384,7 +494,7 @@ export const getFinanceAnalytics = catchAsync(async (req: Request, res: Response
 
         const amount = Number(tx.amount || 0);
         if (tx.status === 'completed') {
-            if (tx.type === 'topup' || tx.type === 'platform_fee') {
+            if (tx.type === 'topup' || tx.type === 'admin_credit' || tx.type === 'platform_fee') {
                 monthRow.revenue += Math.abs(amount);
             } else if (tx.type === 'bounty_payment' || tx.type === 'withdrawal') {
                 monthRow.payouts += Math.abs(amount);
@@ -406,7 +516,7 @@ export const getFinanceAnalytics = catchAsync(async (req: Request, res: Response
     }
 
     const totalLiquidity = companies.reduce((sum: number, c: any) => sum + Number(c.walletBalance || 0), 0);
-    const totalRevenueYtd = breakdownTotals.topup + breakdownTotals.platform_fee;
+    const totalRevenueYtd = breakdownTotals.topup + breakdownTotals.admin_credit + breakdownTotals.platform_fee;
     const pendingPayouts = Array.from(pendingByCompany.values()).reduce((sum, value) => sum + value, 0);
 
     const currentMonthRevenue = monthSeries[5]?.revenue || 0;
@@ -427,21 +537,29 @@ export const getFinanceAnalytics = catchAsync(async (req: Request, res: Response
     }
 
     const LOW_BALANCE_THRESHOLD = 100000;
-    const lowBalanceCompanies = companies
-        .filter((company: any) => Number(company.walletBalance || 0) < LOW_BALANCE_THRESHOLD)
-        .map((company: any) => ({
-            id: String(company._id),
+    const companyAccounts = companies.map((company: any) => {
+        const id = String(company._id);
+        const trackedFunded = Number(company.walletTotalFunded || 0);
+        const historicalFunded = fundedFromTransactions.get(id) || 0;
+        return {
+            id,
             name: company.companyName || company.name,
             email: company.email,
             status: company.status || 'Active',
             balance: Number(company.walletBalance || 0),
-            activePrograms: activeProgramCountByCompany.get(String(company._id)) || 0,
-            pendingPayouts: pendingByCompany.get(String(company._id)) || 0
-        }))
+            totalFunded: Math.max(trackedFunded, historicalFunded),
+            activePrograms: activeProgramCountByCompany.get(id) || 0,
+            pendingPayouts: pendingByCompany.get(id) || 0,
+        };
+    });
+
+    const lowBalanceCompanies = companyAccounts
+        .filter((company) => company.balance < LOW_BALANCE_THRESHOLD)
         .slice(0, 12);
 
     const revenueBreakdown = [
         { name: 'Topups', value: breakdownTotals.topup },
+        { name: 'Admin Credits', value: breakdownTotals.admin_credit },
         { name: 'Platform Fees', value: breakdownTotals.platform_fee },
         { name: 'Bounty Payouts', value: breakdownTotals.bounty_payment },
         { name: 'Withdrawals', value: breakdownTotals.withdrawal }
@@ -454,14 +572,437 @@ export const getFinanceAnalytics = catchAsync(async (req: Request, res: Response
                 totalLiquidity,
                 monthlyGrowth: Number(monthlyGrowth.toFixed(2)),
                 pendingPayouts,
-                totalRevenueYtd
+                totalRevenueYtd,
+                totalPlatformFeesYtd: breakdownTotals.platform_fee,
+                totalCompanyFundingYtd: breakdownTotals.topup + breakdownTotals.admin_credit,
             },
             charts: {
                 monthlyRevenue: monthSeries,
                 revenueBreakdown
             },
+            companyAccounts,
             lowBalanceCompanies
         }
+    });
+});
+
+/** POST /api/admin/finance/companies/:companyId/credit — manually add funds to a company wallet. */
+export const creditCompanyWallet = catchAsync(async (req: Request, res: Response, next: NextFunction) => {
+    const { companyId } = req.params;
+    const amount = Number(req.body?.amount);
+    const note = String(req.body?.note || '').trim();
+
+    if (!amount || Number.isNaN(amount) || amount <= 0) {
+        return next(new AppError('A positive credit amount is required', 400));
+    }
+
+    const company = await User.findOne({ _id: companyId, role: 'company' });
+    if (!company) return next(new AppError('Company account not found', 404));
+
+    const adminName = req.user?.name || 'Admin';
+    const description =
+        note || `Manual wallet credit by ${adminName}`;
+
+    const updatedCompany = await User.findByIdAndUpdate(
+        companyId,
+        { $inc: { walletBalance: amount, walletTotalFunded: amount } },
+        { new: true },
+    ).select('name email companyName walletBalance walletTotalFunded status');
+
+    const transaction = await Transaction.create({
+        user: company._id,
+        type: 'admin_credit',
+        amount,
+        currency: 'PKR',
+        status: 'completed',
+        description,
+    });
+
+    res.status(200).json({
+        status: 'success',
+        data: {
+            company: {
+                id: String(updatedCompany!._id),
+                name: updatedCompany!.companyName || updatedCompany!.name,
+                email: updatedCompany!.email,
+                balance: updatedCompany!.walletBalance,
+                totalFunded: updatedCompany!.walletTotalFunded,
+                status: updatedCompany!.status,
+            },
+            transaction,
+        },
+    });
+});
+
+const getOrCreatePlatformStripeCustomer = async () => {
+    const stripe = getStripeClient('2026-04-22.dahlia');
+    const settings = await getPlatformFinanceSettingsDoc();
+
+    if (settings.stripeCustomerId) {
+        return { stripe, customerId: settings.stripeCustomerId, settings };
+    }
+
+    const customer = await stripe.customers.create({
+        name: settings.accountLabel || 'BugChase Platform Treasury',
+        metadata: { type: 'platform_treasury' },
+    });
+
+    settings.stripeCustomerId = customer.id;
+    await settings.save();
+
+    return { stripe, customerId: customer.id, settings };
+};
+
+const syncPlatformLinkFromStripe = async () => {
+    const { stripe, customerId, settings } = await getOrCreatePlatformStripeCustomer();
+    const paymentMethods = await stripe.paymentMethods.list({ customer: customerId, type: 'card' });
+    const primary = paymentMethods.data[0];
+
+    if (primary?.card) {
+        settings.provider = 'stripe';
+        settings.isLinked = true;
+        settings.accountLast4 = primary.card.last4 || '';
+        settings.accountHolder = settings.accountHolder || settings.accountLabel;
+        await settings.save();
+    } else if (!settings.bankName) {
+        settings.isLinked = false;
+        await settings.save();
+    }
+
+    return { settings, paymentMethods: paymentMethods.data };
+};
+
+/** GET /api/admin/finance/platform-settings */
+export const getPlatformFinanceSettings = catchAsync(async (_req: Request, res: Response) => {
+    const Transaction = (await import('../models/Transaction')).default;
+
+    const { settings } = await syncPlatformLinkFromStripe();
+
+    const feeAggregate = await Transaction.aggregate([
+        { $match: { type: 'platform_fee', status: 'completed' } },
+        { $group: { _id: null, total: { $sum: '$amount' } } },
+    ]);
+    const feesFromLedger = Number(feeAggregate[0]?.total || 0);
+    const treasuryBalance = Math.max(Number(settings.treasuryBalance || 0), feesFromLedger);
+
+    res.status(200).json({
+        status: 'success',
+        data: {
+            settings: {
+                accountLabel: settings.accountLabel,
+                provider: settings.provider,
+                accountLast4: settings.accountLast4 || '',
+                platformFeePercent: settings.platformFeePercent,
+                treasuryBalance,
+                isLinked: settings.isLinked,
+                notes: settings.notes || '',
+                updatedAt: settings.updatedAt,
+            },
+        },
+    });
+});
+
+/** PUT /api/admin/finance/platform-settings */
+export const updatePlatformFinanceSettings = catchAsync(async (req: Request, res: Response, next: NextFunction) => {
+    const PlatformFinanceSettings = (await import('../models/PlatformFinanceSettings')).default;
+    const { notes, platformFeePercent } = req.body;
+
+    const update: Record<string, unknown> = { updatedBy: req.user!._id };
+    if (notes !== undefined) update.notes = String(notes).trim();
+
+    if (platformFeePercent !== undefined) {
+        const feePercent = Number(platformFeePercent);
+        if (Number.isNaN(feePercent) || feePercent < 0 || feePercent > 100) {
+            return next(new AppError('Platform fee must be between 0 and 100', 400));
+        }
+        update.platformFeePercent = feePercent;
+    }
+
+    const settings = await PlatformFinanceSettings.findOneAndUpdate({}, update, { new: true, upsert: true });
+
+    res.status(200).json({
+        status: 'success',
+        data: {
+            settings: {
+                accountLabel: settings!.accountLabel,
+                provider: settings!.provider,
+                accountLast4: settings!.accountLast4 || '',
+                platformFeePercent: settings!.platformFeePercent,
+                treasuryBalance: settings!.treasuryBalance,
+                isLinked: settings!.isLinked,
+                notes: settings!.notes || '',
+                updatedAt: settings!.updatedAt,
+            },
+        },
+    });
+});
+
+/** POST /api/admin/finance/platform/setup-intent */
+export const createPlatformSetupIntent = catchAsync(async (_req: Request, res: Response) => {
+    const { stripe, customerId } = await getOrCreatePlatformStripeCustomer();
+
+    const setupIntent = await stripe.setupIntents.create({
+        customer: customerId,
+        metadata: { type: 'platform_treasury' },
+        payment_method_types: ['card'],
+    });
+
+    res.status(200).json({
+        status: 'success',
+        clientSecret: setupIntent.client_secret,
+    });
+});
+
+/** GET /api/admin/finance/platform/payment-methods */
+export const getPlatformPaymentMethods = catchAsync(async (_req: Request, res: Response) => {
+    const { paymentMethods } = await syncPlatformLinkFromStripe();
+
+    res.status(200).json({
+        status: 'success',
+        data: {
+            paymentMethods: paymentMethods.map((pm) => ({
+                id: pm.id,
+                brand: pm.card?.brand || 'card',
+                last4: pm.card?.last4 || '????',
+                expMonth: pm.card?.exp_month,
+                expYear: pm.card?.exp_year,
+            })),
+        },
+    });
+});
+
+/** DELETE /api/admin/finance/platform/payment-methods/:paymentMethodId */
+export const detachPlatformPaymentMethod = catchAsync(async (req: Request, res: Response, next: NextFunction) => {
+    const paymentMethodId = String(req.params.paymentMethodId || '');
+    if (!paymentMethodId) return next(new AppError('Payment method ID is required', 400));
+
+    const { stripe, customerId } = await getOrCreatePlatformStripeCustomer();
+    const pm = await stripe.paymentMethods.retrieve(paymentMethodId);
+    if (pm.customer !== customerId) {
+        return next(new AppError('You do not have permission to remove this card', 403));
+    }
+
+    await stripe.paymentMethods.detach(paymentMethodId);
+    await syncPlatformLinkFromStripe();
+
+    res.status(200).json({
+        status: 'success',
+        message: 'Payment method removed successfully',
+    });
+});
+
+/** GET /api/admin/finance/platform/transactions */
+export const getPlatformTreasuryTransactions = catchAsync(async (req: Request, res: Response) => {
+    const page = Math.max(1, parseInt(String(req.query.page || '1'), 10) || 1);
+    const limit = Math.min(50, Math.max(1, parseInt(String(req.query.limit || '25'), 10) || 25));
+    const skip = (page - 1) * limit;
+    const direction = String(req.query.direction || 'all');
+
+    const match: Record<string, unknown> = { status: 'completed' };
+    if (direction === 'in') {
+        match.type = { $in: ['topup', 'admin_credit'] };
+    } else if (direction === 'out') {
+        match.type = 'bounty_payment';
+    } else if (direction !== 'revenue') {
+        match.type = { $in: ['topup', 'admin_credit', 'bounty_payment'] };
+    }
+
+    if (direction === 'revenue') {
+        const [feeRows, total] = await Promise.all([
+            Transaction.find({ type: 'platform_fee', status: 'completed' })
+                .sort({ createdAt: -1 })
+                .skip(skip)
+                .limit(limit)
+                .populate('user', 'companyName name email')
+                .populate({
+                    path: 'relatedReport',
+                    select: 'reportId title bounty',
+                    populate: { path: 'researcherId', select: 'username name' },
+                }),
+            Transaction.countDocuments({ type: 'platform_fee', status: 'completed' }),
+        ]);
+
+        const revenue = feeRows.map((tx: any) => {
+            const companyName = tx.user?.companyName || tx.user?.name || 'Unknown company';
+            const bountyAmount = Number(tx.relatedReport?.bounty || 0);
+            const feeAmount = Math.abs(Number(tx.amount || 0));
+            const researcher =
+                tx.relatedReport?.researcherId?.username ||
+                tx.relatedReport?.researcherId?.name ||
+                null;
+
+            return {
+                id: String(tx._id),
+                date: tx.createdAt,
+                company: companyName,
+                reportId: tx.relatedReport?.reportId || null,
+                bountyAmount,
+                platformRevenue: feeAmount,
+                researcherId: researcher,
+                status: tx.status,
+            };
+        });
+
+        return res.status(200).json({
+            status: 'success',
+            data: {
+                revenue,
+                total,
+                page,
+                totalPages: Math.ceil(total / limit) || 1,
+            },
+        });
+    }
+
+    const [transactions, total] = await Promise.all([
+        Transaction.find(match)
+            .sort({ createdAt: -1 })
+            .skip(skip)
+            .limit(limit)
+            .populate('user', 'companyName name email')
+            .populate({
+                path: 'relatedReport',
+                select: 'reportId title bounty',
+                populate: { path: 'researcherId', select: 'username name' },
+            }),
+        Transaction.countDocuments(match),
+    ]);
+
+    const formatted = transactions.map((tx: any) => {
+        const isIncoming = tx.type === 'topup' || tx.type === 'admin_credit';
+        const reportTitle = tx.relatedReport?.title;
+        const companyName = tx.user?.companyName || tx.user?.name || 'Unknown company';
+        const rawAmount = Math.abs(Number(tx.amount || 0));
+        const researcher =
+            tx.relatedReport?.researcherId?.username ||
+            tx.relatedReport?.researcherId?.name ||
+            null;
+
+        let description = tx.description || '';
+        if (!description) {
+            if (tx.type === 'topup') description = 'Company wallet top-up';
+            else if (tx.type === 'admin_credit') description = 'Admin wallet credit';
+            else if (tx.type === 'bounty_payment') {
+                const bounty = Number(tx.relatedReport?.bounty || 0);
+                description = reportTitle
+                    ? `Bounty payout — ${reportTitle}`
+                    : `Bounty payout (PKR ${bounty.toLocaleString()})`;
+            }
+        }
+
+        return {
+            id: String(tx._id),
+            date: tx.createdAt,
+            type: tx.type,
+            direction: isIncoming ? 'in' : 'out',
+            amount: rawAmount,
+            description,
+            company: companyName,
+            reportId: tx.relatedReport?.reportId || null,
+            bountyAmount: tx.type === 'bounty_payment' ? Number(tx.relatedReport?.bounty || 0) : null,
+            researcherId: researcher,
+            status: tx.status,
+        };
+    });
+
+    res.status(200).json({
+        status: 'success',
+        data: {
+            transactions: formatted,
+            total,
+            page,
+            totalPages: Math.ceil(total / limit) || 1,
+        },
+    });
+});
+
+/** GET /api/admin/finance/companies/:companyId */
+export const getCompanyFinanceDetail = catchAsync(async (req: Request, res: Response, next: NextFunction) => {
+    const { companyId } = req.params;
+    const Report = (await import('../models/Report')).default;
+    const Program = (await import('../models/Program')).default;
+
+    const company = await User.findOne({ _id: companyId, role: 'company' }).select(
+        'name email companyName walletBalance walletTotalFunded status createdAt',
+    );
+    if (!company) return next(new AppError('Company not found', 404));
+
+    const programs = await Program.find({ companyId: company._id }).select('_id title type status');
+    const programIds = programs.map((p) => p._id.toString());
+
+    const [fundingAgg, feeAgg, bountyReports] = await Promise.all([
+        Transaction.aggregate([
+            {
+                $match: {
+                    user: company._id,
+                    type: { $in: ['topup', 'admin_credit'] },
+                    status: 'completed',
+                },
+            },
+            { $group: { _id: null, total: { $sum: '$amount' } } },
+        ]),
+        Transaction.aggregate([
+            {
+                $match: {
+                    user: company._id,
+                    type: 'platform_fee',
+                    status: 'completed',
+                },
+            },
+            { $group: { _id: null, total: { $sum: '$amount' } } },
+        ]),
+        Report.find({ programId: { $in: programIds }, bounty: { $gt: 0 } })
+            .sort({ updatedAt: -1 })
+            .limit(100)
+            .select('reportId title bounty status severity createdAt updatedAt programId researcherId')
+            .populate('researcherId', 'username name'),
+    ]);
+
+    const historicalFunded = Number(fundingAgg[0]?.total || 0);
+    const platformRevenue = Number(feeAgg[0]?.total || 0);
+    const totalBountiesPaid = bountyReports.reduce((sum, r) => sum + Number(r.bounty || 0), 0);
+
+    const PlatformFinanceSettings = (await import('../models/PlatformFinanceSettings')).default;
+    const settings = await PlatformFinanceSettings.findOne();
+    const feeRate = (settings?.platformFeePercent ?? 5) / 100;
+
+    const bountyPayments = bountyReports.map((report: any) => {
+        const bounty = Number(report.bounty || 0);
+        const fee = bounty * feeRate;
+        const prog = programs.find((p) => p._id.toString() === String(report.programId));
+        return {
+            id: String(report._id),
+            reportId: report.reportId || String(report._id),
+            title: report.title,
+            bounty: Number(report.bounty || 0),
+            platformFee: fee,
+            totalCharged: Number(report.bounty || 0) + fee,
+            status: report.status,
+            severity: report.severity,
+            program: prog?.title || 'Unknown program',
+            researcher:
+                report.researcherId?.username || report.researcherId?.name || 'Unknown',
+            paidAt: report.updatedAt || report.createdAt,
+        };
+    });
+
+    res.status(200).json({
+        status: 'success',
+        data: {
+            company: {
+                id: String(company._id),
+                name: company.companyName || company.name,
+                email: company.email,
+                status: company.status || 'Active',
+                balance: Number(company.walletBalance || 0),
+                totalFunded: Math.max(Number(company.walletTotalFunded || 0), historicalFunded),
+                platformRevenue,
+                totalBountiesPaid,
+                activePrograms: programs.filter((p) => (p.status || '').toLowerCase() === 'active').length,
+                memberSince: company.createdAt,
+            },
+            bountyPayments,
+        },
     });
 });
 
@@ -900,7 +1441,7 @@ const notifyReportParticipants = async (
 export const updateReportByAdmin = catchAsync(async (req: Request, res: Response, next: NextFunction) => {
     const { id } = req.params;
     const updates = req.body || {};
-    const allowedFields = ['title', 'vulnerableEndpoint', 'description', 'impact', 'pocSteps', 'vulnerabilityCategory', 'severity', 'status', 'cvssScore', 'cvssVector', 'bounty'];
+    const allowedFields = ['title', 'vulnerableEndpoint', 'description', 'impact', 'pocSteps', 'vulnerabilityCategory', 'vrtParent', 'vrtCategory', 'vrtVariant', 'severity', 'status', 'cvssScore', 'cvssVector', 'bounty'];
     const safeUpdates: Record<string, any> = {};
 
     allowedFields.forEach((field) => {

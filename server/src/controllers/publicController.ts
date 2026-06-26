@@ -42,3 +42,22 @@ export const verifyCertificate = catchAsync(async (req: Request, res: Response, 
         }
     });
 });
+
+export const getStripeConfig = catchAsync(async (req: Request, res: Response) => {
+    const publishableKey =
+        process.env.STRIPE_PUBLIC_KEY?.trim() ||
+        process.env.STRIPE_PUBLISHABLE_KEY?.trim() ||
+        '';
+
+    if (!publishableKey) {
+        return res.status(503).json({
+            status: 'fail',
+            message: 'Stripe publishable key is not configured. Set STRIPE_PUBLIC_KEY in server/.env.',
+        });
+    }
+
+    res.status(200).json({
+        status: 'success',
+        data: { publishableKey },
+    });
+});

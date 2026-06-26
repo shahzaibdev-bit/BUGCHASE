@@ -1,6 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { apiFetch } from '@/lib/api';
-import { loadStripe } from '@stripe/stripe-js';
 import {
   Elements,
   PaymentElement,
@@ -19,7 +18,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import {
-  Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger,
+  Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger,
 } from '@/components/ui/dialog';
 import { cn } from '@/lib/utils';
 import { InvertedTiltCard } from '@/components/InvertedTiltCard';
@@ -28,9 +27,9 @@ import { API_URL } from '@/config';
 import { useAuth } from '@/contexts/AuthContext';
 import { toast } from 'sonner';
 import { useTheme } from 'next-themes';
+import { ensureStripeReady, getStripePromise, STRIPE_PAYMENT_ELEMENT_OPTIONS } from '@/lib/stripe';
 
 // ─── Stripe init ──────────────────────────────────────────────
-const stripePromise = loadStripe(import.meta.env.VITE_STRIPE_PUBLIC_KEY as string);
 
 const FUND_PRESETS = [5000, 10000, 50000, 100000];
 const ITEMS_PER_PAGE = 8;
@@ -114,7 +113,7 @@ function SetupForm({
   return (
     <form onSubmit={handleSubmit} className="space-y-5">
       <div className="rounded-xl border border-border bg-muted/30 p-4">
-        <PaymentElement options={{ layout: 'tabs', wallets: { applePay: 'never', googlePay: 'never' } }} />
+        <PaymentElement options={STRIPE_PAYMENT_ELEMENT_OPTIONS} />
       </div>
       {error && (
         <div className="flex items-center gap-2 rounded-lg border border-red-500/30 bg-red-500/10 p-3 text-sm text-red-500">
@@ -188,7 +187,7 @@ function CheckoutForm({
   return (
     <form onSubmit={handleSubmit} className="space-y-5">
       <div className="rounded-xl border border-border bg-muted/30 p-4">
-        <PaymentElement options={{ layout: 'tabs', wallets: { applePay: 'never', googlePay: 'never' } }} />
+        <PaymentElement options={STRIPE_PAYMENT_ELEMENT_OPTIONS} />
       </div>
       {error && (
         <div className="flex items-center gap-2 rounded-lg border border-red-500/30 bg-red-500/10 p-3 text-sm text-red-500">
@@ -231,8 +230,13 @@ export default function CompanyEscrow() {
   const [clientSecret, setClientSecret] = useState('');
   const [intentLoading, setIntentLoading] = useState(false);
   const [selectedPmId, setSelectedPmId] = useState<string | null>(null);
+  const [stripePromise, setStripePromise] = useState<ReturnType<typeof getStripePromise> | null>(null);
 
   const amountToFund = customAmount ? (parseInt(customAmount) || 0) : selectedAmount;
+
+  useEffect(() => {
+    setStripePromise(getStripePromise());
+  }, []);
 
   const fetchTransactions = useCallback(async (page = 1) => {
     setTxLoading(true);
@@ -270,6 +274,13 @@ export default function CompanyEscrow() {
   const handleOpenLinkAccount = async () => {
     setIntentLoading(true);
     try {
+      const stripe = await ensureStripeReady();
+      if (!stripe) {
+        toast.error('Stripe is not configured. Add VITE_STRIPE_PUBLIC_KEY to client/.env or STRIPE_PUBLIC_KEY to server/.env.');
+        return;
+      }
+      setStripePromise(getStripePromise());
+
       const res = await apiFetch(`/company/wallet/setup-intent`, {
         method: 'POST',
         headers: authHeaders(),
@@ -289,6 +300,13 @@ export default function CompanyEscrow() {
     if (amountToFund < 100) { toast.error('Minimum top-up is PKR 100'); return; }
     setIntentLoading(true);
     try {
+      const stripe = await ensureStripeReady();
+      if (!stripe) {
+        toast.error('Stripe is not configured. Add VITE_STRIPE_PUBLIC_KEY to client/.env or STRIPE_PUBLIC_KEY to server/.env.');
+        return;
+      }
+      setStripePromise(getStripePromise());
+
       const res = await apiFetch(`/company/wallet/topup/intent`, {
         method: 'POST',
         headers: authHeaders(),
@@ -616,6 +634,9 @@ export default function CompanyEscrow() {
               <DialogTitle className="font-mono text-sm font-bold tracking-widest uppercase flex items-center gap-2">
                 <Wallet className="h-4 w-4 text-primary" /> Wallet Refill
               </DialogTitle>
+              <DialogDescription className="text-xs text-muted-foreground font-mono">
+                Add funds to your company wallet using a saved or new payment method.
+              </DialogDescription>
             </DialogHeader>
           </div>
 
@@ -693,7 +714,7 @@ export default function CompanyEscrow() {
               </div>
             )}
 
-            {step === 'pay' && clientSecret && (
+            {step === 'pay' && clientSecret && stripePromise && (
               <div className="animate-in fade-in slide-in-from-bottom-2 duration-500">
                 <Elements stripe={stripePromise} options={{ clientSecret, appearance: stripeAppearance }}>
                   <CheckoutForm amount={amountToFund} onSuccess={handlePaymentSuccess} onCancel={() => setStep('amount')} />
@@ -724,11 +745,21 @@ export default function CompanyEscrow() {
              <div className="flex justify-between items-center">
                 <DialogTitle className="font-mono text-sm font-bold tracking-widest uppercase">Secure Enrollment</DialogTitle>
              </div>
+             <DialogDescription className="text-xs text-muted-foreground font-mono mt-2">
+               Add a payment method to link with your BugChase wallet.
+             </DialogDescription>
           </div>
           <div className="p-6">
+            {clientSecret && stripePromise ? (
             <Elements stripe={stripePromise} options={{ clientSecret, appearance: stripeAppearance }}>
               <SetupForm onSuccess={handleLinkSuccess} onCancel={() => setLinkAccountOpen(false)} />
             </Elements>
+            ) : (
+              <div className="flex items-center justify-center py-8 text-muted-foreground">
+                <Loader2 className="h-5 w-5 animate-spin mr-2" />
+                <span className="text-sm font-mono">Loading secure form…</span>
+              </div>
+            )}
           </div>
         </DialogContent>
       </Dialog>

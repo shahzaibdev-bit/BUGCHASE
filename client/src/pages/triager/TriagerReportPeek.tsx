@@ -7,7 +7,7 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { Separator } from '@/components/ui/separator';
 import { ReportTimelineNode } from '@/components/reports/ReportTimelineNode';
 import type { ReportTimelineEvent } from '@/components/reports/ReportTimelineNode';
-import { ReportReadOnlyBody } from '@/components/reports/ReportReadOnlyBody';
+import { ReportReadOnlyContent, ReportReadOnlySidebar } from '@/components/reports/ReportReadOnlyBody';
 import { toast } from '@/hooks/use-toast';
 
 /**
@@ -52,7 +52,8 @@ export default function TriagerReportPeek() {
           content: c.content,
           attachments: c.attachments || [],
           timestamp: c.createdAt,
-          metadata: c.metadata || {} }));
+          metadata: c.metadata || {},
+        }));
 
         const submissionEvent: ReportTimelineEvent = {
           id: 'submission',
@@ -61,7 +62,8 @@ export default function TriagerReportPeek() {
           authorAvatar: r.researcherId?.avatar,
           role: 'Researcher',
           content: `Submission: **${r.title}**`,
-          timestamp: r.createdAt };
+          timestamp: r.createdAt,
+        };
 
         setTimeline([submissionEvent, ...comments]);
       } catch (e: any) {
@@ -82,8 +84,8 @@ export default function TriagerReportPeek() {
   }
 
   return (
-    <div className="min-h-screen bg-zinc-50 dark:bg-black pb-20">
-      <div className="sticky top-0 z-10 border-b border-zinc-200 dark:border-zinc-800 bg-amber-50 dark:bg-amber-950/40 px-4 py-3 flex flex-wrap items-center justify-between gap-2">
+    <div className="min-h-screen bg-white dark:bg-black flex flex-col">
+      <div className="sticky top-0 z-10 border-b border-zinc-200 dark:border-zinc-800 bg-amber-50 dark:bg-amber-950/40 px-4 py-3 flex flex-wrap items-center justify-between gap-2 shrink-0">
         <div className="flex items-center gap-3">
           <Eye className="h-4 w-4 text-amber-700 dark:text-amber-400 shrink-0" />
           <p className="text-sm font-medium text-amber-900 dark:text-amber-100">
@@ -95,27 +97,35 @@ export default function TriagerReportPeek() {
         </Button>
       </div>
 
-      <ScrollArea className="h-[calc(100vh-3.5rem)]">
-        <div className="max-w-4xl mx-auto p-8 space-y-8">
-          <ReportReadOnlyBody report={report} />
+      <div className="flex-1 overflow-hidden">
+        <div className="h-[calc(100vh-3.5rem)] grid grid-cols-1 lg:grid-cols-12 gap-0">
+          <ScrollArea className="lg:col-span-8 h-full border-r border-zinc-200 dark:border-zinc-800">
+            <div className="p-8 max-w-4xl mx-auto space-y-12 pb-32">
+              <ReportReadOnlyContent report={report} />
 
-          <Separator />
+              <Separator />
 
-          <div>
-            <h2 className="text-lg font-bold text-zinc-900 dark:text-white mb-4">Activity / thread</h2>
-            <div className="pl-1 space-y-0">
-              {timeline.map((event, index) => (
-                <ReportTimelineNode
-                  key={String(event.id)}
-                  event={event}
-                  isConsecutive={false}
-                  onPreviewMedia={() => {}}
-                />
-              ))}
+              <div>
+                <h2 className="text-lg font-bold text-zinc-900 dark:text-white mb-4">Activity / thread</h2>
+                <div className="pl-1 space-y-0">
+                  {timeline.map((event) => (
+                    <ReportTimelineNode
+                      key={String(event.id)}
+                      event={event}
+                      isConsecutive={false}
+                      onPreviewMedia={() => {}}
+                    />
+                  ))}
+                </div>
+              </div>
             </div>
+          </ScrollArea>
+
+          <div className="lg:col-span-4 h-full overflow-y-auto bg-zinc-50/50 dark:bg-zinc-900/20 p-6">
+            <ReportReadOnlySidebar report={report} />
           </div>
         </div>
-      </ScrollArea>
+      </div>
     </div>
   );
 }

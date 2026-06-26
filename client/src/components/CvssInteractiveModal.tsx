@@ -202,16 +202,25 @@ export const CvssInteractiveModal = ({
         return { label: 'NONE', color: 'text-zinc-500', bg: 'bg-zinc-100 dark:bg-zinc-800' };
     };
 
-    const ScoreCard = ({ title, score, vector, fallbackSeverity, icon: Icon, colorClass, borderClass, onClick }: any) => {
-        let severity = getSeverityLabel(score);
-        if (score === 0 && fallbackSeverity) {
+    const ScoreCard = ({ title, score, vector, fallbackSeverity, severityOnlyNote, icon: Icon, colorClass, borderClass, onClick }: any) => {
+        const hasVector = Boolean(vector && String(vector).startsWith('CVSS:'));
+        const severityOnly = !hasVector && Boolean(fallbackSeverity);
+        let severity = getSeverityLabel(hasVector ? score : 0);
+        if (severityOnly) {
             severity = getSeverityLabelFromName(fallbackSeverity);
         }
-        
+
+        const scoreDisplay = hasVector ? score.toFixed(1) : severityOnly ? '—' : score > 0 ? score.toFixed(1) : '—';
+        const vectorDisplay = hasVector
+            ? vector
+            : severityOnly
+                ? (severityOnlyNote || 'Severity only — no CVSS vector')
+                : 'No vector provided';
+
         return (
             <div 
                 onClick={onClick}
-                className={`p-4 rounded-xl border ${borderClass} bg-white dark:bg-zinc-900 shadow-sm relative overflow-hidden group transition-all cursor-pointer hover:shadow-md`}
+                className={`p-4 rounded-xl border ${borderClass} bg-white dark:bg-zinc-900 shadow-sm relative overflow-hidden group transition-all ${onClick && hasVector ? 'cursor-pointer hover:shadow-md' : ''}`}
             >
                 <div className="flex items-center justify-between mb-2 relative z-10">
                     <div className="flex items-center gap-2">
@@ -220,15 +229,17 @@ export const CvssInteractiveModal = ({
                     </div>
                     <div className="text-right">
                         <span className={`font-mono font-bold text-2xl ${colorClass} block leading-5`}>
-                            {score === 0 && fallbackSeverity ? 'N/A' : score.toFixed(1)}
+                            {scoreDisplay}
                         </span>
                         <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded ${severity.bg} ${severity.color}`}>
                             {severity.label}
                         </span>
                     </div>
                 </div>
-                <code className="block text-[10px] font-mono opacity-60 break-all leading-tight relative z-10">{vector || 'N/A'}</code>
-                {onClick && vector && (
+                <p className={`text-[10px] leading-tight relative z-10 ${hasVector ? 'font-mono opacity-60 break-all' : 'font-medium opacity-80'}`}>
+                    {vectorDisplay}
+                </p>
+                {onClick && hasVector && (
                     <div className={`mt-2 text-[10px] font-bold uppercase tracking-widest opacity-0 group-hover:opacity-100 transition-opacity flex items-center gap-1 ${colorClass}`}>
                         Click to Apply <ArrowLeft className="h-3 w-3 rotate-180" />
                     </div>
@@ -251,7 +262,7 @@ export const CvssInteractiveModal = ({
                     <div className="md:col-span-4 bg-zinc-50/50 dark:bg-zinc-900/10 border-r border-zinc-100 dark:border-zinc-900 p-6 space-y-4 overflow-y-auto">
                          <h4 className="text-xs font-bold text-zinc-400 uppercase tracking-widest mb-2">Sources</h4>
                          
-                         {aiVector && (
+                         {aiVector && aiVector.startsWith('CVSS:') && (
                              <ScoreCard 
                                 title="AI Estimate" 
                                 score={aiScore} 
@@ -268,10 +279,11 @@ export const CvssInteractiveModal = ({
                             score={researcherScore} 
                             vector={researcherVector} 
                             fallbackSeverity={researcherSeverity}
+                            severityOnlyNote="Researcher selected severity only — no CVSS vector"
                             icon={Bug} 
                             colorClass="text-indigo-600 dark:text-indigo-400" 
                             borderClass="border-indigo-100 dark:border-indigo-900/30 hover:border-indigo-300"
-                            onClick={researcherVector ? () => applyVector(researcherVector) : undefined}
+                            onClick={researcherVector?.startsWith('CVSS:') ? () => applyVector(researcherVector) : undefined}
                          />
 
                          {triagerVector && (

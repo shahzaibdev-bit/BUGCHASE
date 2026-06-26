@@ -237,7 +237,6 @@ export default function CompanyPrograms() {
         companyName={user?.companyName || 'Company'}
         verifiedAssets={verifiedAssets}
         onSuccess={() => {
-            setIsCreateModalOpen(false);
             fetchData();
         }}
       />

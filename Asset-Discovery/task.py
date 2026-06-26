@@ -3,11 +3,8 @@ import re
 import ssl
 import subprocess
 from celery import Celery
-from dotenv import load_dotenv
 
 from redis_url import get_redis_url_from_env, uses_tls, ssl_cert_kwargs
-
-load_dotenv()
 
 _redis_url = get_redis_url_from_env()
 
@@ -29,6 +26,7 @@ _result_ttl_sec = int(os.environ.get("CELERY_RESULT_TTL_SEC", "3600"))
 app.conf.update(
     result_expires=_result_ttl_sec,
     result_extended=True,
+    broker_connection_retry_on_startup=True,
 )
 
 def parse_nmap_to_dict(raw_stdout):

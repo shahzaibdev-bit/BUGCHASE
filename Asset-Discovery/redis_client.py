@@ -8,11 +8,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any, Optional
 
-from dotenv import load_dotenv
-
 from redis_url import get_redis_url_from_env, uses_tls, ssl_cert_kwargs
-
-load_dotenv()
 
 if TYPE_CHECKING:
     import redis as redis_module

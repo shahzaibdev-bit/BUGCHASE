@@ -742,9 +742,9 @@ export default function TriagerReportDetails() {
                 }
             });
             
-            const data = await res.json();
+            const data = await res.json().catch(() => ({}));
             
-            if (res.ok && data.data.summary) {
+            if (res.ok && data.data?.summary) {
                 const { title, technical_summary, remediation } = data.data.summary;
                 setSummaryForm(p => ({
                     ...p,
@@ -754,11 +754,15 @@ export default function TriagerReportDetails() {
                 }));
                 toast({ title: "Summary Generated", description: "AI has drafted the executive summary." });
             } else {
-                throw new Error("Failed to generate summary");
+                throw new Error(data.message || "Failed to generate summary");
             }
-        } catch (error) {
+        } catch (error: any) {
             console.error(error);
-            toast({ title: "Error", description: "Failed to generate AI summary", variant: "destructive" });
+            toast({
+              title: "Error",
+              description: error.message || "Failed to generate AI summary",
+              variant: "destructive",
+            });
         } finally {
             setGeneratingSummary(false);
         }
